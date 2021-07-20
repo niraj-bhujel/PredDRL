@@ -6,12 +6,6 @@
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
    <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/turtlebot3_stage_4.world"/>
-   <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/maze1.world"/> -->
-    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/train_env_2.world"/> -->
-    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/6.5_env_2.world"/> -->
-    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/6.5_env_3.world"/> -->
-    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/corridor_env.world"/> -->
-    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/robot_house.world"/> -->
     <arg name="paused" value="false"/>
     <arg name="use_sim_time" value="true"/>
     <arg name="gui" value="true"/>
@@ -37,8 +31,6 @@
  	<node pkg="tf" type="static_transform_publisher" name="swivel_hubcap_broadcaster" args="-0.026 0 -0.016 0 0 0 swivel center_wheel 100" /> -->
 
   <node pkg="turtlebot3_dqn"  type="combination_obstacle_1_bk1" name="combination_obstacle_1" output="screen" />
-  <!-- <node pkg="turtlebot3_dqn"  type="combination_obstacle_2" name="combination_obstacle_2" output="screen" /> -->
-  <!-- <node pkg="turtlebot3_dqn"  type="moving_obstacle_bk" name="moving_obstacle" output="screen" /> -->
   <node pkg="turtlebot3_dqn"  type="odomtopath" name="odomtopath" output="screen" />
   <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" />
 
