@@ -13,7 +13,7 @@
     <arg name="debug" value="false"/>
   </include>  
 
-  <param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+<!--   <param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" /> -->
 
   <!-- Load the URDF into the ROS Parameter Server  inorder-->
 	<!-- <param name="robot_description"
@@ -32,6 +32,6 @@
 
   <node pkg="turtlebot3_dqn"  type="combination_obstacle_1_bk1" name="combination_obstacle_1" output="screen" />
   <node pkg="turtlebot3_dqn"  type="odomtopath" name="odomtopath" output="screen" />
-  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" />
+<!--   <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" /> -->
 
 </launch>
