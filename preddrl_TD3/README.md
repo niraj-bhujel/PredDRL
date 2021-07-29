@@ -33,6 +33,6 @@ The actor network architecture can be modified in:
 ```
 
 
-Please copy files in script folder to overwrite above files(trainer.py and ddpg.py).
+Please copy files in script folder to overwrite above two files (trainer.py and ddpg.py).
 
 
