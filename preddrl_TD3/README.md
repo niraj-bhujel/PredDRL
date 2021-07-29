@@ -19,6 +19,10 @@ The interaction with Gazebo environment and data collecting is in:
 ```
 ~/preddrl_TD3/src/tf2rl/examples/Gazebo_env/environment_stage_3_bk.py
 ```
+Parameters setting and start to train in:
+```
+~/predDRL_TD3/src/tf2rl/examples/run_td3.py
+```
 The trainer can be modified in:
 ```
 ~/anaconda3/envs/tf2/lib/python3.6/site-packages/tf2rl/experiments/trainer.py
@@ -27,9 +31,8 @@ The actor network architecture can be modified in:
 ```
 ~/anaconda3/envs/tf2/lib/python3.6/site-packages/tf2rl/algos/ddpg.py
 ```
-Parameters setting and start to train in:
-```
-~/predDRL_TD3/src/tf2rl/examples/run_td3.py
-```
+
+
+Please copy files in script folder to overwrite above files(trainer.py and ddpg.py).
 
 
