@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Conv1D, Flatten, concatenate
 
-from tf2rl.algos.ddpg import DDPG, Actor
+from ddpg import DDPG, Actor
 from tf2rl.misc.target_update_ops import update_target_variables
 from tf2rl.misc.huber_loss import huber_loss
 
