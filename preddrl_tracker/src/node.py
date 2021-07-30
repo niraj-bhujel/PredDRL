@@ -3,10 +3,11 @@
 '''
 
 class Node(object):
-    def __init__(self, data, first_timestep, pid, dt=0.4):
+    def __init__(self, data, first_timestep, node_id, node_type='ped'):
         self.data = data
         self.first_timestep = first_timestep
-        self.pid = pid
+        self.id = node_id
+        self.node_type = node_type
 
     def points_at(self, t):
         return self.data[t-self.first_timestep]

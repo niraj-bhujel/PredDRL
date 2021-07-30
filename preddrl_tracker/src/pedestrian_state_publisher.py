@@ -55,7 +55,7 @@ def create_actor_msg(nodes, t):
 
         x, y, vx, vy, ax, ay = node.points_at(t)
 
-        print(t, node.pid, x, y, vx, vy, ax, ay)
+        print(t, node.id, x, y, vx, vy, ax, ay)
 
         theta = math.atan2(vy, vx) # radians
 
@@ -64,7 +64,7 @@ def create_actor_msg(nodes, t):
         state = AgentState()
 
         state.header = h
-        state.id = int(node.pid)
+        state.id = int(node.id)
 
         if t>node.last_timestep-1:
             state.type = int(4)
@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     data_rate = 2.5
 
-    frames, peds_per_frame, ped_nodes = prepare_data('crowds_zara01.txt', data_rate)
+    frames, peds_per_frame, ped_nodes = prepare_data('../data/crowds_zara01.txt', data_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents")
@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
         # get pids at current time
         curr_ped_ids = peds_per_frame[t]
-        curr_ped_nodes = [node for node in ped_nodes if node.pid in curr_ped_ids]
+        curr_ped_nodes = [node for node in ped_nodes if node.id in curr_ped_ids]
 
         actors = create_actor_msg(curr_ped_nodes, t)
         state_pub.publish(actors)
