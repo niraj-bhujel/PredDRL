@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     data_rate = 2.5
 
-    frames, peds_per_frame, ped_nodes = prepare_data('crowds_zara01.txt', data_rate)
+    frames, peds_per_frame, ped_nodes = prepare_data('../data/crowds_zara01.txt', data_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents")
