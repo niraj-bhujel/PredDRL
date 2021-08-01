@@ -8,7 +8,13 @@ class Node(object):
         self.first_timestep = first_timestep
         self.id = node_id
         self.node_type = node_type
-
+        self.pos = []
+        self.vel = []
+        
+    def update_states(self, p, v):
+        self.pos.append(p)
+        self.vel.append(v)
+        
     def points_at(self, t):
         return self.data[t-self.first_timestep]
 

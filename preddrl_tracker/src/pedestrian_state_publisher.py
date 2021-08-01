@@ -3,6 +3,7 @@ import sys
 
 import math
 import numpy as np
+from scipy.interpolate import interp1d
 import rospy
 
 from preddrl_msgs.msg import AgentStates, AgentState
@@ -19,10 +20,10 @@ from node import Node
 from scene import Scene
 
         
-def angleToQuaternion(theta, degrees=True):
+def angleToQuaternion(theta, radians=True):
 
-    if not degrees:
-        theta *= 180/np.pi
+    if not radians:
+        theta *= np.pi/180
 
     R = np.zeros((3, 3))
     R[0, 0] = np.cos(theta)
@@ -59,7 +60,7 @@ def create_actor_msg(nodes, t):
 
         theta = math.atan2(vy, vx) # radians
 
-        q = angleToQuaternion(theta, degrees=False)
+        q = angleToQuaternion(theta)
 
         state = AgentState()
 
@@ -88,45 +89,74 @@ def create_actor_msg(nodes, t):
 
     return agents
 
-def prepare_data(data_path, frame_rate=2.5):
+def _interpolate(pos, method='quadratic', num_points=1):
+
+    x, y = pos[:, 0], pos[:, 1]
+
+    x_intp = interp1d(np.arange(len(x)), x, kind=method)
+    y_intp = interp1d(np.arange(len(y)), y, kind=method)
+
+    points = np.linspace(0, len(x)-1, num_points)
+
+    return np.stack([x_intp(points), y_intp(points)], axis=-1)
+
+def prepare_data(data_path, target_frame_rate=25):
     print('Preparing data .. ')
+    target_frame_rate = max(target_frame_rate, 25)
     
     data = np.loadtxt(data_path)
     data = data.round(3)
 
-    frames = np.unique(data[:, 0])
-    peds_per_frame = []
-    for frame in frames:
-        peds_per_frame.append(data[data[:, 0]==frame, 1])
+    # convert frame rate into 25 fps from 2.5fps
+    data_frames = np.unique(data[:, 0])
+    frame_rate_multiplier = target_frame_rate/2.5
+    
+    # keep the original key frames, sample between frame intervals
+    interframes = [np.linspace(0, diff, num=frame_rate_multiplier, endpoint=False) for diff in np.diff(data_frames)]
+    intp_data_frames = np.concatenate([int_f + key_f for int_f, key_f in zip(interframes, data_frames)] +
+                                      [np.linspace(data_frames[-1], data_frames[-1]+10, num=frame_rate_multiplier, endpoint=False)])
 
     ped_nodes = []
+    ped_intp_frames = []
 
     for pid in np.unique(data[:, 1]):
-        # ped_states = np.full((len(frames), 6), np.nan)
 
-        ped_frames = data[data[:, 1]==pid, 0]
+        ped_frames = data[data[:, 1]==pid, 0]        
+        num_intp_points = int(len(ped_frames)*frame_rate_multiplier)
 
-        # ped_frame_idx = np.amax(frames[:, None] == ped_frames[None, :], axis=-1)
-        start_idx = frames.tolist().index(ped_frames[0])
+        ped_pos = _interpolate(data[data[:, 1]==pid, 2:4], 'quadratic', num_intp_points)
 
-        ped_pos = data[data[:, 1]==pid, 2:4]
-        ped_vel = np.gradient(ped_pos, 1/frame_rate, axis=0).round(2)
-        ped_acc = np.gradient(ped_vel, 1/frame_rate, axis=0).round(2)
+        ped_vel = np.gradient(ped_pos, 1/target_frame_rate, axis=0).round(2)
+        ped_acc = np.gradient(ped_vel, 1/target_frame_rate, axis=0).round(2)
 
-        # ped_states[start_idx:start_idx+len(ped_frames)] = np.concatenate([ped_pos, ped_vel, ped_acc], axis=-1)
+        start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
         ped_states = np.concatenate([ped_pos, ped_vel, ped_acc], axis=-1)
 
         ped_nodes.append(Node(ped_states, start_idx, pid))
+        
+        ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
+    
+    peds_per_frame = []
+    for t, frame in enumerate(intp_data_frames):
+        curr_ped = []
+        for i, node in enumerate(ped_nodes):
 
-    return frames, peds_per_frame, ped_nodes
+            if t>=node.first_timestep and t<=node.last_timestep:
+                
+                curr_ped.append(ped_nodes[i].id)
+                
+        peds_per_frame.append(curr_ped)
+        
+        
+    return intp_data_frames, peds_per_frame, ped_nodes
 
+#%%
 if __name__ == '__main__':
     
-
-    data_rate = 2.5
-
-    frames, peds_per_frame, ped_nodes = prepare_data('../data/crowds_zara01.txt', data_rate)
+    ros_rate = 10
+    
+    frames, peds_per_frame, ped_nodes = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents")
@@ -154,7 +184,7 @@ if __name__ == '__main__':
     print('Publishing pedestrian states ...')
     state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=10)
     t = 0
-
+    
     actors_id_list = []
     while not rospy.is_shutdown():
 
@@ -190,7 +220,7 @@ if __name__ == '__main__':
             t += 1
 
         # must turn of use_sim_time for r.sleep() to work
-        rospy.sleep(1/data_rate)
+        rospy.sleep(1/ros_rate)
 
 
 

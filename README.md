@@ -6,7 +6,7 @@
 3. Change to preddrl_gazebo_plugin director
 $ roslaunch preddrl_gazebo_plugin social_contexts.launch
 
-4. Change to preddrl_tracker/src
-$ python2 pedestrian_state_publisher.py
+4. Change to preddrl_ws/src and run the python script 
+$ python2 preddrl_tracker/src/pedestrian_state_publisher.py
 
 
