@@ -237,6 +237,7 @@ if __name__ == '__main__':
 
             # rospy.sleep(1/ros_rate) # this doen't work well in python2
             r.sleep() # turn of use_sim_time if r.sleep() doesn't work
+            
         except KeyboardInterrupt:
             print('Closing down .. ')
             # delete all model at exit
