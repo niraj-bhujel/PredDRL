@@ -3,7 +3,13 @@ import sys
 
 import math
 import numpy as np
+
 from scipy.interpolate import interp1d
+from pyquaternion import Quaternion
+
+from node import Node
+from scene import Scene
+
 import rospy
 
 from preddrl_msgs.msg import AgentStates, AgentState
@@ -14,25 +20,25 @@ from gazebo_msgs.srv import SpawnModel, DeleteModel
 
 from rospkg import RosPack
 
-from pyquaternion import Quaternion
-
-from node import Node
-from scene import Scene
-
         
-def angleToQuaternion(theta, radians=True):
+def angleToQuaternion(theta, angles=True):
 
-    if not radians:
-        theta *= np.pi/180
+    # if not angles:
+    theta *= np.pi/180
 
-    R = np.zeros((3, 3))
-    R[0, 0] = np.cos(theta)
-    R[0, 1] = -np.sin(theta)
-    R[1, 0] = np.sin(theta)
-    R[1, 1] = np.cos(theta)
-    R[2, 2] = 1
-
-    q = Quaternion(matrix=R)
+    R = np.zeros((9))
+    R[0] = np.cos(theta)
+    R[1] = -np.sin(theta)
+    R[3] = np.sin(theta)
+    R[4] = np.cos(theta)
+    R[8] = 1
+    
+    w = math.sqrt(R[0]+R[4]+R[8]+1)/2.0
+    x = math.sqrt(R[0]-R[4]-R[8]+1)/2.0
+    y = math.sqrt(-R[0]+R[4]-R[8]+1)/2.0
+    z = math.sqrt(-R[0]-R[4]+R[8]+1)/2.0
+    
+    q = [w,x,y,z]
 
     return q
 
@@ -76,10 +82,10 @@ def create_actor_msg(nodes, t):
         state.pose.position.y = y
         state.pose.position.z = 0.0
 
-        state.pose.orientation.x = q.x
-        state.pose.orientation.y = q.y
-        state.pose.orientation.z = q.z
-        state.pose.orientation.w = q.w
+        state.pose.orientation.w = q[0]
+        state.pose.orientation.x = q[1]
+        state.pose.orientation.y = q[2]
+        state.pose.orientation.z = q[3]
 
         state.twist.linear.x = vx
         state.twist.linear.y = vy
@@ -89,7 +95,7 @@ def create_actor_msg(nodes, t):
 
     return agents
 
-def _interpolate(pos, method='quadratic', num_points=1):
+def interpolate(pos, method='quadratic', num_points=1):
 
     x, y = pos[:, 0], pos[:, 1]
 
@@ -99,6 +105,16 @@ def _interpolate(pos, method='quadratic', num_points=1):
     points = np.linspace(0, len(x)-1, num_points)
 
     return np.stack([x_intp(points), y_intp(points)], axis=-1)
+
+def _gradient(x, dt=0.4, axis=0):
+    '''
+    x - array of shape (T, dim)
+    '''
+
+    g =  np.diff(x, axis=axis) / dt
+    g = np.concatenate([g[0][None, :], g], axis=axis)
+    
+    return g
 
 def prepare_data(data_path, target_frame_rate=25):
     print('Preparing data .. ')
@@ -123,10 +139,11 @@ def prepare_data(data_path, target_frame_rate=25):
         ped_frames = data[data[:, 1]==pid, 0]        
         num_intp_points = int(len(ped_frames)*frame_rate_multiplier)
 
-        ped_pos = _interpolate(data[data[:, 1]==pid, 2:4], 'quadratic', num_intp_points)
+        ped_pos = data[data[:, 1]==pid, 2:4]
+        ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points)
 
-        ped_vel = np.gradient(ped_pos, 1/target_frame_rate, axis=0).round(2)
-        ped_acc = np.gradient(ped_vel, 1/target_frame_rate, axis=0).round(2)
+        ped_vel = np.gradient(ped_pos, 1.0/target_frame_rate, axis=0).round(2)
+        ped_acc = np.gradient(ped_vel, 1.0/target_frame_rate, axis=0).round(2)
 
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
@@ -158,7 +175,7 @@ if __name__ == '__main__':
     frames, peds_per_frame, ped_nodes = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
-    rospy.init_node("spawn_preddrl_agents")
+    rospy.init_node("spawn_preddrl_agents", anonymous=True, disable_signals=True)
 
     rospack1 = RosPack()
     pkg_path = rospack1.get_path('preddrl_gazebo_plugin')
@@ -179,47 +196,56 @@ if __name__ == '__main__':
 
     # print('Inititating pedestrain state publisher node ...')
     # rospy.init_node('pedestrain_states_publisher', anonymous=True)
-
+    r = rospy.Rate(ros_rate)
     print('Publishing pedestrian states ...')
     state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=10)
     t = 0
     
     actors_id_list = []
     while not rospy.is_shutdown():
+        try:
+            # get pids at current time
+            curr_ped_ids = peds_per_frame[t]
+            curr_ped_nodes = [node for node in ped_nodes if node.id in curr_ped_ids]
 
-        # get pids at current time
-        curr_ped_ids = peds_per_frame[t]
-        curr_ped_nodes = [node for node in ped_nodes if node.id in curr_ped_ids]
+            actors = create_actor_msg(curr_ped_nodes, t)
+            state_pub.publish(actors)
 
-        actors = create_actor_msg(curr_ped_nodes, t)
-        state_pub.publish(actors)
+            for actor in actors.agent_states:
+                actor_id = str( actor.id)
+                actor_pose = actor.pose
+                model_pose = Pose(Point(x= actor_pose.position.x,
+                                       y= actor_pose.position.y,
+                                       z= actor_pose.position.z),
+                                 Quaternion(actor_pose.orientation.x,
+                                            actor_pose.orientation.y,
+                                            actor_pose.orientation.z,
+                                            actor_pose.orientation.w) )
 
-        for actor in actors.agent_states:
-            actor_id = str( actor.id)
-            actor_pose = actor.pose
-            model_pose = Pose(Point(x= actor_pose.position.x,
-                                   y= actor_pose.position.y,
-                                   z= actor_pose.position.z),
-                             Quaternion(actor_pose.orientation.x,
-                                        actor_pose.orientation.y,
-                                        actor_pose.orientation.z,
-                                        actor_pose.orientation.w) )
+                if actor_id not in actors_id_list:
+                    rospy.loginfo("Spawning model: actor_id = %s", actor_id)
+                    spawn_model(actor_id, xml_string, "", model_pose, "world")
+                    actors_id_list.append(actor_id)
 
-            if actor_id not in actors_id_list:
-                rospy.loginfo("Spawning model: actor_id = %s", actor_id)
-                spawn_model(actor_id, xml_string, "", model_pose, "world")
-                actors_id_list.append(actor_id)
+                if actor.type==int(4):
+                    delete_model(actor_id)
 
-            if actor.type==int(4):
-                delete_model(actor_id)
+            if t>=len(frames)-1:
+                t = 0
+            else:
+                t += 1
 
-        if t>=len(frames)-1:
-            t = 0
-        else:
-            t += 1
+            # rospy.sleep(1/ros_rate) # this doen't work well in python2
+            r.sleep() # turn of use_sim_time if r.sleep() doesn't work
+        except KeyboardInterrupt:
+            print('Closing down .. ')
+            # delete all model at exit
+            print('deleting existing actor models')
+            [delete_model(actor_id) for actor_id in actors_id_list]  
+            break         
 
-        # must turn of use_sim_time for r.sleep() to work
-        rospy.sleep(1/ros_rate)
+
+
 
 
 
