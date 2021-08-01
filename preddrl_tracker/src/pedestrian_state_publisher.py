@@ -56,7 +56,7 @@ def create_actor_msg(nodes, t):
 
         x, y, vx, vy, ax, ay = node.points_at(t)
 
-        # print(t, node.id, x, y, vx, vy, ax, ay)
+        print(t, node.id, x, y, vx, vy, ax, ay)
 
         theta = math.atan2(vy, vx) # radians
 
@@ -102,10 +102,9 @@ def _interpolate(pos, method='quadratic', num_points=1):
 
 def prepare_data(data_path, target_frame_rate=25):
     print('Preparing data .. ')
-    target_frame_rate = max(target_frame_rate, 25)
+    target_frame_rate =  min(target_frame_rate, 25)
     
     data = np.loadtxt(data_path)
-    data = data.round(3)
 
     # convert frame rate into 25 fps from 2.5fps
     data_frames = np.unique(data[:, 0])
