@@ -16,7 +16,7 @@
     
         
 
-     <model name='grey_wall_1'>
+     <!--<model name='grey_wall_1'>
       <static>1</static>
       <link name='link'>
       
@@ -221,7 +221,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-    </model>
+    </model>-->
     
 
             <plugin name="ActorPosesPlugin" filename="libActorPosesPlugin.so">
