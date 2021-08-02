@@ -88,7 +88,6 @@ class Trainer:
 
         while total_steps < self._max_steps:
             print('Step - {}/{}'.format(total_steps, self._max_steps))
-
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample()
             else:

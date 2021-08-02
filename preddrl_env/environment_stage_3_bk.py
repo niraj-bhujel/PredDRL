@@ -198,14 +198,14 @@ class Env:
         self.pub_cmd_vel.publish(vel_cmd)
         # print(self.vel_cmd)
 
-        data = None
-        while data is None:
-            try:
-                data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-            except:
-                pass
+        # data = None
+        # while data is None:
+        #     try:
+        #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+        #     except Exception as e:
+        #         print(e)
 
-
+        data = rospy.wait_for_message('scan', LaserScan, timeout=5)
 
 #
         state, done, success = self.getState(data)
@@ -234,8 +234,8 @@ class Env:
         while data is None:
             try:
                 data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-            except:
-                pass
+            except Exception as e:
+                print(e)
         # send_goal=None
 
         if self.initGoal:

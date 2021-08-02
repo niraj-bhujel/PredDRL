@@ -9,18 +9,18 @@ _You must start the simulation environment before you can run the following comm
 ``` 
 #launch virtual environment 
 conda activate tf2 
-pip install -r requirements.txt
+pip install -r requirements.txt --no-deps
 cd preddrl_td3 # change to root dir
 python scripts/run_td3.py   #run the script
 ``` 
 
 **3.Notice**  
-If want to re-train model, change variable ***Load*** to False in examples/run_td3.py, ***self.test*** in examples/gazebo_env/environment_stage_3.py to False
+If want to re-train model, change variable use  to False in examples/run_td3.py, ***self.test*** in examples/gazebo_env/environment_stage_3.py to False
 
 **4.Important Files**  
 The interaction with Gazebo environment and data collecting is in:
 ```
-~/preddrl_td3/src/tf2rl/examples/Gazebo_env/environment_stage_3_bk.py
+~/preddrl_env/environment_stage_3_bk.py
 ```
 Parameters setting and start to train in:
 ```

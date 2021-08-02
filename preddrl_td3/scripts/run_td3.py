@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
 
 
-    rospy.init_node('turtlebot3_td3_stage_3')
+    rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
     env = Env()
     test_env = Env()
