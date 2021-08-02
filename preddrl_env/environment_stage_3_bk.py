@@ -221,8 +221,11 @@ class Env:
         pass
 
     def reset(self):
+        print('Waiting for gazebo reset simulation service ... ')
         rospy.wait_for_service('gazebo/reset_simulation')
+        print('gazebo reset simulation service available')
         try:
+            print('Resetting environment ... ')
             self.reset_proxy()
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
