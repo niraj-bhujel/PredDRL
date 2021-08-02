@@ -72,19 +72,23 @@ class Trainer:
         episode_return = 0
         episode_start_time = time.perf_counter()
         n_episode = 1
-#for success rate
+        #for success rate
         episode_success = 0
-#
+        #
         replay_buffer = get_replay_buffer(
             self._policy, self._env, self._use_prioritized_rb,
             self._use_nstep_rb, self._n_step)
 
-# separate input (laser scan, vel, polor)
-#
+        # separate input (laser scan, vel, polor)
+        #
         # obs = self._env.reset()
+        print('I am before env reset')
         obs = self._env.reset()
-#
+        print('I am after env reset')
+
         while total_steps < self._max_steps:
+            print('Step - {}/{}'.format(total_steps, self._max_steps))
+
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample()
             else:
@@ -105,7 +109,7 @@ class Trainer:
             replay_buffer.add(obs=obs, act=action,
                               next_obs=next_obs, rew=reward, done=done_flag)
             obs = next_obs
-#for success rate
+            #for success rate
             if done or episode_steps == self._episode_max_steps or success:
 
                 if success and total_steps > self._policy.n_warmup: 
@@ -116,12 +120,11 @@ class Trainer:
                 self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
                     n_episode, total_steps, episode_steps, episode_return, fps))
                 tf.summary.scalar(
-                    name="Common/training_return", data=episode_return)
-#                    
+                    name="Common/training_return", data=episode_return)               
                 success_rate =episode_success/n_episode
                 tf.summary.scalar(
                     name="Common/success rate", data=success_rate)
-#
+
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter()
@@ -129,22 +132,7 @@ class Trainer:
                   
 
                 if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()
-# # original
-            # if done or episode_steps == self._episode_max_steps:
-            #     obs = self._env.reset()
-
-            #     n_episode += 1
-            #     fps = episode_steps / (time.time() - episode_start_time)
-            #     self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
-            #         n_episode, total_steps, episode_steps, episode_return, fps))
-            #     tf.summary.scalar(
-            #         name="Common/training_return", data=episode_return)
-
-            #     episode_steps = 0
-            #     episode_return = 0
-            #     episode_start_time = time.time()                  
-# # #                    
+                    obs = self._env.reset()                 
 
             if total_steps < self._policy.n_warmup:
                 continue

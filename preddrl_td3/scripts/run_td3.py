@@ -6,7 +6,7 @@ sys.path.insert(0, './')
 import gym
 import rospy
 
-from preddrl_gazebo_env.environment_stage_3_bk import Env
+from preddrl_env.environment_stage_3_bk import Env
 from td3 import TD3
 from trainer import Trainer
 print(os.getcwd())
@@ -21,6 +21,7 @@ if __name__ == '__main__':
     parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
+    
     args = parser.parse_args()
     print(vars(args))
 

@@ -127,9 +127,9 @@ def prepare_data(data_path, target_frame_rate=25):
     frame_rate_multiplier = target_frame_rate/2.5
     
     # keep the original key frames, sample between frame intervals
-    interframes = [np.linspace(0, diff, num=frame_rate_multiplier, endpoint=False) for diff in np.diff(data_frames)]
+    interframes = [np.linspace(0, diff, num=int(frame_rate_multiplier), endpoint=False) for diff in np.diff(data_frames)]
     intp_data_frames = np.concatenate([int_f + key_f for int_f, key_f in zip(interframes, data_frames)] +
-                                      [np.linspace(data_frames[-1], data_frames[-1]+10, num=frame_rate_multiplier, endpoint=False)])
+                                      [np.linspace(data_frames[-1], data_frames[-1]+10, num=int(frame_rate_multiplier), endpoint=False)])
 
     ped_nodes = []
     ped_intp_frames = []
