@@ -46,19 +46,20 @@ class Trainer:
 
         if args.evaluate:
             assert args.model_dir is not None
-        self._set_check_point(args.model_dir)
+
+        self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
 
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
 
-    def _set_check_point(self, model_dir):
+    def _set_check_point(self, model_dir, restore_checkpoint=False, evaluate=False):
         # Save and restore model
         self._checkpoint = tf.train.Checkpoint(policy=self._policy)
         self.checkpoint_manager = tf.train.CheckpointManager(
             self._checkpoint, directory=self._output_dir, max_to_keep=5)
 
-        if model_dir is not None:
+        if evaluate or restore_checkpoint:
             assert os.path.isdir(model_dir)
             self._latest_path_ckpt = tf.train.latest_checkpoint(model_dir)
             self._checkpoint.restore(self._latest_path_ckpt)
@@ -316,22 +317,5 @@ class Trainer:
         parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
                             default='INFO', help='Logging level')
 
-        parser.add_argument('--phase', default='train', 
-                            help='train or test')
-        parser.add_argument('--test_episodes', default=50, type=int, 
-                            help='test episodes during testing')
-        parser.add_argument('--episode_max_steps', default=1e4, type=int, 
-                            help='max episodes during testing')
-        parser.add_argument('--show_test_progress', action='store_true', default=False, 
-                            help='show progress during testing')
-        parser.add_argument('--save_model_interval', default=1e10, type=int, 
-                            help='Save model interval' )
-
-        parser.add_argument('--batch_size', default=100, 
-                            help='Training and test batch_size')
-        parser.add_argument('--n_warmup', default=3000, 
-                            help='Number of warmup iterations')
-        parser.add_argument('--max_steps', default=50000,
-                            help='Max steps for training')
 
         return parser
