@@ -62,7 +62,7 @@ def create_actor_msg(nodes, t):
 
         x, y, vx, vy, ax, ay = node.points_at(t)
 
-        print(t, node.id, x, y, vx, vy, ax, ay)
+        # print(t, node.id, x, y, vx, vy, ax, ay)
 
         theta = math.atan2(vy, vx) # radians
 

@@ -1,14 +1,17 @@
 # preddrl_TD3
 
-**1.Dependencies**  
+**1.Create Virtual Environment**  
 ``` 
 conda env create -f environment.yaml  
 ``` 
-**2.Run**  
+**2. Activate Virtual Environment and Run**  
 _You must start the simulation environment before you can run the following commands. The simulation environment and DRL algorithm run in different environments_
 ``` 
-conda activate tf2  #launch virtual environment
-python ~/preddrl_td3/src/tf2rl/examples/run_td3.py   #run the script
+#launch virtual environment 
+conda activate tf2 
+pip install -r requirements.txt
+cd preddrl_td3 # change to root dir
+python scripts/run_td3.py   #run the script
 ``` 
 
 **3.Notice**  
