@@ -26,11 +26,11 @@ if __name__ == '__main__':
     print(vars(args))
 
     print(args.evaluate)
-    # test param
+    # test param, modified by niraj
     if args.evaluate:
         args.test_episodes=50
         args.episode_max_steps = int(1e4)
-        args.model_dir = '/preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1'
+        args.model_dir = './preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1'
         args.show_test_progress=False
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True

@@ -15,7 +15,8 @@ class Respawn():
         # self.model = self.f.read()
 
         # self.stage = rospy.get_param('/stage_number')
-        self.stage = 2
+        # self.stage = 2
+        self.stage = 6 # added by niraj
         self.goal_position = Pose()
         # self.init_goal_x = -0.586480
         # self.init_goal_y = 4.857300
@@ -33,7 +34,7 @@ class Respawn():
         self.last_goal_y = self.init_goal_y
         self.last_index = 0
         self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
-        self.check_model = False
+        self.check_model = False, # nb-> repeating flag  
         self.index = 0
 
         # load goal model
@@ -47,29 +48,34 @@ class Respawn():
             if model.name[i] == "goal":
                 self.check_model = True
 
-    def respawnModel(self):
-        while True:
-            if not self.check_model:
-                rospy.wait_for_service('gazebo/spawn_sdf_model')
-                spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
-                spawn_model_prox(self.modelName, self.model, 'robotos_name_space', self.goal_position, "world")
-                rospy.loginfo("Goal position : %.1f, %.1f", self.goal_position.position.x,
-                              self.goal_position.position.y)
-                break
-            else:
-                pass
+    def respawnModel(self): # nb-> this function should be respawnGoalModel ??
+        print(self.check_model)
+        # while True:
+        if not self.check_model:
+            # rospy.loginfo('Waiting for service spawn_sdf_model')
+            rospy.wait_for_service('gazebo/spawn_sdf_model')
+            # rospy.loginfo('gazebo/spawn_sdf_model available')
+
+            spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
+            spawn_model_prox(self.modelName, self.model, 'robotos_name_space', self.goal_position, "world")
+            rospy.loginfo("Goal position : %.1f, %.1f", self.goal_position.position.x,
+                          self.goal_position.position.y)
+            #     break
+            # else:
+            #     pass
 
     def deleteModel(self):
-        while True:
-            if self.check_model:
-                rospy.wait_for_service('gazebo/delete_model')
-                del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
-                del_model_prox(self.modelName)
-                break
-            else:
-                pass
+        # while True:
+        if self.check_model:
+            rospy.wait_for_service('gazebo/delete_model')
+            del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
+            del_model_prox(self.modelName)
+            #     break
+            # else:
+            #     pass
 
     def getPosition(self, position_check=False, delete=False, test=False):
+        print(self.stage, position_check, delete, test)
         # goal_xy_list = {
         #         [1.5,2.5],[2.5,-0.5]
         #     }
@@ -214,7 +220,6 @@ class Respawn():
                 # train_env_2
                 goal_x_list = [2., 1., 2.5, -2., -3., 2., -2., 0., 1., -1., -3.5, -1., 3.5]
                 goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
-
                 self.index = random.randrange(0, len(goal_x_list))
                 if self.last_index == self.index:
                     position_check = True
@@ -226,7 +231,9 @@ class Respawn():
                 self.goal_position.position.y = goal_y_list[self.index]
 
         # time.sleep(0.5)
-        self.respawnModel()
+        # rospy.loginfo('Respawnning model')
+        if not self.check_model:
+            self.respawnModel()
 
         self.last_goal_x = self.goal_position.position.x
         self.last_goal_y = self.goal_position.position.y

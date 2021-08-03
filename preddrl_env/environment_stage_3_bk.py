@@ -205,7 +205,8 @@ class Env:
         #     except Exception as e:
         #         print(e)
 
-        data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+        try:
+            data = rospy.wait_for_message('scan', LaserScan, timeout=5)
 
 #
         state, done, success = self.getState(data)
@@ -227,16 +228,20 @@ class Env:
         try:
             print('Resetting environment ... ')
             self.reset_proxy()
+            print('environment is reset.')
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
 
-        data = None
-        while data is None:
-            try:
-                data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-            except Exception as e:
-                print(e)
+        # data = None
+        # while data is None:
+        #     try:
+        #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+        #     except Exception as e:
+        #         print(e)
+        # print('Waiting for LaserScan')
+        data = rospy.wait_for_message('scan', LaserScan, timeout=5)
         # send_goal=None
+        # print('LaserScan recieved')
 
         if self.initGoal:
             # while send_goal is None:
@@ -246,18 +251,20 @@ class Env:
         #             pass
             
         #     self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
+            # print('getting goal ')
             self.goal_x, self.goal_y = self.respawn_goal.getPosition()
             self.initGoal = False
-            # print(send_goal)
-            # rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x,
-            #                   self.goal_y)
+            rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x,
+                              self.goal_y)
+
+        # print('Getting goal distance')
         self.vel_cmd = [0., 0.]
         self.goal_distance = self.getGoalDistace()
 
-      
+        # print('Getting state')
         state, done, success = self.getState(data)
         # print(np.array(state).shape)
-
+        print(' state received')
         return np.array(state)
 
 
