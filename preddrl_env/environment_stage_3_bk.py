@@ -204,31 +204,36 @@ class Env:
         #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
         #     except Exception as e:
         #         print(e)
-
         try:
-            data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+            data = rospy.wait_for_message('scan', LaserScan, timeout=1000)
+            
+            state, done, success = self.getState(data)
+            
+            reward = self.setReward(state, done)
 
-#
-        state, done, success = self.getState(data)
-        # state, done, success = self.getState(laser)
-#
-        reward = self.setReward(state, done)
+            return np.array(state), reward, done, success, {}
 
-        # 到达目标或者碰撞到障碍物都reset
-        # print(state[-2])
-        return np.array(state), reward, done, success, {}
+        except rospy.ROSException:
+            rospy.logerr('LaserScan timeout is exceeded')
+
+        except rospy.ROSInterruptException:
+            rospy.logerr('Keyboard Interrupted')
+
+        # # 到达目标或者碰撞到障碍物都reset
+        # # print(state[-2])
+        # return np.array(state), reward, done, success, {}
 
     def render(self):
         pass
 
     def reset(self):
-        print('Waiting for gazebo reset simulation service ... ')
+        print('Waiting for gazebo/reset_simulation service ... ')
         rospy.wait_for_service('gazebo/reset_simulation')
-        print('gazebo reset simulation service available')
+        # print('gazebo reset simulation service available')
         try:
-            print('Resetting environment ... ')
+            # print('Resetting environment ... ')
             self.reset_proxy()
-            print('environment is reset.')
+            print('Environment is reset.')
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
 
@@ -254,8 +259,8 @@ class Env:
             # print('getting goal ')
             self.goal_x, self.goal_y = self.respawn_goal.getPosition()
             self.initGoal = False
-            rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x,
-                              self.goal_y)
+            
+            rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x, self.goal_y)
 
         # print('Getting goal distance')
         self.vel_cmd = [0., 0.]

@@ -72,7 +72,7 @@ class Trainer:
     def _set_check_point(self, model_dir, restore_checkpoint=False, evaluate=False):
         # Save and restore model
         self._checkpoint = tf.train.Checkpoint(policy=self._policy)
-        
+
         self.checkpoint_manager = tf.train.CheckpointManager(self._checkpoint,
                                                              directory=self._output_dir, 
                                                              max_to_keep=5)
@@ -130,7 +130,11 @@ class Trainer:
             if hasattr(self._env, "_max_episode_steps") and episode_steps == self._env._max_episode_steps:
                 done_flag = False
 
-            replay_buffer.add(obs=obs, act=action, next_obs=next_obs, rew=reward, done=done_flag)
+            replay_buffer.add(obs=obs, 
+                              act=action, 
+                              next_obs=next_obs, 
+                              rew=reward, 
+                              done=done_flag)
 
             obs = next_obs
             #for success rate
@@ -186,7 +190,9 @@ class Trainer:
                                                     np.abs(td_error) + 1e-6)
 
             if total_steps % self._test_interval == 0:
+                
                 avg_test_return = self.evaluate_policy(total_steps)
+
                 self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
                     total_steps, avg_test_return, self._test_episodes))
 
@@ -225,7 +231,9 @@ class Trainer:
             self.evaluate_policy(total_steps=0)
 
     def evaluate_policy(self, total_steps):
+        
         tf.summary.experimental.set_step(total_steps)
+
         if self._normalize_obs:
             self._test_env.normalizer.set_params(*self._env.normalizer.get_params())
 
