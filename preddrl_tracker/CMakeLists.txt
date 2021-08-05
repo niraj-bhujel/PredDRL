@@ -195,7 +195,7 @@ include_directories(
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
 catkin_install_python(PROGRAMS
-  src/pedestrian_state_publisher.py
+  scripts/pedestrian_state_publisher.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 #############
