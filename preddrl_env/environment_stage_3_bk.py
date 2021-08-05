@@ -260,7 +260,6 @@ class Env:
         # print('Getting state')
         state, done, success = self.getState(data)
         # print(np.array(state).shape)
-        print(' state received')
         return np.array(state)
 
 

@@ -11,7 +11,7 @@ class Base(object):
     def __init__(self, x=1, y=1):
         self.x = x
         self.y=y
-        
+        self(1.5, 1.5)
     def func_add(self,):
         self.add()
         

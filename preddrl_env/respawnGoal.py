@@ -49,7 +49,7 @@ class Respawn():
                 self.check_model = True
 
     def respawnModel(self): # nb-> this function should be respawnGoalModel ??
-        print(self.check_model)
+        # print(self.check_model)
         # while True:
         if not self.check_model:
             # rospy.loginfo('Waiting for service spawn_sdf_model')
@@ -75,7 +75,7 @@ class Respawn():
             #     pass
 
     def getPosition(self, position_check=False, delete=False, test=False):
-        print(self.stage, position_check, delete, test)
+        # print(self.stage, position_check, delete, test)
         # goal_xy_list = {
         #         [1.5,2.5],[2.5,-0.5]
         #     }

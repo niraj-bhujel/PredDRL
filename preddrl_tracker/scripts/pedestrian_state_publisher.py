@@ -250,8 +250,8 @@ if __name__ == '__main__':
                     actors_id_list.remove(actor_id)
                     delete_model(actor_id)
 
-            # if t>=len(frames)-1:
-            if t>100:
+            if t>=len(frames)-1:
+            # if t>100:
                 rospy.loginfo('[Frame-%d] Resetting frame to 0. '%(t))
                 [delete_model(actor_id) for actor_id in actors_id_list]
                 t = 0

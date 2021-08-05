@@ -2,10 +2,9 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, concatenate, Conv1D, Flatten, Dropout
 
+from tf2rl.algos.policy_base import OffPolicyAgent
 from tf2rl.misc.target_update_ops import update_target_variables
 from tf2rl.misc.huber_loss import huber_loss
-
-from policy_base import OffPolicyAgent
 
 
 class Actor(tf.keras.Model):
@@ -187,7 +186,6 @@ class DDPG(OffPolicyAgent):
             with tf.GradientTape() as tape:
                 td_errors = self._compute_td_error_body(
                     states, actions, next_states, rewards, done)
-
                 critic_loss = tf.reduce_mean(
                     huber_loss(td_errors, delta=self.max_grad) * weights)
 

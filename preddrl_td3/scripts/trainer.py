@@ -166,7 +166,7 @@ class Trainer:
 
             if total_steps % self._policy.update_interval == 0:
                 samples = replay_buffer.sample(self._policy.batch_size)
-
+                print(samples.shape)
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
                     self._policy.train(samples["obs"], 
                                        samples["act"], 
