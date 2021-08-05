@@ -7,9 +7,12 @@ import gym
 import rospy
 
 from preddrl_env.environment_stage_3_bk import Env
+
 from td3 import TD3
 from trainer import Trainer
 print(os.getcwd())
+
+# from tf2rl.algos.policy_base import OffPolicyAgent
 
 if __name__ == '__main__':
 
@@ -57,6 +60,8 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         actor_units=[400, 300],
         n_warmup=args.n_warmup)
+
+    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
 
     trainer = Trainer(policy, env, args, test_env=test_env)
 
