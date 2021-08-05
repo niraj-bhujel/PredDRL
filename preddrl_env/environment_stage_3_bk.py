@@ -26,7 +26,7 @@ class Env:
         self.vel_cmd = [0., 0.]
         self.initGoal = True
         self.get_goalbox = False
-        self.position = Pose()
+        self.position = Point()
         self.test = False
         self.num_beams = 20  # 激光数
 
@@ -67,6 +67,7 @@ class Env:
     def getOdometry(self, odom):
         self.position = odom.pose.pose.position
         orientation = odom.pose.pose.orientation
+
         orientation_list = [orientation.x, orientation.y, orientation.z, orientation.w]
         _, _, yaw = self.euler_from_quaternion(orientation_list)
 
