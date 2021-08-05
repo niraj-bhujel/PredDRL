@@ -266,8 +266,8 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print('Closing down .. ')
             # delete all model at exit
-            print('deleting existing actor models')
-            [delete_model(actor_id) for actor_id in actors_id_list]  
+            # print('deleting existing actor models')
+            # [delete_model(actor_id) for actor_id in actors_id_list]  
             break         
 
 
