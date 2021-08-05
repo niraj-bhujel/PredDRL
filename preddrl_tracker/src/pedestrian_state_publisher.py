@@ -1,5 +1,8 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+import os
 import sys
-# sys.path.append('../../preddrl_msgs/')
+sys.path.append('./')
 
 import math
 import numpy as np
@@ -12,13 +15,14 @@ from scene import Scene
 
 import rospy
 
-from preddrl_msgs.msg import AgentStates, AgentState
 from std_msgs.msg import Header
 from geometry_msgs.msg import *
 
 from gazebo_msgs.srv import SpawnModel, DeleteModel
 
 from rospkg import RosPack
+
+from preddrl_msgs.msg import AgentStates, AgentState
 
         
 def angleToQuaternion(theta, angles=True):
@@ -60,13 +64,7 @@ def create_actor_msg(nodes, t):
 
     for node in nodes:
 
-        x, y, vx, vy, ax, ay = node.points_at(t)
-
-        # print(t, node.id, x, y, vx, vy, ax, ay)
-
-        theta = math.atan2(vy, vx) # radians
-
-        q = angleToQuaternion(theta)
+        p, v, q, r = node.states_at(t)
 
         state = AgentState()
 
@@ -78,18 +76,22 @@ def create_actor_msg(nodes, t):
         else:
             state.type = 0
 
-        state.pose.position.x = x
-        state.pose.position.y = y
-        state.pose.position.z = 0.0
+        state.pose.position.x = p[0]
+        state.pose.position.y = p[1]
+        state.pose.position.z = p[2]
 
         state.pose.orientation.w = q[0]
         state.pose.orientation.x = q[1]
         state.pose.orientation.y = q[2]
         state.pose.orientation.z = q[3]
 
-        state.twist.linear.x = vx
-        state.twist.linear.y = vy
-        state.twist.linear.z = 0
+        state.twist.linear.x = v[0]
+        state.twist.linear.y = v[1]
+        state.twist.linear.z = v[2]
+        
+        state.twist.angular.x = r[0]
+        state.twist.angular.y = r[1]
+        state.twist.angular.x = r[2]
 
         agents.agent_states.append(state)
 
@@ -120,7 +122,7 @@ def prepare_data(data_path, target_frame_rate=25):
     print('Preparing data .. ')
     target_frame_rate =  min(target_frame_rate, 25)
     
-    data = np.loadtxt(data_path)
+    data = np.loadtxt(data_path).round(2)
 
     # convert frame rate into 25 fps from 2.5fps
     data_frames = np.unique(data[:, 0])
@@ -140,16 +142,32 @@ def prepare_data(data_path, target_frame_rate=25):
         num_intp_points = int(len(ped_frames)*frame_rate_multiplier)
 
         ped_pos = data[data[:, 1]==pid, 2:4]
-        ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points)
+        
+        intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points)
 
-        ped_vel = np.gradient(ped_pos, 1.0/target_frame_rate, axis=0).round(2)
-        ped_acc = np.gradient(ped_vel, 1.0/target_frame_rate, axis=0).round(2)
+        intp_ped_vel = np.gradient(intp_ped_pos, 1.0/target_frame_rate, axis=0).round(2)
+        # ped_acc = np.gradient(ped_vel, 1.0/target_frame_rate, axis=0).round(2)
 
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
-        ped_states = np.concatenate([ped_pos, ped_vel, ped_acc], axis=-1)
-
-        ped_nodes.append(Node(ped_states, start_idx, pid))
+        
+        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points, frame_rate=target_frame_rate)
+        
+        for i in range(len(intp_ped_pos)):
+            
+            p = [intp_ped_pos[i][0], intp_ped_pos[i][1], 0.]
+            v = [intp_ped_vel[i][0], intp_ped_vel[i][1], 0.]
+            
+            theta = math.atan2(v[1], v[0]) # radians
+            q = angleToQuaternion(theta)
+            
+            r = [0., 0., 0.]
+            
+            node.update_states(p, v, q, r)
+            
+        # break
+            
+        ped_nodes.append(node)
         
         ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
     
@@ -171,8 +189,9 @@ def prepare_data(data_path, target_frame_rate=25):
 if __name__ == '__main__':
     
     ros_rate = 10
-    
-    frames, peds_per_frame, ped_nodes = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', target_frame_rate=ros_rate)
+    data_root = '/home/loc/peddrl_ws/src'
+    data_path = '/preddrl_tracker/data/crowds_zara01.txt'
+    frames, peds_per_frame, ped_nodes = prepare_data(data_root + data_path, target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents", anonymous=True, disable_signals=True)
@@ -202,7 +221,7 @@ if __name__ == '__main__':
     t = 0
     
     actors_id_list = []
-    while not rospy.is_shutdown():
+    while True:
         try:
             # get pids at current time
             curr_ped_ids = peds_per_frame[t]
@@ -223,15 +242,21 @@ if __name__ == '__main__':
                                             actor_pose.orientation.w) )
 
                 if actor_id not in actors_id_list:
-                    rospy.loginfo("Spawning model: actor_id = %s", actor_id)
+                    rospy.loginfo("[Frame-%d] Spawning model: actor_id = %s"%(t, actor_id))
                     spawn_model(actor_id, xml_string, "", model_pose, "world")
                     actors_id_list.append(actor_id)
 
                 if actor.type==int(4):
+                    actors_id_list.remove(actor_id)
                     delete_model(actor_id)
 
-            if t>=len(frames)-1:
+            # if t>=len(frames)-1:
+            if t>100:
+                rospy.loginfo('[Frame-%d] Resetting frame to 0. '%(t))
+                [delete_model(actor_id) for actor_id in actors_id_list]
                 t = 0
+                actors_id_list = []
+
             else:
                 t += 1
 

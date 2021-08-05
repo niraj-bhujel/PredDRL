@@ -100,11 +100,7 @@ class Trainer:
                                           self._n_step)
 
         # separate input (laser scan, vel, polor)
-        #
-        # obs = self._env.reset()
-        print('I am before env reset')
         obs = self._env.reset()
-        print('I am after env reset')
 
         while total_steps < self._max_steps:
             print('Step - {}/{}'.format(total_steps, self._max_steps))
@@ -153,7 +149,7 @@ class Trainer:
 
                 tf.summary.scalar(name="Common/training_return", data=episode_return)
 
-                success_rate =episode_success/n_episode
+                success_rate = episode_success/n_episode
                 tf.summary.scalar(name="Common/success rate", data=success_rate)
 
                 episode_steps = 0

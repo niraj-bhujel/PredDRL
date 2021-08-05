@@ -29,33 +29,26 @@ class Env:
         self.position = Pose()
         self.test = False
         self.num_beams = 20  # 激光数
-        low = np.array([-2., -2.])
-        high = np.array([2., 2.])
-        self.action_space = spaces.Box(low, high, dtype=np.float32)
-        low = [0.0] * (self.num_beams)
-        low.extend([0., -2., -2*pi, 0])  #极坐标
-        # low.extend([0., -1.5, -2.0, -2.0,-2.0, -2.0]) #笛卡尔坐标
-        high = [3.5] * (self.num_beams)
-        high.extend([0.2, 2., 2*pi, 4])
-        # high.extend([0.2, 1.5, 2.0, 2.0, 2.0, 2.0])
-        self.observation_space = spaces.Box(np.array(low), np.array(high), dtype=np.float32)
-#
+
+        self.action_space = spaces.Box(low=np.array([-2., -2.]), 
+                                       high=np.array([2., 2.]), 
+                                       dtype=np.float32)
+        
+        self.observation_space = spaces.Box(low=np.array([0.0]*self.num_beams + [0., -2., -2*pi, 0]), 
+                                            high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
+                                            dtype=np.float32)
+
         self.input_shape = 20
-        self.window_size = 3
-#        
+        self.window_size = 3  
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-        self.sub_odom = rospy.Subscriber('odom', Odometry, self.getOdometry)
+
         self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
         self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
         self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
 
-        # self.point_goal = rospy.Subscriber('/move_base_simple/goal', Odometry, self.getOdometry)
-
         self.respawn_goal = Respawn()
         self.past_distance = 0.
-#
-        # self.preprocessor = HistoryPreprocessor(self.input_shape, history_length=self.window_size)
-#        
+
     def euler_from_quaternion(self, orientation_list):
         x, y, z, w = orientation_list
         r = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
@@ -134,9 +127,7 @@ class Env:
             self.get_goalbox = True
             
         # print(scan_range_collision)
-#        
-        state = scan_range_collision+ self.vel_cmd + [heading, current_distance] # 极坐标
-#
+        state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         # state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
         return state, done, self.get_goalbox
@@ -259,7 +250,7 @@ class Env:
             # print('getting goal ')
             self.goal_x, self.goal_y = self.respawn_goal.getPosition()
             self.initGoal = False
-            
+
             rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x, self.goal_y)
 
         # print('Getting goal distance')

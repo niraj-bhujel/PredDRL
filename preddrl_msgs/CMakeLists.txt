@@ -18,10 +18,8 @@ add_message_files( DIRECTORY msg
   FILES
   AgentState.msg
   AgentStates.msg
-  TrackedPerson.msg
-  TrackedPersons.msg
-  Waypoint.msg
-  Waypoints.msg
+  AgentTrack.msg
+  AgentTracks.msg
 )
 
 # generate the messages
