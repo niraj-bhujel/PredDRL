@@ -42,14 +42,22 @@ RUN rosdep fix-permissions && rosdep update
 
 RUN apt-get install -y ros-kinetic-gazebo-ros-pkgs ros-kinetic-gazebo-ros-control 
 
+RUN pip install tensorflow-gpu==2.2.0
+
 COPY requirements.txt /opt/app/requirements.txt
 
 WORKDIR /opt/app
 
-RUN pip install -r requirements.txt --no_deps
+RUN pip install -r requirements.txt
 
 WORKDIR /
 
-RUN apt-get install -qqy x11-apps 
+RUN apt-get -y install xauth
 
-ENV DISPLAY :0
+#remove the library provided by mesa
+RUN rm /usr/lib/x86_64-linux-gnu/mesa/libGL.so.1
+RUN rm /usr/lib/x86_64-linux-gnu/mesa/libGL.so
+
+
+
+
