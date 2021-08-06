@@ -28,8 +28,7 @@ RUN apt-get update
 
 RUN apt install curl -y
 
-RUN apt-get install ros-kinetic-desktop-full -y
-
+RUN apt-get install ros-kinetic-desktop -y
 
 RUN echo "source /opt/ros/kinetic/setup.bash" >> ~/.bashrc
 
@@ -47,5 +46,10 @@ COPY requirements.txt /opt/app/requirements.txt
 
 WORKDIR /opt/app
 
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt --no_deps
 
+WORKDIR /
+
+RUN apt-get install -qqy x11-apps 
+
+ENV DISPLAY :0
