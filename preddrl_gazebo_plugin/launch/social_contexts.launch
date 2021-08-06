@@ -1,4 +1,8 @@
+
 <launch>
+
+        <!-- this file is auto generated using preddrl_gazebo_plugin pkg -->  
+        <!-- <arg name="arg_name"/> -->
         <arg name="model" default="burger"/>
         <arg name="x_pos" default="-0.0"/>
         <arg name="y_pos" default="0.0"/>
@@ -9,13 +13,16 @@
              <arg name="gui" value="false"/>
          </include>
          
-         <!-- this node maintain track of each actor and spawn preddrl actors to gazebo once, then the plugin updates their pose -->  
-        <node pkg="preddrl_tracker" type="pedestrian_state_publisher.py" name="pedestrian_state_publisher"  output="screen"/>
-
+         <!-- this node spawn preddrl actors to gazebo once, then the plugin updates their pose -->  
+         
+         <!--
+         <node pkg="preddrl_gazebo_plugin" type="spawn_preddrl_agents.py" name="spawn_preddrl_agents"  output="screen">
+         </node>
+         --> 
+        <node pkg="preddrl_tracker" type="pedestrian_state_publisher.py" name="pedestrian_state_publisher"  output="screen" args="$(find preddrl_tracker)/data"/>
         <param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
         <node pkg="turtlebot3_dqn"  type="odomtopath" name="odomtopath" output="screen" />
         <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" />
 
 
 </launch>
-
