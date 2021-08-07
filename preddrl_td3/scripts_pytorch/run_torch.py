@@ -24,7 +24,8 @@ if __name__ == '__main__':
     parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
-    
+    parser.set_defaults(use_prioritized_rb=True)
+
     args = parser.parse_args()
     print(vars(args))
 

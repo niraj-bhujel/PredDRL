@@ -132,7 +132,7 @@ class DDPG(OffPolicyAgent):
 
         # print(states.shape, actions.shape, next_states.shape, rewards.shape)
 
-        if weights is None:
+        if weights is not None:
             weights = torch.ones_like(rewards).to(self.device)
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, done, weights)
@@ -168,13 +168,16 @@ class DDPG(OffPolicyAgent):
         return actor_loss, critic_loss, td_errors
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        if isinstance(actions, tf.Tensor):
-            rewards = tf.expand_dims(rewards, axis=1)
-            dones = tf.expand_dims(dones, 1)
-            
-        td_errors = self._compute_td_error_body(
-            states, actions, next_states, rewards, dones)
-        return np.abs(np.ravel(td_errors.numpy()))
+        states = torch.from_numpy(states).to(self.device)
+        actions = torch.from_numpy(actions).to(self.device)
+        next_states = torch.from_numpy(next_states).to(self.device)
+        rewards = torch.from_numpy(rewards).to(self.device)
+        dones = torch.from_numpy(dones).to(self.device)
+        
+        with torch.no_grad():
+            td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
+
+        return np.abs(np.ravel(td_errors.cpu().numpy()))
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):
 

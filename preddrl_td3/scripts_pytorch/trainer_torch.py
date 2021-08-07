@@ -172,12 +172,17 @@ class Trainer:
                 samples = replay_buffer.sample(self._policy.batch_size)
 
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
-                    self._policy.train(samples["obs"], 
-                                       samples["act"], 
-                                       samples["next_obs"],
-                                       samples["rew"], 
-                                       np.array(samples["done"], dtype=np.float32),
-                                       None if not self._use_prioritized_rb else samples["weights"])
+                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                                                                           samples["act"], 
+                                                                           samples["next_obs"],
+                                                                           samples["rew"], 
+                                                                           np.array(samples["done"], dtype=np.float32),
+                                                                           None if not self._use_prioritized_rb else samples["weights"])
+
+                tf.summary.scalar(name=self.policy_name+"/actor_loss",
+                                  data=actor_loss)
+                tf.summary.scalar(name=self.policy_name+"/critic_loss",
+                                  data=critic_loss)
 
                 if self._use_prioritized_rb:
                     td_error = self._policy.compute_td_error(samples["obs"], 
@@ -186,8 +191,9 @@ class Trainer:
                                                              samples["rew"], 
                                                              np.array(samples["done"], dtype=np.float32))
 
-                    replay_buffer.update_priorities(samples["indexes"], 
-                                                    np.abs(td_error) + 1e-6)
+                    replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
+
+
 
             if total_steps % self._test_interval == 0:
                 
@@ -321,6 +327,8 @@ class Trainer:
                             help='Normalize observation')
         parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
                             help='Output directory')
+        parser.add_argument('--use_prioritized_rb', action='store_true',
+                            help='Use prioritized replay buffer')
         # test settings
         parser.add_argument('--evaluate', action='store_true',
                             help='Evaluate trained model')
