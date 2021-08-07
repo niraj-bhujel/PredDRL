@@ -4,6 +4,8 @@ import logging
 import argparse
 
 import numpy as np
+
+import torch
 import tensorflow as tf
 
 from gym.spaces import Box
@@ -11,7 +13,7 @@ from gym.spaces import Box
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
-from utils.utils import save_path, frames_to_gif
+from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt
 
 
 # from tf2rl.experiments.utils import save_path, frames_to_gif
@@ -39,11 +41,12 @@ class Trainer:
         self._save_summary_interval = args.save_summary_interval
         self._normalize_obs = args.normalize_obs
         self._logdir = args.logdir
-        self._model_dir = args.model_dir
+
         # replay buffer
         self._use_prioritized_rb = args.use_prioritized_rb
         self._use_nstep_rb = args.use_nstep_rb
         self._n_step = args.n_step
+
         # test settings
         self._test_interval = args.test_interval
         self._show_test_progress = args.show_test_progress
@@ -51,6 +54,9 @@ class Trainer:
         self._save_test_path = args.save_test_path
         self._save_test_movie = args.save_test_movie
         self._show_test_images = args.show_test_images
+
+        self._evaluate = args.evaluate
+        self._restore_checkpoint = args.restore_checkpoint
 
         self._policy = policy
         self._env = env
@@ -72,23 +78,14 @@ class Trainer:
 
         # self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
 
+        if self._evaluate or self._restore_checkpoint:
+            load_ckpt(self._policy, self._output_dir, last_step=1e4)
+
+
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
 
-    def _set_check_point(self, model_dir, restore_checkpoint=False, evaluate=False):
-        # Save and restore model
-        self._checkpoint = tf.train.Checkpoint(policy=self._policy)
-
-        self.checkpoint_manager = tf.train.CheckpointManager(self._checkpoint,
-                                                             directory=self._output_dir, 
-                                                             max_to_keep=5)
-
-        if evaluate or restore_checkpoint:
-            # assert os.path.isdir(model_dir)
-            self._latest_path_ckpt = tf.train.latest_checkpoint(model_dir)
-            self._checkpoint.restore(self._latest_path_ckpt)
-            self.logger.info("Restored {}".format(self._latest_path_ckpt))
 
     def __call__(self):
         total_steps = 0
@@ -208,7 +205,8 @@ class Trainer:
                 self.writer.flush()
 
             if total_steps % self._save_model_interval == 0:
-                self.checkpoint_manager.save()
+                # self.checkpoint_manager.save()
+                save_ckpt(self._policy, self._output_dir, total_steps)
 
         tf.summary.flush()
 
@@ -349,5 +347,14 @@ class Trainer:
         parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
                             default='INFO', help='Logging level')
 
-
+        parser.add_argument('--batch_size', default=100, type=int,
+                            help='batch size')
+        parser.add_argument('--n_warmup', default=3000, type=int, 
+                            help='Number of warmup steps') # 重新训练的话要改回 10000
+        parser.add_argument('--max_steps', default=100000, type=int, 
+                            help='Maximum training steps')
+        parser.add_argument('--restore_checkpoint', action='store_true', default=False,
+                            help='If begin from pretrained model')
+        parser.add_argument('--last_step', default=1e4, type=int, 
+                            help='Last step to restore.')
         return parser

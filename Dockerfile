@@ -51,9 +51,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 RUN rosdep init && rosdep update
 
-# install gpu
-RUN pip install tensorflow-gpu==2.2.0
-
 # install requirements
 COPY requirements.txt /opt/app/requirements.txt
 WORKDIR /opt/app

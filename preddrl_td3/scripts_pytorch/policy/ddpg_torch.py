@@ -130,7 +130,7 @@ class DDPG(OffPolicyAgent):
         rewards = torch.from_numpy(rewards).to(self.device)
         done = torch.from_numpy(done).to(self.device)
 
-        print(states.shape, actions.shape, next_states.shape, rewards.shape)
+        # print(states.shape, actions.shape, next_states.shape, rewards.shape)
 
         if weights is None:
             weights = torch.ones_like(rewards).to(self.device)
@@ -195,4 +195,5 @@ class DDPG(OffPolicyAgent):
         less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+
 

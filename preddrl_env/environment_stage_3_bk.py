@@ -41,7 +41,7 @@ class Env:
         self.input_shape = 20
         self.window_size = 3  
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-
+        self.sub_odom = rospy.Subscriber('odom', Odometry, self.getOdometry)
         self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
         self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
         self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
