@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=0) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     

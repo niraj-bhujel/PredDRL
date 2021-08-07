@@ -4,9 +4,16 @@ from gym.spaces.discrete import Discrete
 
 from cpprb import ReplayBuffer, PrioritizedReplayBuffer
 
-from policy_base_torch import OffPolicyAgent
+from policy.policy_base_torch import OffPolicyAgent
 
-from tf2rl.envs.utils import is_discrete
+
+def is_discrete(space):
+    if isinstance(space, Discrete):
+        return True
+    elif isinstance(space, Box):
+        return False
+    else:
+        raise NotImplementedError
 
 def get_space_size(space):
     if isinstance(space, Box):

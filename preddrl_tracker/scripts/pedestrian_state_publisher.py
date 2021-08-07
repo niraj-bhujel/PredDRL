@@ -135,7 +135,7 @@ def prepare_data(data_path, target_frame_rate=25):
 
     ped_nodes = []
     ped_intp_frames = []
-
+    num_ped_considered = 0
     for pid in np.unique(data[:, 1]):
 
         ped_frames = data[data[:, 1]==pid, 0]        
@@ -170,6 +170,9 @@ def prepare_data(data_path, target_frame_rate=25):
         ped_nodes.append(node)
         
         ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
+
+        if num_ped_considered>50:
+            break
     
     peds_per_frame = []
     for t, frame in enumerate(intp_data_frames):

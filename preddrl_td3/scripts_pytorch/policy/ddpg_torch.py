@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 import tensorflow as tf
 
-from policy_base_torch import OffPolicyAgent
+from policy.policy_base_torch import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
 # from exploration_strategies.OU_Noise_Exploration import OU_Noise_Exploration
