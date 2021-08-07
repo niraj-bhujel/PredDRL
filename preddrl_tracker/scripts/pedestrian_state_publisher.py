@@ -174,6 +174,7 @@ def prepare_data(data_path, target_frame_rate=25):
         if num_ped_considered>50:
             break
     
+    ped_frames = []
     peds_per_frame = []
     for t, frame in enumerate(intp_data_frames):
         curr_ped = []
@@ -182,11 +183,13 @@ def prepare_data(data_path, target_frame_rate=25):
             if t>=node.first_timestep and t<=node.last_timestep:
                 
                 curr_ped.append(ped_nodes[i].id)
-                
-        peds_per_frame.append(curr_ped)
+        
+        if len(curr_ped)>0:
+            ped_frames.append(frame)
+            peds_per_frame.append(curr_ped)
         
         
-    return intp_data_frames, peds_per_frame, ped_nodes
+    return ped_frames, peds_per_frame, ped_nodes
 
 #%%
 if __name__ == '__main__':

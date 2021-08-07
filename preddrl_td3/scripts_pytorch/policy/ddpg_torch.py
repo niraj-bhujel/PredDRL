@@ -129,11 +129,7 @@ class DDPG(OffPolicyAgent):
         next_states = torch.from_numpy(next_states).to(self.device)
         rewards = torch.from_numpy(rewards).to(self.device)
         done = torch.from_numpy(done).to(self.device)
-
-        # print(states.shape, actions.shape, next_states.shape, rewards.shape)
-
-        if weights is not None:
-            weights = torch.ones_like(rewards).to(self.device)
+        weights = torch.from_numpy(weights).to(self.device)
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, done, weights)
 

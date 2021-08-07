@@ -7,7 +7,7 @@ import gym
 import rospy
 
 
-# from td3_torch import TD3
+# from policy.td3_torch import TD3
 from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
 print(os.getcwd())
@@ -24,10 +24,10 @@ if __name__ == '__main__':
     parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(use_prioritized_rb=True)
+
 
     args = parser.parse_args()
-    print(vars(args))
+    print({val[0]:val[1] for val in sorted(vars(args).items())})
 
     print(args.evaluate)
     # test param, modified by niraj
@@ -38,6 +38,7 @@ if __name__ == '__main__':
         args.show_test_progress=False
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
+
 
         # parser.set_defaults(test_episodes=50)
         # parser.set_defaults(episode_max_steps=int(1e4))

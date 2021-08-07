@@ -25,7 +25,7 @@ class Env:
         self.collision_threshold = 0.15
         self.vel_cmd = [0., 0.]
         self.initGoal = True
-        self.get_goalbox = False
+        # self.get_goalbox = False # removed by niraj
         self.position = Point()
         self.test = False
         self.num_beams = 20  # 激光数
@@ -48,6 +48,11 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
+
+    def seed(self, seed=None):
+        # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def euler_from_quaternion(self, orientation_list):
         x, y, z, w = orientation_list
@@ -100,6 +105,7 @@ class Env:
         scan_range_collision = []
         heading = self.heading
         done = False
+        success = False # added by niraj
 
         # for i in range(0,20):
         #     if scan.ranges[i] == float('Inf'):
@@ -120,20 +126,22 @@ class Env:
         # obstacle_min_range = round(min(scan_range), 2)
         # obstacle_angle = np.argmin(scan_range)
         if self.collision_threshold > min(scan_range_collision) > 0:
+            rospy.loginfo("Collision!!")
             done = True
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
         if current_distance < self.goal_threshold:
-            self.get_goalbox = True
+            rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
+            success = True # modified by niraj
             
         # print(scan_range_collision)
         state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         # state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
-        return state, done, self.get_goalbox
+        return state, done, success
        
-    def setReward(self, state, done):
+    def setReward(self, state, done, success):
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
@@ -141,27 +149,11 @@ class Env:
         self.past_distance = current_distance
 
         if done:
-            rospy.loginfo("Collision!!")
             reward = -150
-            self.pub_cmd_vel.publish(Twist())
 
-        elif self.get_goalbox:
-            rospy.loginfo("Goal!!")
+        elif success:
             reward = 200
-            self.pub_cmd_vel.publish(Twist())
-            self.goal_x, self.goal_y = self.respawn_goal.getPosition(True, delete=True, test=self.test)
-            # send_goal=None
-            # while send_goal is None:
-            #     try:
-            #         send_goal = rospy.wait_for_message('/move_base_simple/goal', PoseStamped,timeout=5)
-            #     except:
-            #         pass
-            # self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
-            # print(send_goal)
-            # rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x,
-            #                   self.goal_y)
-            self.goal_distance = self.getGoalDistace()
-            self.get_goalbox = False
+
         else:
             reward = (self.goal_threshold-state[-1]) * 0.1 #- 0.25*abs(state[-3])15*distance_rate
             # reward = 15*distance_rate
@@ -172,11 +164,6 @@ class Env:
             reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
 
         return reward
-
-    def seed(self, seed=None):
-        # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
     def step(self, action):
         self.pre_heading = self.heading
@@ -198,10 +185,31 @@ class Env:
         #         print(e)
         try:
             data = rospy.wait_for_message('scan', LaserScan, timeout=1000)
-            
+
+
             state, done, success = self.getState(data)
             
-            reward = self.setReward(state, done)
+            reward = self.setReward(state, done, success)
+
+            if done:
+                self.pub_cmd_vel.publish(Twist())
+
+            if success:
+                self.pub_cmd_vel.publish(Twist())
+                self.respawn_goal.deleteModel() # added by niraj
+                # self.goal_x, self.goal_y = self.respawn_goal.getPosition(True, delete=True, test=self.test)
+                self.goal_x, self.goal_y = self.respawn_goal.getPosition(position_check=True, test=self.test) # modified by niraj
+                # send_goal=None
+                # while send_goal is None:
+                #     try:
+                #         send_goal = rospy.wait_for_message('/move_base_simple/goal', PoseStamped,timeout=5)
+                #     except:
+                #         pass
+                # self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
+                # print(send_goal)
+                rospy.loginfo("New Goal : (%.2f, %.2f)", self.goal_x, self.goal_y)
+                self.goal_distance = self.getGoalDistace()
+                self.respawn_goal.respawnModel() # added by niraj
 
             return np.array(state), reward, done, success, {}
 
@@ -250,9 +258,11 @@ class Env:
         #     self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
             # print('getting goal ')
             self.goal_x, self.goal_y = self.respawn_goal.getPosition()
-            self.initGoal = False
 
-            rospy.loginfo("Goal position : %.1f, %.1f", self.goal_x, self.goal_y)
+            rospy.loginfo("Initial Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
+
+            self.initGoal = False
+            self.respawn_goal.respawnModel()
 
         # print('Getting goal distance')
         self.vel_cmd = [0., 0.]

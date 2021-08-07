@@ -16,13 +16,6 @@ from misc.get_replay_buffer import get_replay_buffer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt
 
 
-# from tf2rl.experiments.utils import save_path, frames_to_gif
-# from tf2rl.misc.get_replay_buffer import get_replay_buffer
-# from tf2rl.misc.prepare_output_dir import prepare_output_dir
-# from tf2rl.misc.initialize_logger import initialize_logger
-# from tf2rl.envs.normalizer import EmpiricalNormalizer
-
-
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
         print(cur_device)
@@ -67,8 +60,23 @@ class Trainer:
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
         # prepare log directory
-        self._output_dir = prepare_output_dir(args=args, user_specified_dir=self._logdir,
-                                              suffix="{}_{}".format(self._policy.policy_name, args.dir_suffix))
+        suffix = '_'.join(['%s'%self._policy.policy_name,
+                        'warmup_%d'%self._policy.n_warmup,
+                        'n_step_%d'%self._n_step,
+                        'max_steps_%d'%self._max_steps,
+                        'episode_max_steps_%d'%self._episode_max_steps,
+                        ])
+
+        if self._use_prioritized_rb:
+            suffix += '_use_prioritized_rb'
+        if self._use_nstep_rb:
+            suffix += '_use_nstep_rb'
+
+        self._output_dir = prepare_output_dir(args=args, 
+                                              user_specified_dir=self._logdir, 
+                                              time_format='%Y_%m_%d_%H-%M',
+                                              suffix=suffix
+                                              )
         
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
@@ -107,7 +115,7 @@ class Trainer:
         obs = self._env.reset()
 
         while total_steps < self._max_steps:
-            print('Step - {}/{}'.format(total_steps, self._max_steps))
+            # print('Step - {}/{}'.format(total_steps, self._max_steps))
 
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample()
@@ -177,19 +185,21 @@ class Trainer:
                                                                            samples["next_obs"],
                                                                            samples["rew"], 
                                                                            np.array(samples["done"], dtype=np.float32),
-                                                                           None if not self._use_prioritized_rb else samples["weights"])
+                                                                           samples["weights"] if self._use_prioritized_rb else np.ones(self._policy.batch_size))
 
-                tf.summary.scalar(name=self.policy_name+"/actor_loss",
+                tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
                                   data=actor_loss)
-                tf.summary.scalar(name=self.policy_name+"/critic_loss",
+                
+                tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
                                   data=critic_loss)
 
                 if self._use_prioritized_rb:
-                    td_error = self._policy.compute_td_error(samples["obs"], 
-                                                             samples["act"], 
-                                                             samples["next_obs"],
-                                                             samples["rew"], 
-                                                             np.array(samples["done"], dtype=np.float32))
+                    td_error = np.ravel(td_errors.cpu().numpy()) # use previous td_error
+                    # td_error = self._policy.compute_td_error(samples["obs"], 
+                    #                                          samples["act"], 
+                    #                                          samples["next_obs"],
+                    #                                          samples["rew"], 
+                    #                                          np.array(samples["done"], dtype=np.float32))
 
                     replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
 
@@ -327,8 +337,7 @@ class Trainer:
                             help='Normalize observation')
         parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
                             help='Output directory')
-        parser.add_argument('--use_prioritized_rb', action='store_true',
-                            help='Use prioritized replay buffer')
+
         # test settings
         parser.add_argument('--evaluate', action='store_true',
                             help='Evaluate trained model')
@@ -344,6 +353,7 @@ class Trainer:
                             help='Show input images to neural networks when an episode finishes')
         parser.add_argument('--save-test-movie', action='store_true',
                             help='Save rendering results')
+
         # replay buffer
         parser.add_argument('--use-prioritized-rb', action='store_true',
                             help='Flag to use prioritized experience replay')
@@ -355,14 +365,14 @@ class Trainer:
         parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
                             default='INFO', help='Logging level')
 
+        # added by niraj
         parser.add_argument('--batch_size', default=100, type=int,
                             help='batch size')
         parser.add_argument('--n_warmup', default=3000, type=int, 
                             help='Number of warmup steps') # 重新训练的话要改回 10000
-        parser.add_argument('--max_steps', default=100000, type=int, 
-                            help='Maximum training steps')
         parser.add_argument('--restore_checkpoint', action='store_true', default=False,
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
+
         return parser
