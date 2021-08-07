@@ -230,3 +230,4 @@ class DDPG(OffPolicyAgent):
             current_Q = self.critic([states, actions])
             td_errors = target_Q - current_Q
         return td_errors
+

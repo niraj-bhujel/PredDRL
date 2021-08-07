@@ -8,7 +8,8 @@ import rospy
 
 from preddrl_env.environment_stage_3_bk import Env
 
-from td3 import TD3
+from policy.td3 import TD3
+
 from trainer import Trainer
 print(os.getcwd())
 

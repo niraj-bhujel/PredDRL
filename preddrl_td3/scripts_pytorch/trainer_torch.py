@@ -5,13 +5,20 @@ import argparse
 
 import numpy as np
 import tensorflow as tf
+
 from gym.spaces import Box
 
-from tf2rl.experiments.utils import save_path, frames_to_gif
-from tf2rl.misc.get_replay_buffer import get_replay_buffer
-from tf2rl.misc.prepare_output_dir import prepare_output_dir
-from tf2rl.misc.initialize_logger import initialize_logger
-from tf2rl.envs.normalizer import EmpiricalNormalizer
+from misc.prepare_output_dir import prepare_output_dir
+from misc.initialize_logger import initialize_logger
+from misc.get_replay_buffer import get_replay_buffer
+from utils.utils import save_path, frames_to_gif
+
+
+# from tf2rl.experiments.utils import save_path, frames_to_gif
+# from tf2rl.misc.get_replay_buffer import get_replay_buffer
+# from tf2rl.misc.prepare_output_dir import prepare_output_dir
+# from tf2rl.misc.initialize_logger import initialize_logger
+# from tf2rl.envs.normalizer import EmpiricalNormalizer
 
 
 if tf.config.experimental.list_physical_devices('GPU'):
@@ -63,7 +70,7 @@ class Trainer:
         # if args.evaluate:
         #     assert args.model_dir is not None
 
-        self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
+        # self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
 
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
@@ -166,7 +173,7 @@ class Trainer:
 
             if total_steps % self._policy.update_interval == 0:
                 samples = replay_buffer.sample(self._policy.batch_size)
-                print(samples.shape)
+
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
                     self._policy.train(samples["obs"], 
                                        samples["act"], 
