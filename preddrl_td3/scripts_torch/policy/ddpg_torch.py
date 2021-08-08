@@ -114,6 +114,8 @@ class DDPG(OffPolicyAgent):
         with torch.no_grad():
             action = self.actor(state)
 
+            action += torch.empty_like(action).normal_(mean=0,std=sigma)
+
         self.actor.train()
 
         return torch.clamp(action, -max_action, max_action)

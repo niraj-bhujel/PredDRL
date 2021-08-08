@@ -177,15 +177,13 @@ class Trainer:
 
                 success_rate = episode_success/n_episode
                 tf.summary.scalar(name="Common/success rate", data=success_rate)
+                
+                if done or episode_steps == self._episode_max_steps:
+                    obs = self._env.reset()                 
 
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter()
-
-                  
-
-                if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()                 
 
             if total_steps < self._policy.n_warmup:
                 continue

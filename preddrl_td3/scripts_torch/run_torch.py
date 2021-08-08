@@ -24,7 +24,7 @@ if __name__ == '__main__':
     parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
-
+    parser.set_defaults(prefix='torch')
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
@@ -45,7 +45,6 @@ if __name__ == '__main__':
         # parser.set_defaults(model_dir='./preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1')
         # parser.set_defaults(show_test_progress=False)
         # parser.set_defaults(save_model_interval=int(1e10))
-
 
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)

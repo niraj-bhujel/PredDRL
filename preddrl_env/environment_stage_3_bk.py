@@ -185,14 +185,19 @@ class Env:
         #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
         #     except Exception as e:
         #         print(e)
-        try:
-            data = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
-        except rospy.ROSException:
-            rospy.logerr('LaserScan timeout is exceeded')
+        while True:
+            try:
+                data = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
-        except rospy.ROSInterruptException:
-            rospy.logerr('Keyboard Interrupted')
+                if data is not None: break
+
+            except rospy.ROSException:
+                rospy.logerr('LaserScan timeout is exceeded')
+
+            except rospy.ROSInterruptException:
+                rospy.logerr('Keyboard Interrupted')
+                break
 
 
         state, done, success = self.getState(data)
@@ -226,10 +231,12 @@ class Env:
         self.respawn_goal.respawnModel()
 
     def reset(self, initGoal=False):
-        # print('Waiting for gazebo/reset_simulation service ... ')
-        rospy.wait_for_service('gazebo/reset_simulation')
-        # print('gazebo reset simulation service available')
+
         try:
+            # print('Waiting for gazebo/reset_simulation service ... ')
+            rospy.wait_for_service('gazebo/reset_simulation')
+            # print('gazebo reset simulation service available')
+        
             # print('Resetting environment ... ')
             self.reset_proxy()
             # print('Environment is reset.')
