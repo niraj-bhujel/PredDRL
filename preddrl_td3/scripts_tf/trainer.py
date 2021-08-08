@@ -54,6 +54,22 @@ class Trainer:
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
         # prepare log directory
+        suffix = '_'.join(['%s'%self._policy.policy_name,
+                        'warmup_%d'%self._policy.n_warmup,
+                        'n_step_%d'%self._n_step,
+                        'max_steps_%d'%self._max_steps,
+                        'episode_max_steps_%d'%self._episode_max_steps,
+                        ])
+
+        if self._use_prioritized_rb:
+            suffix += '_use_prioritized_rb'
+        if self._use_nstep_rb:
+            suffix += '_use_nstep_rb'
+
+        if args.prefix is not None:
+            suffix += '_%s'%args.prefix
+
+        # prepare log directory
         self._output_dir = prepare_output_dir(args=args, user_specified_dir=self._logdir,
                                               suffix="{}_{}".format(self._policy.policy_name, args.dir_suffix))
         
@@ -100,10 +116,10 @@ class Trainer:
                                           self._n_step)
 
         # separate input (laser scan, vel, polor)
-        obs = self._env.reset()
+        obs = self._env.reset(initGoal=True)
 
         while total_steps < self._max_steps:
-            print('Step - {}/{}'.format(total_steps, self._max_steps))
+            # print('Step - {}/{}'.format(total_steps, self._max_steps))
 
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample()
@@ -155,8 +171,6 @@ class Trainer:
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter()
-
-                  
 
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()                 
@@ -243,7 +257,7 @@ class Trainer:
             episode_return = 0.
             frames = []
 
-            obs = self._test_env.reset()
+            obs = self._test_env.reset(initGoal=True)
 
             for _ in range(self._episode_max_steps):
                 action = self._policy.get_action(obs, test=True)
@@ -342,5 +356,16 @@ class Trainer:
         parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
                             default='INFO', help='Logging level')
 
+        # added by niraj
+        parser.add_argument('--batch_size', default=100, type=int,
+                            help='batch size')
+        parser.add_argument('--n_warmup', default=3000, type=int, 
+                            help='Number of warmup steps') # 重新训练的话要改回 10000
+        parser.add_argument('--restore_checkpoint', action='store_true', default=False,
+                            help='If begin from pretrained model')
+        parser.add_argument('--last_step', default=1e4, type=int, 
+                            help='Last step to restore.')
 
+        parser.add_argument('--prefix', type=str, default=None,
+                            help='Add prefix to log dir')
         return parser

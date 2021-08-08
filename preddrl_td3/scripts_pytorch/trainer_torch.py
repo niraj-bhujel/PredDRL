@@ -72,6 +72,9 @@ class Trainer:
         if self._use_nstep_rb:
             suffix += '_use_nstep_rb'
 
+        if args.prefix is not None:
+            suffix += '_%s'%args.prefix
+
         self._output_dir = prepare_output_dir(args=args, 
                                               user_specified_dir=self._logdir, 
                                               time_format='%Y_%m_%d_%H-%M-%S',
@@ -375,5 +378,8 @@ class Trainer:
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
+
+        parser.add_argument('--prefix', type=str, default=None,
+                            help='Add prefix to log dir')
 
         return parser
