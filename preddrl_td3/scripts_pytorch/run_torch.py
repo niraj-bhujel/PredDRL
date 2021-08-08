@@ -7,7 +7,7 @@ import gym
 import rospy
 
 
-# from policy.td3_torch import TD3
+from policy.td3_torch import TD3
 from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
 print(os.getcwd())
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     env = Env()
     test_env = Env()
 
-    policy = DDPG(
+    policy = TD3(
         state_shape=env.observation_space.shape,
         action_dim=env.action_space.high.size,
         gpu=0,
@@ -62,6 +62,8 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         actor_units=[400, 300],
         n_warmup=args.n_warmup)
+
+    policy = policy.to(policy.device)
 
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
 
@@ -77,6 +79,6 @@ if __name__ == '__main__':
             trainer()
 
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
-        sys.exit()
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
+        sys.exit()

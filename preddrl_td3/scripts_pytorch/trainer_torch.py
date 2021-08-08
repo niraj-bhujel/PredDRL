@@ -74,7 +74,7 @@ class Trainer:
 
         self._output_dir = prepare_output_dir(args=args, 
                                               user_specified_dir=self._logdir, 
-                                              time_format='%Y_%m_%d_%H-%M',
+                                              time_format='%Y_%m_%d_%H-%M-%S',
                                               suffix=suffix
                                               )
         
@@ -112,7 +112,7 @@ class Trainer:
                                           self._n_step)
 
         # separate input (laser scan, vel, polor)
-        obs = self._env.reset()
+        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         while total_steps < self._max_steps:
             # print('Step - {}/{}'.format(total_steps, self._max_steps))
@@ -135,6 +135,7 @@ class Trainer:
 
             done_flag = done
 
+            # this line will never executed since env doesn't have _max_episode_steps attribute - note by niraj
             if hasattr(self._env, "_max_episode_steps") and episode_steps == self._env._max_episode_steps:
                 done_flag = False
 
@@ -194,7 +195,7 @@ class Trainer:
                                   data=critic_loss)
 
                 if self._use_prioritized_rb:
-                    td_error = np.ravel(td_errors.cpu().numpy()) # use previous td_error
+                    td_error = np.ravel(td_errors.cpu().numpy()) # use previous td_error ->niraj
                     # td_error = self._policy.compute_td_error(samples["obs"], 
                     #                                          samples["act"], 
                     #                                          samples["next_obs"],
@@ -264,7 +265,7 @@ class Trainer:
             episode_return = 0.
             frames = []
 
-            obs = self._test_env.reset()
+            obs = self._test_env.reset(initGoal=True)
 
             for _ in range(self._episode_max_steps):
                 action = self._policy.get_action(obs, test=True)

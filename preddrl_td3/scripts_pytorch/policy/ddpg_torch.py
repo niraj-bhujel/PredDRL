@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-import tensorflow as tf
 
 from policy.policy_base_torch import OffPolicyAgent
 from misc.huber_loss import huber_loss
@@ -78,21 +77,18 @@ class DDPG(OffPolicyAgent):
 
         # Define and initialize Actor network
         self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
-
         self.actor_target = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
+        self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
 
-        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
-
-        self.actor_target.load_state_dict(self.actor.state_dict())
 
         # Define and initialize Critic network
         self.critic = Critic(state_shape, action_dim, critic_units).to(self.device)
-
         self.critic_target = Critic(state_shape, action_dim, critic_units).to(self.device)
+        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
 
+        # define optimizers
+        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
-
-        self.critic_target.load_state_dict(self.critic.state_dict())
 
     def get_action(self, state, test=False, tensor=False):
 
@@ -122,7 +118,7 @@ class DDPG(OffPolicyAgent):
 
         return torch.clamp(action, -max_action, max_action)
 
-    def train(self, states, actions, next_states, rewards, done, weights=None):
+    def train(self, states, actions, next_states, rewards, done, weights):
 
         states = torch.from_numpy(states).to(self.device)
         actions = torch.from_numpy(actions).to(self.device)
@@ -132,14 +128,6 @@ class DDPG(OffPolicyAgent):
         weights = torch.from_numpy(weights).to(self.device)
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, done, weights)
-
-        # optimization step
-        self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
-        self.optimization_step(self.critic_optimizer, self.critic, critic_loss)
-
-        # Update target networks
-        self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
-        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
 
         return actor_loss.item(), critic_loss.item(), td_errors.detach().cpu().numpy()
 
@@ -158,8 +146,17 @@ class DDPG(OffPolicyAgent):
 
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
+        # update critic step
+        self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
+
         next_action = self.actor(states)
-        actor_loss = -torch.mean(self.critic([states, next_action]))
+        actor_loss = -self.critic([states, next_action]).mean()
+        # update actor
+        self.optimization_step(self.critic_optimizer, self.critic, critic_loss)
+
+        # Update target networks
+        self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
+        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
 
         return actor_loss, critic_loss, td_errors
 

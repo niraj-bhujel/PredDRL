@@ -44,9 +44,11 @@ class Respawn():
 
     def checkModel(self, model):
         self.check_model = False
+        self.num_existing_model = 0
         for i in range(len(model.name)):
             if model.name[i] == "goal":
                 self.check_model = True
+                self.num_existing_model+=1
 
     def respawnModel(self): # nb-> this function should be respawnGoalModel ??
         # print(self.check_model)
@@ -65,14 +67,14 @@ class Respawn():
 
     def deleteModel(self):
         # while True:
-        if self.check_model: 
-            rospy.wait_for_service('gazebo/delete_model')
-            del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
-            del_model_prox(self.modelName)
-            rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
-            #     break
-            # else:
-            #     pass
+        # if self.check_model: 
+        rospy.wait_for_service('gazebo/delete_model')
+        del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
+        del_model_prox(self.modelName)
+        rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
+        #     break
+        # else:
+        #     pass
 
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag

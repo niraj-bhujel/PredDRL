@@ -24,7 +24,7 @@ class Env:
         self.goal_threshold = 0.3#0.4
         self.collision_threshold = 0.15
         self.vel_cmd = [0., 0.]
-        self.initGoal = True
+        # self.initGoal = True # coment out by niraj
         # self.get_goalbox = False # removed by niraj
         self.position = Point()
         self.test = False
@@ -54,6 +54,9 @@ class Env:
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    def render(self):
+        pass
+
     def euler_from_quaternion(self, orientation_list):
         x, y, z, w = orientation_list
         r = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
@@ -61,7 +64,6 @@ class Env:
         y = math.atan2(2 * (w * z + x * y), 1 - 2 * (z * z + y * y))
 
         return r, p, y
-
 
     def getGoalDistace(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
@@ -190,26 +192,14 @@ class Env:
             state, done, success = self.getState(data)
             
             reward = self.setReward(state, done, success)
-
+            # added by niraj
             if done:
                 self.pub_cmd_vel.publish(Twist())
-
+            # added by niraj
             if success:
                 self.pub_cmd_vel.publish(Twist())
-                self.respawn_goal.deleteModel() # added by niraj
-                # self.goal_x, self.goal_y = self.respawn_goal.getPosition(True, delete=True, test=self.test)
-                self.goal_x, self.goal_y = self.respawn_goal.getPosition(position_check=True, test=self.test) # modified by niraj
-                # send_goal=None
-                # while send_goal is None:
-                #     try:
-                #         send_goal = rospy.wait_for_message('/move_base_simple/goal', PoseStamped,timeout=5)
-                #     except:
-                #         pass
-                # self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
-                # print(send_goal)
-                rospy.loginfo("New Goal : (%.2f, %.2f)", self.goal_x, self.goal_y)
-                self.goal_distance = self.getGoalDistace()
-                self.respawn_goal.respawnModel() # added by niraj
+                self.init_goal(position_check=True, test=self.test)
+
 
             return np.array(state), reward, done, success, {}
 
@@ -223,17 +213,26 @@ class Env:
         # # print(state[-2])
         # return np.array(state), reward, done, success, {}
 
-    def render(self):
-        pass
+    # add a separate function to initialize goal, delete old goal if exist and respawn new goal
+    def init_goal(self, position_check=False, test=False):
+        # self.respawn_goal.deleteModel()
+        # print('getting goal ')
+        if self.respawn_goal.check_model: self.respawn_goal.deleteModel()
+        self.goal_x, self.goal_y = self.respawn_goal.getPosition(position_check, test)
+        # self.initGoal = False
+        # print(send_goal)
+        rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
+        self.goal_distance = self.getGoalDistace()
+        self.respawn_goal.respawnModel()
 
-    def reset(self):
-        print('Waiting for gazebo/reset_simulation service ... ')
+    def reset(self, initGoal=False):
+        # print('Waiting for gazebo/reset_simulation service ... ')
         rospy.wait_for_service('gazebo/reset_simulation')
         # print('gazebo reset simulation service available')
         try:
             # print('Resetting environment ... ')
             self.reset_proxy()
-            print('Environment is reset.')
+            # print('Environment is reset.')
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
 
@@ -248,21 +247,8 @@ class Env:
         # send_goal=None
         # print('LaserScan recieved')
 
-        if self.initGoal:
-            # while send_goal is None:
-        #         try:
-        #             send_goal = rospy.wait_for_message('/move_base_simple/goal', PoseStamped, timeout=5)
-        #         except:
-        #             pass
-            
-        #     self.goal_x, self.goal_y = send_goal.pose.position.x, send_goal.pose.position.y
-            # print('getting goal ')
-            self.goal_x, self.goal_y = self.respawn_goal.getPosition()
-
-            rospy.loginfo("Initial Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
-
-            self.initGoal = False
-            self.respawn_goal.respawnModel()
+        if initGoal:
+            self.init_goal()
 
         # print('Getting goal distance')
         self.vel_cmd = [0., 0.]
