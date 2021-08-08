@@ -161,16 +161,12 @@ class DDPG(OffPolicyAgent):
         return actor_loss, critic_loss, td_errors
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        states = torch.from_numpy(states).to(self.device)
-        actions = torch.from_numpy(actions).to(self.device)
-        next_states = torch.from_numpy(next_states).to(self.device)
-        rewards = torch.from_numpy(rewards).to(self.device)
-        dones = torch.from_numpy(dones).to(self.device)
+        pass
         
-        with torch.no_grad():
-            td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
+        # with torch.no_grad():
+        #     td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
-        return np.abs(np.ravel(td_errors.cpu().numpy()))
+        # return np.abs(np.ravel(td_errors.cpu().numpy()))
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):
 

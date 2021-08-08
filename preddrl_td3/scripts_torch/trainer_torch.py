@@ -189,13 +189,14 @@ class Trainer:
                                                                            samples["next_obs"],
                                                                            samples["rew"], 
                                                                            np.array(samples["done"], dtype=np.float32),
-                                                                           samples["weights"] if self._use_prioritized_rb else np.ones(self._policy.batch_size))
+                                                                           samples["weights"] if self._use_prioritized_rb \
+                                                                           else np.ones(self._policy.batch_size))
 
-                tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                                  data=actor_loss)
-                
-                tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
-                                  data=critic_loss)
+                    tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
+                                      data=actor_loss)
+                    
+                    tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
+                                      data=critic_loss)
 
                 if self._use_prioritized_rb:
                     td_error = np.ravel(td_errors) # use previous td_error ->niraj
