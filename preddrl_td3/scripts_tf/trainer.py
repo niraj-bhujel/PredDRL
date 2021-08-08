@@ -365,7 +365,6 @@ class Trainer:
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
-
         parser.add_argument('--prefix', type=str, default=None,
                             help='Add prefix to log dir')
         return parser
