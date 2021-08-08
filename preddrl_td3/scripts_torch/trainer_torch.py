@@ -198,7 +198,7 @@ class Trainer:
                                   data=critic_loss)
 
                 if self._use_prioritized_rb:
-                    td_error = np.ravel(td_errors.cpu().numpy()) # use previous td_error ->niraj
+                    td_error = np.ravel(td_errors) # use previous td_error ->niraj
                     # td_error = self._policy.compute_td_error(samples["obs"], 
                     #                                          samples["act"], 
                     #                                          samples["next_obs"],
