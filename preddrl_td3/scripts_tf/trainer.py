@@ -70,14 +70,14 @@ class Trainer:
             suffix += '_%s'%args.prefix
 
         # prepare log directory
-        self._output_dir = prepare_output_dir(args=args, user_specified_dir=self._logdir,
-                                              suffix="{}_{}".format(self._policy.policy_name, args.dir_suffix))
+        self._output_dir = prepare_output_dir(args=args, 
+                                              user_specified_dir=self._logdir, 
+                                              time_format='%Y_%m_%d_%H-%M-%S',
+                                              suffix=suffix
+                                              )
         
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
-
-        # if args.evaluate:
-        #     assert args.model_dir is not None
 
         self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
 
