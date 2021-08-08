@@ -186,28 +186,28 @@ class Env:
         #     except Exception as e:
         #         print(e)
         try:
-            data = rospy.wait_for_message('scan', LaserScan, timeout=1000)
-
-
-            state, done, success = self.getState(data)
-            
-            reward = self.setReward(state, done, success)
-            # added by niraj
-            if done:
-                self.pub_cmd_vel.publish(Twist())
-            # added by niraj
-            if success:
-                self.pub_cmd_vel.publish(Twist())
-                self.init_goal(position_check=True, test=self.test)
-
-
-            return np.array(state), reward, done, success, {}
+            data = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
         except rospy.ROSException:
             rospy.logerr('LaserScan timeout is exceeded')
 
         except rospy.ROSInterruptException:
             rospy.logerr('Keyboard Interrupted')
+
+
+        state, done, success = self.getState(data)
+        
+        reward = self.setReward(state, done, success)
+        # added by niraj
+        if done:
+            self.pub_cmd_vel.publish(Twist())
+        # added by niraj
+        if success:
+            self.pub_cmd_vel.publish(Twist())
+            self.init_goal(position_check=True, test=self.test)
+
+        return np.array(state), reward, done, success, {}
+
 
         # # 到达目标或者碰撞到障碍物都reset
         # # print(state[-2])

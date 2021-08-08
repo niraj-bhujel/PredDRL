@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import argparse
-
+import random
 import numpy as np
 import tensorflow as tf
 from gym.spaces import Box
@@ -69,7 +69,6 @@ class Trainer:
         if args.prefix is not None:
             suffix += '_%s'%args.prefix
 
-        # prepare log directory
         self._output_dir = prepare_output_dir(args=args, 
                                               user_specified_dir=self._logdir, 
                                               time_format='%Y_%m_%d_%H-%M-%S',
@@ -79,11 +78,22 @@ class Trainer:
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
+        # if args.evaluate:
+        #     assert args.model_dir is not None
+
         self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
 
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
+
+        self.set_seed(args.seed)
+
+    def set_seed(self, seed):
+        #setup seeds
+        random.seed(seed)
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
 
     def _set_check_point(self, model_dir, restore_checkpoint=False, evaluate=False):
         # Save and restore model
@@ -172,6 +182,8 @@ class Trainer:
                 episode_return = 0
                 episode_start_time = time.perf_counter()
 
+                  
+
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()                 
 
@@ -182,27 +194,22 @@ class Trainer:
                 samples = replay_buffer.sample(self._policy.batch_size)
 
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
-                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
-                                                                           samples["act"], 
-                                                                           samples["next_obs"],
-                                                                           samples["rew"], 
-                                                                           np.array(samples["done"], dtype=np.float32),
-                                                                           samples["weights"] if self._use_prioritized_rb \
-                                                                           else np.ones(self._policy.batch_size)) 
-                    tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                                      data=actor_loss)
-                    
-                    tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
-                                      data=critic_loss)
-                if self._use_prioritized_rb:
-                    td_error = np.ravel(td_errors) # use previous td_error ->niraj
-                    # td_error = self._policy.compute_td_error(samples["obs"], 
-                    #                                          samples["act"], 
-                    #                                          samples["next_obs"],
-                    #                                          samples["rew"], 
-                    #                                          np.array(samples["done"], dtype=np.float32))
+                    self._policy.train(samples["obs"], 
+                                       samples["act"], 
+                                       samples["next_obs"],
+                                       samples["rew"], 
+                                       np.array(samples["done"], dtype=np.float32),
+                                       None if not self._use_prioritized_rb else samples["weights"])
 
-                    replay_buffer.update_priorities(samples["indexes"],  np.abs(td_error) + 1e-6)
+                if self._use_prioritized_rb:
+                    td_error = self._policy.compute_td_error(samples["obs"], 
+                                                             samples["act"], 
+                                                             samples["next_obs"],
+                                                             samples["rew"], 
+                                                             np.array(samples["done"], dtype=np.float32))
+
+                    replay_buffer.update_priorities(samples["indexes"], 
+                                                    np.abs(td_error) + 1e-6)
 
             if total_steps % self._test_interval == 0:
                 
@@ -372,4 +379,7 @@ class Trainer:
                             help='Last step to restore.')
         parser.add_argument('--prefix', type=str, default=None,
                             help='Add prefix to log dir')
+        parser.add_argument('--seed', default=5555, type=int, 
+                            help='Seed value.')
+
         return parser

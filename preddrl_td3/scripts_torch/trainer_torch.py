@@ -2,9 +2,9 @@ import os
 import time
 import logging
 import argparse
-
+import random
 import numpy as np
-
+import random
 import torch
 import tensorflow as tf
 
@@ -96,6 +96,14 @@ class Trainer:
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
+
+        self.set_seed(args.seed)
+
+    def set_seed(self, seed)
+        #setup seeds
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
 
     def __call__(self):
@@ -379,8 +387,9 @@ class Trainer:
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
-
         parser.add_argument('--prefix', type=str, default=None,
                             help='Add prefix to log dir')
+        parser.add_argument('--seed', default=5555, type=int, 
+                            help='Seed value.')
 
         return parser
