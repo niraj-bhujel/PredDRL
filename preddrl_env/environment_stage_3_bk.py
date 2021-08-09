@@ -177,7 +177,14 @@ class Env:
         vel_cmd.angular.z = action[1]
         self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
         self.pub_cmd_vel.publish(vel_cmd)
+        # print(self.vel_cmd)
 
+        # data = None
+        # while data is None:
+        #     try:
+        #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+        #     except Exception as e:
+        #         print(e)
 
         while True:
             try:

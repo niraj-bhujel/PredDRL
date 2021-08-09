@@ -2,10 +2,10 @@ import os
 import time
 import logging
 import argparse
-import random
-import numpy as np
+
 import random
 import torch
+import numpy as np
 import tensorflow as tf
 
 from gym.spaces import Box
@@ -13,8 +13,8 @@ from gym.spaces import Box
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
+from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt
-
 
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
@@ -98,7 +98,7 @@ class Trainer:
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
 
-        self.set_seed(args.seed)
+        # self.set_seed(args.seed)
 
     def set_seed(self, seed):
         #setup seeds

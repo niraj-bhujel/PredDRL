@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
     env = Env()
     test_env = Env()
-
+    
     policy = TD3(
         state_shape=env.observation_space.shape,
         action_dim=env.action_space.high.size,
@@ -63,6 +63,11 @@ if __name__ == '__main__':
         n_warmup=args.n_warmup)
 
     policy = policy.to(policy.device)
+    
+    # for i in range(5):
+    #     args.seed = env.seed()[0]
+    
+    policy.set_seed(args.seed)
 
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
 
