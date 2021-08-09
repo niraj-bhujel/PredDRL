@@ -11,7 +11,7 @@ from policy.td3_torch import TD3
 from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
 print(os.getcwd())
-
+from gym.utils import seeding as _s 
 from preddrl_env.environment_stage_3_bk import Env
 
 if __name__ == '__main__':
@@ -52,37 +52,38 @@ if __name__ == '__main__':
     env = Env()
     test_env = Env()
     
-    policy = TD3(
-        state_shape=env.observation_space.shape,
-        action_dim=env.action_space.high.size,
-        gpu=0,
-        memory_capacity=args.memory_capacity,
-        max_action=env.action_space.high[0],
-        batch_size=args.batch_size,
-        actor_units=[400, 300],
-        n_warmup=args.n_warmup)
-
-    policy = policy.to(policy.device)
+    for i in range(5):
+        
+        args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     
-    # for i in range(5):
-    #     args.seed = env.seed()[0]
-    
-    policy.set_seed(args.seed)
+        policy = TD3(
+            state_shape=env.observation_space.shape,
+            action_dim=env.action_space.high.size,
+            gpu=0,
+            memory_capacity=args.memory_capacity,
+            max_action=env.action_space.high[0],
+            batch_size=args.batch_size,
+            actor_units=[400, 300],
+            n_warmup=args.n_warmup)
 
-    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
+        policy = policy.to(policy.device)
 
-    trainer = Trainer(policy, env, args, test_env=test_env)
+        # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
+        trainer = Trainer(policy, env, args, test_env=test_env)
 
-    try:
-        if args.evaluate:
-            print('Evaluating policy ...')
-            trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
+        trainer.set_seed(args.seed)
 
-        else:
-            print('Training policy ...')
-            trainer()
 
-    except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
-        print('-' * 89)
-        print('Exiting from training early because of KeyboardInterrupt')
-        sys.exit()
+        try:
+            if args.evaluate:
+                print('Evaluating policy ...')
+                trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
+
+            else:
+                print('Training policy ...')
+                trainer()
+
+        except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
+            print('-' * 89)
+            print('Exiting from training early because of KeyboardInterrupt')
+            sys.exit()
