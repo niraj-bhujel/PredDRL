@@ -6,11 +6,12 @@ sys.path.insert(0, './')
 import gym
 import rospy
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
 from policy.td3_torch import TD3
 from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
-print(os.getcwd())
+
 from gym.utils import seeding as _s 
 from preddrl_env.environment_stage_3_bk import Env
 
@@ -29,7 +30,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
 
-    print(args.evaluate)
     # test param, modified by niraj
     if args.evaluate:
         args.test_episodes=50
@@ -55,7 +55,7 @@ if __name__ == '__main__':
 
         env = Env()
         test_env = Env()
-    
+
         args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     
         policy = TD3(
@@ -75,14 +75,14 @@ if __name__ == '__main__':
 
         trainer.set_seed(args.seed)
 
-
+        
         try:
             if args.evaluate:
-                print('Evaluating policy ...')
+                print('Evaluating %s ...'%trainer._output_dir)
                 trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
 
             else:
-                print('Training policy ...')
+                print('Training %s ...'%trainer._output_dir)
                 trainer()
 
         except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
