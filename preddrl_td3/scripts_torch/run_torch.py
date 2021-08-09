@@ -78,12 +78,18 @@ if __name__ == '__main__':
         
         try:
             if args.evaluate:
-                print('Evaluating %s ...'%trainer._output_dir)
+                print('-' * 89)
+                print('Evaluating %s'%trainer._output_dir)
                 trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
 
             else:
-                print('Training %s ...'%trainer._output_dir)
+                print('-' * 89)
+                print('Training %s'%trainer._output_dir)
                 trainer()
+
+        except Exception as e:
+            print(e)
+            continue
 
         except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
             print('-' * 89)
