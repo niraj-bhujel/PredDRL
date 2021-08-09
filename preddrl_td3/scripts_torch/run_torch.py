@@ -49,11 +49,13 @@ if __name__ == '__main__':
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
-    env = Env()
-    test_env = Env()
+
     
     for i in range(5):
-        
+
+        env = Env()
+        test_env = Env()
+    
         args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     
         policy = TD3(

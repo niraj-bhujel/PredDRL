@@ -61,10 +61,10 @@ class Trainer:
 
         # prepare log directory
         suffix = '_'.join(['%s'%self._policy.policy_name,
-                        'warmup_%d'%self._policy.n_warmup,
-                        'n_step_%d'%self._n_step,
-                        'max_steps_%d'%self._max_steps,
-                        'episode_max_steps_%d'%self._episode_max_steps,
+                        # 'warmup_%d'%self._policy.n_warmup,
+                        # 'n_step_%d'%self._n_step,
+                        # 'max_steps_%d'%self._max_steps,
+                        # 'episode_max_steps_%d'%self._episode_max_steps,
                         'seed_%d'%args.seed,
                         ])
 
