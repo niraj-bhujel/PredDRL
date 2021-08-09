@@ -59,6 +59,7 @@ class Trainer:
                         'n_step_%d'%self._n_step,
                         'max_steps_%d'%self._max_steps,
                         'episode_max_steps_%d'%self._episode_max_steps,
+                        'seed_%d'%args.seed,
                         ])
 
         if self._use_prioritized_rb:
@@ -177,7 +178,7 @@ class Trainer:
 
                 success_rate = episode_success/n_episode
                 tf.summary.scalar(name="Common/success rate", data=success_rate)
-                
+
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()                 
 

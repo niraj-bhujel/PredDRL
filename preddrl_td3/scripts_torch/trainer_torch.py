@@ -65,6 +65,7 @@ class Trainer:
                         'n_step_%d'%self._n_step,
                         'max_steps_%d'%self._max_steps,
                         'episode_max_steps_%d'%self._episode_max_steps,
+                        'seed_%d'%args.seed,
                         ])
 
         if self._use_prioritized_rb:

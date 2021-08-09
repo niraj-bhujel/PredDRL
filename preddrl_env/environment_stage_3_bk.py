@@ -177,27 +177,14 @@ class Env:
         vel_cmd.angular.z = action[1]
         self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
         self.pub_cmd_vel.publish(vel_cmd)
-        # print(self.vel_cmd)
 
-        # data = None
-        # while data is None:
-        #     try:
-        #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-        #     except Exception as e:
-        #         print(e)
 
         while True:
             try:
                 data = rospy.wait_for_message('scan', LaserScan, timeout=100)
-
                 if data is not None: break
-
             except rospy.ROSException:
                 rospy.logerr('LaserScan timeout is exceeded')
-
-            except rospy.ROSInterruptException:
-                rospy.logerr('Keyboard Interrupted')
-                break
 
 
         state, done, success = self.getState(data)
@@ -236,23 +223,19 @@ class Env:
             # print('Waiting for gazebo/reset_simulation service ... ')
             rospy.wait_for_service('gazebo/reset_simulation')
             # print('gazebo reset simulation service available')
-        
+
             # print('Resetting environment ... ')
             self.reset_proxy()
             # print('Environment is reset.')
         except (rospy.ServiceException) as e:
             print("gazebo/reset_simulation service call failed")
 
-        # data = None
-        # while data is None:
-        #     try:
-        #         data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-        #     except Exception as e:
-        #         print(e)
-        # print('Waiting for LaserScan')
-        data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-        # send_goal=None
-        # print('LaserScan recieved')
+        while True:
+            try:
+                data = rospy.wait_for_message('scan', LaserScan, timeout=100)
+                if data is not None: break
+            except rospy.ROSException:
+                rospy.logerr('LaserScan timeout is exceeded')
 
         if initGoal:
             self.init_goal()
