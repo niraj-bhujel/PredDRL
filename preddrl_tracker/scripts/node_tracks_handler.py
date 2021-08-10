@@ -6,11 +6,11 @@ from node import Node
 import rospy
 
 from gazebo_msgs.msg import ModelStates
-
+from preddrl_msgs import AgentTrack, AgentTracks
 '''
 This node is responsible to maintain past trajectory of each nodes present in the gazebo environment. 
 Each node is a class object of attribute pedestrian, robot or static objects in the environment. 
-It subscribes to the ModelStates, and create a Node object for each unique model. 
+It subscribes to the ModelStates, and create a Node object for each new model. 
 Finally, it will publish the tracks for each nodes. 
 '''
 def vector3_to_numpy(msg):
@@ -35,6 +35,7 @@ class NodeTracksHandler(object):
         
         _N = len(model_states.name)
         
+
         for i in range(_N):
             m_name = model_states.name[i]
             
@@ -42,8 +43,8 @@ class NodeTracksHandler(object):
                 continue
             
             m_pos = point_to_numpy(model_states.pose[i].position)
-            m_quat = quat_to_numpy(model_states.pose[i].orientation)
-                        
+            m_quat = quat_to_numpy(model_states.pose[i].orientation)                        
+
             m_vel = vector3_to_numpy(model_states.twist[i].linear)
             m_rot = vector3_to_numpy(model_states.twist[i].angular)
             
@@ -52,14 +53,14 @@ class NodeTracksHandler(object):
                 node.update(m_pos, m_vel, m_quat, m_rot)
                 
             else:
-                node = Node(node_id=str(m_name), frame_rate=self.rate)
+                node = Node(node_id=str(m_name))
                 node.update(m_pos, m_vel, m_quat, m_rot)
         
-            
-            node_history = node.get_history(history_timesteps=8, frame_rate=2.5)
-            
+            node_history = node.get_history(history_timesteps=8, desired_fps=2.5)
             # prepare message for tracks
-            
+            node_track = AgentTrack()
+
+                            
         # pass
 
 if __name__ == '__main__':

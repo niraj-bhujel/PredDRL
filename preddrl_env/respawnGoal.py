@@ -9,17 +9,9 @@ from geometry_msgs.msg import Pose
 
 class Respawn():
     def __init__(self):
-        # self.modelPath = os.path.dirname(os.path.realpath(__file__))
-        # self.modelPath = '/home/ros_admin/tf2rl_turtlebot3-master/src/turtlebot3_simulations/turtlebot3_gazebo/models/turtlebot3_square/goal_box/model.sdf'
-        # self.f = open(self.modelPath, 'r')
-        # self.model = self.f.read()
-
-        # self.stage = rospy.get_param('/stage_number')
         self.stage = 2
         # self.stage = 6 # added by niraj
         self.goal_position = Pose()
-        # self.init_goal_x = -0.586480
-        # self.init_goal_y = 4.857300
         self.init_goal_x = 0#1.5#0.5 1.5 0
         self.init_goal_y = 1#0.2#-1.5 0 -1
         self.goal_position.position.x = self.init_goal_x
@@ -51,30 +43,19 @@ class Respawn():
                 self.num_existing_model+=1
 
     def respawnModel(self): # nb-> this function should be respawnGoalModel ??
-        # print(self.check_model)
-        # while True:
-        # if not self.check_model: # comment by niraj
-            # rospy.loginfo('Waiting for service spawn_sdf_model')
-        rospy.wait_for_service('gazebo/spawn_sdf_model')
-        # rospy.loginfo('gazebo/spawn_sdf_model available')
 
+        rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
         spawn_model_prox(self.modelName, self.model, 'robotos_name_space', self.goal_position, "world")
         rospy.loginfo("New goal ( %.1f, %.1f) respawnned ", self.goal_position.position.x, self.goal_position.position.y)
-        #     break
-        # else:
-        #     pass
+
 
     def deleteModel(self):
-        # while True:
-        # if self.check_model: 
+
         rospy.wait_for_service('gazebo/delete_model')
         del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
         del_model_prox(self.modelName)
         rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
-        #     break
-        # else:
-        #     pass
 
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag

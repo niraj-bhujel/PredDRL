@@ -8,9 +8,10 @@ from geometry_msgs.msg import Twist, Point, Pose, PoseStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
-# from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from .respawnGoal import Respawn
+from gazebo_msgs.msg import ModelStates
 
+from .respawnGoal import Respawn
+from preddrl_tracker.scripts.node import Node
 
 class Env:
     def __init__(self):
@@ -48,6 +49,7 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
+        self.nodes = {}
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -99,35 +101,71 @@ class Env:
             heading += 2 * pi
 
         self.heading = round(heading, 2)
-        # print(0)
-        # print(goal_angle)
 
-    def getState(self, scan):
-        scan_range = []
-        scan_range_collision = []
-        heading = self.heading
+    def getTracks(self, ):
+        try:
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        except rospy.ROSException:
+            rospy.logerr('ModelStates timeout')
+            raise ValueError 
+
+        node_states = []
+        # keep track of model states
+        for i in range(model_states.name):
+            m_name = model_states.name[i]
+            
+            if 'square' in m_name:
+                continue
+            if 'goal' in m_name:
+                continue
+            if 'gound' in m_name:
+                continue
+            
+            if m_name=='obstacle':
+                node_type = 'obstacle'
+            elif m_name == 'turtlebot3_burger':
+                node_type = 'robot'
+            else:
+                node_type = 'pedestrian'
+
+            pose = model_states.pose[i]
+            twist = model_states.twist[i]
+
+            m_pos = point_to_numpy(pose.position)
+            m_quat = quat_to_numpy(pose.orientation)
+            m_vel = vector3_to_numpy(twist.linear)
+            m_rot = vector3_to_numpy(twist.angular)
+
+            if m_name in self.nodes.keys():
+                node = self.nodes[m_name]
+                node.update(m_pos, m_vel, m_quat, m_rot)
+                
+            else:
+                node = Node(node_id=str(m_name), node_type=node_type)
+                node.update(m_pos, m_vel, m_quat, m_rot)
+
+            node_states.append(node)
+            
+        return node_states
+
+            
+
+    def getState(self,):
+
         done = False
         success = False # added by niraj
 
-        # for i in range(0,20):
-        #     if scan.ranges[i] == float('Inf'):
-        #         scan_range.append(3.5)
-        #     elif np.isnan(scan.ranges[i]):
-        #         scan_range.append(0)
-        #     else:
-        #         scan_range.append(scan.ranges[i])
+        try:
+            scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
+        except rospy.ROSException:
+            rospy.logerr('LaserScan timeout')
+            raise ValueError
 
-        for i in range(len(scan.ranges)):
-            if scan.ranges[i] == float('Inf'):
-                scan_range_collision.append(3.5)
-            elif np.isnan(scan.ranges[i]):
-                scan_range_collision.append(0)
-            else:
-                scan_range_collision.append(scan.ranges[i])
+        scan_ranges = np.array(scan.ranges)
+        scan_ranges[scan_ranges==np.inf]==3.5
+        scan_ranges[scan_ranges==np.nan] == 1e-6
 
-        # obstacle_min_range = round(min(scan_range), 2)
-        # obstacle_angle = np.argmin(scan_range)
-        if self.collision_threshold > min(scan_range_collision) > 0:
+        if self.collision_threshold > min(scan_ranges):
             rospy.loginfo("Collision!!")
             done = True
 
@@ -137,8 +175,7 @@ class Env:
             rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
             success = True # modified by niraj
             
-        # print(scan_range_collision)
-        state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
+        state = scan_ranges.tolist() + self.vel_cmd + [self.heading, current_distance] # 极坐标
         # state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
         return state, done, success
@@ -147,7 +184,7 @@ class Env:
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        distance_rate = (self.past_distance - current_distance)
+        # distance_rate = (self.past_distance - current_distance)
         self.past_distance = current_distance
 
         if done:
@@ -177,16 +214,8 @@ class Env:
         vel_cmd.angular.z = action[1]
         self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
         self.pub_cmd_vel.publish(vel_cmd)
-
-        # while True:
-        try:
-            data = rospy.wait_for_message('scan', LaserScan, timeout=100)
-            # if data is not None: break
-        except rospy.ROSException:
-            rospy.logerr('LaserScan timeout during env step')
-            raise ValueError
-
-        state, done, success = self.getState(data)
+    
+        state, done, success = self.getState()
         
         reward = self.setReward(state, done, success)
         # added by niraj
@@ -227,18 +256,10 @@ class Env:
         if initGoal:
             self.init_goal()
 
-        # while True:
-        try:
-            data = rospy.wait_for_message('scan', LaserScan, timeout=100)
-
-        except rospy.ROSException:
-            rospy.logerr('LaserScan timeout during env reset')
-            raise ValueError
-
         self.vel_cmd = [0., 0.]
         self.goal_distance = self.getGoalDistace()
 
-        state, done, success = self.getState(data)
+        state, done, success = self.getState()
 
         return np.array(state)
 

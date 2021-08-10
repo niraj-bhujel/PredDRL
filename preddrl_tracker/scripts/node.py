@@ -1,24 +1,24 @@
 '''
  Class to represent a single pedestrian. 
 '''
+import time
 import math
 import numpy as np
 from collections import deque 
 
 class Node(object):
-    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100, frame_rate=10):
+    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100):
         # self.data = data
         self.first_timestep = first_timestep
         self.id = node_id
-        self.node_type = node_type
-        self.frame_rate = frame_rate
+        self.type = node_type
         
         # self.states = deque([], maxlen=max_len)
         self.pos = deque([], maxlen=max_len)
         self.vel = deque([], maxlen=max_len)
         self.quat = deque([], maxlen=max_len)
         self.rot = deque([], maxlen=max_len)
-        
+        self.time_stamp = deque([], maxlen=max_len)
         
     def update_states(self, p, v, q, r):
         # self.states.append([p, v, q, r])
@@ -26,12 +26,11 @@ class Node(object):
         self.vel.append(v)
         self.quat.append(q)
         self.rot.append(r)
+        self.time_stamp.append(time.time())
         
         
-    def cv_prediction(self, t, prediction_horizon=12, frame_rate=2.5):
-        
-        # past_pos, past_vel = self.history_at(t, history_timesteps=8*, frame_rate=frame_rate)
-        
+    def cv_prediction(self, t, prediction_horizon=12, desired_fps=2.5):
+                
         pass
     
     
@@ -47,11 +46,9 @@ class Node(object):
         
         return p, v, q, r
 
+    def get_history(self, history_timesteps=8, desired_fps=2.5):
 
-
-    def get_history(self, history_timesteps=8, frame_rate=2.5):
-
-        frame_interval = int(self.frame_rate/frame_rate)
+        frame_interval = int(self.frame_rate/desired_fps)
         
         if frame_interval<1:
             raise Exception('Unable to perform upsampling at the moment')
@@ -64,6 +61,14 @@ class Node(object):
 
     def timestep_index(self, t):
         return t-self.first_timestep
+
+    @property
+    def frame_rate(self):
+        if len(self.pos)>1:
+            fps = 1/np.mean(np.diff(self.time_stamp))
+        else:
+            fps = 1
+        return fps
 
     @property
     def timesteps(self):

@@ -116,18 +116,17 @@ class TD3(DDPG):
         with torch.no_grad():
             # Get noisy action
             next_action = self.actor_target(next_states)
-            noise = torch.empty_like(next_action).normal_(mean=0,std=self._policy_noise)
-            noise.clamp_(-self._noise_clip, self._noise_clip)
+            noise = torch.empty_like(next_action).normal_(mean=0,std=self._policy_noise).clamp(-self._noise_clip, self._noise_clip)
 
             next_action = torch.clamp(next_action + noise, -self.actor_target.max_action, self.actor_target.max_action)
 
             target_Q1, target_Q2 = self.critic_target([next_states, next_action])
 
-            target_Q = torch.min(torch.cat([target_Q1, target_Q2], dim=-1), dim=-1)[0].unsqueeze(-1)
+            target_Q = torch.min(torch.cat([target_Q1, target_Q2], dim=-1), dim=-1)[0].unsqueeze(-1) # [bs, 1]
 
             target_Q = rewards + (not_dones * self.discount * target_Q)
 
-
         current_Q1, current_Q2 = self.critic([states, actions])
+
 
         return target_Q - current_Q1, target_Q - current_Q2

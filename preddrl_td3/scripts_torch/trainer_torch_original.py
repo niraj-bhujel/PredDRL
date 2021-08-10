@@ -15,7 +15,6 @@ from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
-from replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
@@ -87,6 +86,11 @@ class Trainer:
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
+        # if args.evaluate:
+        #     assert args.model_dir is not None
+
+        # self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
+
         if self._evaluate or self._restore_checkpoint:
             load_ckpt(self._policy, self._output_dir, last_step=1e4)
 
@@ -113,20 +117,12 @@ class Trainer:
         n_episode = 1
         #for success rate
         episode_success = 0
-        
-        if self._use_prioritized_rb:
-            replay_buffer = PrioritizedReplayBuffer(size=self._n_step, 
-                                                    state_dim=self._env.observation_space.shape[0],
-                                                    act_dim=self._env.action_space.shape[0])
-
-        else:
-            replay_buffer = ReplayBuffer()
-
-        # replay_buffer = get_replay_buffer(self._policy, 
-        #                                   self._env, 
-        #                                   self._use_prioritized_rb, 
-        #                                   self._use_nstep_rb, 
-        #                                   self._n_step)
+        #
+        replay_buffer = get_replay_buffer(self._policy, 
+                                          self._env, 
+                                          self._use_prioritized_rb, 
+                                          self._use_nstep_rb, 
+                                          self._n_step)
 
         # separate input (laser scan, vel, polor)
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
@@ -150,13 +146,17 @@ class Trainer:
 
             tf.summary.experimental.set_step(total_steps)
 
-            # replay_buffer.add(obs=obs, 
-            #                   act=action, 
-            #                   next_obs=next_obs, 
-            #                   rew=reward, 
-            #                   done=done)
+            done_flag = done
 
-            replay_buffer.add(obs, action, reward, next_obs, done)
+            # this line will never executed since env doesn't have _max_episode_steps attribute - note by niraj
+            if hasattr(self._env, "_max_episode_steps") and episode_steps == self._env._max_episode_steps:
+                done_flag = False
+
+            replay_buffer.add(obs=obs, 
+                              act=action, 
+                              next_obs=next_obs, 
+                              rew=reward, 
+                              done=done_flag)
 
             obs = next_obs
             #for success rate
@@ -190,15 +190,16 @@ class Trainer:
 
             if total_steps % self._policy.update_interval == 0:
                 samples = replay_buffer.sample(self._policy.batch_size)
-                # print({k:v.shape for k,v in samples.items()})
+                print({k:v.shape for k,v in samples.items()})
+
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
                     actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
                                                                            samples["act"], 
                                                                            samples["next_obs"],
                                                                            samples["rew"], 
-                                                                           samples["done"],
+                                                                           np.array(samples["done"], dtype=np.float32),
                                                                            samples["weights"] if self._use_prioritized_rb \
-                                                                           else np.ones(self._policy.batch_size, dtype=np.float32))
+                                                                           else np.ones(self._policy.batch_size))
 
                     tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
                                       data=actor_loss)
@@ -208,13 +209,12 @@ class Trainer:
 
                 if self._use_prioritized_rb:
                     # td_error = np.ravel(td_errors) # use previous td_error ->niraj
-
                     td_error = self._policy.compute_td_error(samples["obs"], 
                                                              samples["act"], 
                                                              samples["next_obs"],
                                                              samples["rew"], 
-                                                             samples["done"])
-                    print(np.abs(td_error) + 1e-6)
+                                                             np.array(samples["done"], dtype=np.float32))
+                    print(td_error)
                     replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
 
 
@@ -394,7 +394,6 @@ class Trainer:
                             help='Seed value.')
         parser.add_argument('--debug', default=0, type=int, 
                             help='Seed value.')
-
         return parser
 
 if __name__ == '__main__':
@@ -402,13 +401,14 @@ if __name__ == '__main__':
     sys.path.insert(0, './')
 
     import rospy
+
     from policy.td3_torch import TD3
     from policy.ddpg_torch import DDPG
-
     from preddrl_env.environment_stage_3_bk import Env
 
+
     # from gym.utils import seeding as _s 
-    
+
     parser = Trainer.get_argument()
 
     parser = DDPG.get_argument(parser)

@@ -122,13 +122,16 @@ class DDPG(OffPolicyAgent):
 
     def train(self, states, actions, next_states, rewards, dones, weights):
 
-        states = torch.from_numpy(states).to(self.device)
-        actions = torch.from_numpy(actions).to(self.device)
-        next_states = torch.from_numpy(next_states).to(self.device)
-        rewards = torch.from_numpy(rewards).to(self.device)
-        dones = torch.from_numpy(dones).to(self.device)
-        weights = torch.from_numpy(weights).to(self.device)
+        states = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+        weights = torch.tensor(weights, dtype=torch.float32).to(self.device)
 
+        # print(states.shape, actions.shape, next_states.shape, rewards.shape, dones.shape, weights.shape)
+        # torch.Size([100, 24]) torch.Size([100, 2]) torch.Size([100, 24]) torch.Size([100, 1]) torch.Size([100, 1]) torch.Size([100])
+        
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
         return actor_loss.item(), critic_loss.item(), td_errors.detach().cpu().numpy()

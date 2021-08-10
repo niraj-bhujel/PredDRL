@@ -1,5 +1,10 @@
 #!/usr/bin/env python3.6
 # -*- coding: utf-8 -*-
+
+'''
+This is equivalen to tracker that publish the current position of the agents only. 
+'''
+
 import os
 import sys
 sys.path.append('./')
@@ -151,7 +156,7 @@ def prepare_data(data_path, target_frame_rate=25):
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
         
-        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points, frame_rate=target_frame_rate)
+        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points)
         
         for i in range(len(intp_ped_pos)):
             
