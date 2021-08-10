@@ -203,15 +203,15 @@ class Env:
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
     def init_goal(self, position_check=False, test=False):
-        # self.respawn_goal.deleteModel()
-        # print('getting goal ')
-        if self.respawn_goal.check_model: self.respawn_goal.deleteModel()
+        
         self.goal_x, self.goal_y = self.respawn_goal.getPosition(position_check, test)
-        # self.initGoal = False
-        # print(send_goal)
+        
+        if self.respawn_goal.check_model: self.respawn_goal.deleteModel()
+        self.respawn_goal.respawnModel()
+
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
         self.goal_distance = self.getGoalDistace()
-        self.respawn_goal.respawnModel()
+
 
     def reset(self, initGoal=False):
 

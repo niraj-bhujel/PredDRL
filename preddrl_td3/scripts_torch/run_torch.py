@@ -3,11 +3,12 @@
 import os
 import sys
 sys.path.insert(0, './')
-import gym
-import rospy
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+print(os.getcwd())
 
+import gym
+import rospy
 from policy.td3_torch import TD3
 from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
@@ -49,49 +50,45 @@ if __name__ == '__main__':
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
+    env = Env()
+    test_env = Env()
+
+    args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
+
+    policy = TD3(
+        state_shape=env.observation_space.shape,
+        action_dim=env.action_space.high.size,
+        gpu=0,
+        memory_capacity=args.memory_capacity,
+        max_action=env.action_space.high[0],
+        batch_size=args.batch_size,
+        actor_units=[400, 300],
+        n_warmup=args.n_warmup)
+
+    policy = policy.to(policy.device)
+
+    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
+    trainer = Trainer(policy, env, args, test_env=test_env)
+
+    trainer.set_seed(args.seed)
 
     
-    for i in range(5):
-
-        env = Env()
-        test_env = Env()
-
-        args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
-    
-        policy = TD3(
-            state_shape=env.observation_space.shape,
-            action_dim=env.action_space.high.size,
-            gpu=0,
-            memory_capacity=args.memory_capacity,
-            max_action=env.action_space.high[0],
-            batch_size=args.batch_size,
-            actor_units=[400, 300],
-            n_warmup=args.n_warmup)
-
-        policy = policy.to(policy.device)
-
-        # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
-        trainer = Trainer(policy, env, args, test_env=test_env)
-
-        trainer.set_seed(args.seed)
-
-        
-        try:
-            if args.evaluate:
-                print('-' * 89)
-                print('Evaluating %s'%trainer._output_dir)
-                trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
-
-            else:
-                print('-' * 89)
-                print('Training %s'%trainer._output_dir)
-                trainer()
-
-        except Exception as e:
-            print(e)
-            continue
-
-        except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
+    try:
+        if args.evaluate:
             print('-' * 89)
-            print('Exiting from training early because of KeyboardInterrupt')
-            sys.exit()
+            print('Evaluating %s'%trainer._output_dir)
+            trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
+
+        else:
+            print('-' * 89)
+            print('Training %s'%trainer._output_dir)
+            trainer()
+
+    except Exception as e:
+        print(e)
+        continue
+
+    except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
+        print('-' * 89)
+        print('Exiting from training early because of KeyboardInterrupt')
+        sys.exit()

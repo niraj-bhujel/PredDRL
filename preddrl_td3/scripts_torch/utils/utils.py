@@ -1,4 +1,5 @@
 import os
+import shutil
 
 import numpy as np
 import joblib
@@ -102,3 +103,19 @@ def load_ckpt(model, load_ckpt_dir, last_step):
     model.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
 
     return model
+
+def copy_src(root_src_dir, root_dst_dir, overwrite=True):
+    for src_dir, dirs, files in os.walk(root_src_dir):
+        dst_dir = src_dir.replace(root_src_dir, root_dst_dir, 1)
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+        for file in files:
+            if 'cpython' in file:
+                continue
+            src_file = os.path.join(src_dir, file)
+            dst_file = os.path.join(dst_dir, file)
+            if os.path.exists(dst_file):
+                if overwrite:
+                    shutil.copy(src_file, dst_file)
+            else:
+                shutil.copy(src_file, dst_file)

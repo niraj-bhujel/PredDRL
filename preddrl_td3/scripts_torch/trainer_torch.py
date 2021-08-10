@@ -14,7 +14,7 @@ from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
-from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt
+from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
@@ -81,7 +81,8 @@ class Trainer:
                                               time_format='%Y_%m_%d_%H-%M-%S',
                                               suffix=suffix
                                               )
-        
+        # backup scripts
+        copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
@@ -388,7 +389,7 @@ class Trainer:
                             help='Last step to restore.')
         parser.add_argument('--prefix', type=str, default=None,
                             help='Add prefix to log dir')
-        parser.add_argument('--seed', default=5555, type=int, 
+        parser.add_argument('--seed', default=1901858486, type=int, 
                             help='Seed value.')
 
         return parser
