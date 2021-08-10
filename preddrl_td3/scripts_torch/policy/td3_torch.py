@@ -73,9 +73,9 @@ class TD3(DDPG):
         # self._it = tf.Variable(0, dtype=tf.int32)
         self._it = 0
 
-    def _train_body(self, states, actions, next_states, rewards, done, weights):
+    def _train_body(self, states, actions, next_states, rewards, dones, weights):
 
-        td_error1, td_error2 = self._compute_td_error_body(states, actions, next_states, rewards, done)
+        td_error1, td_error2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
         critic_loss = torch.mean(huber_loss(td_error1, delta=self.max_grad) * weights) + \
                       torch.mean(huber_loss(td_error2, delta=self.max_grad) * weights)
@@ -97,7 +97,16 @@ class TD3(DDPG):
         return actor_loss, critic_loss, torch.abs(td_error1) + torch.abs(td_error2)
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        pass
+        states = torch.from_numpy(states).to(self.device)
+        actions = torch.from_numpy(actions).to(self.device)
+        next_states = torch.from_numpy(next_states).to(self.device)
+        rewards = torch.from_numpy(rewards).to(self.device)
+        dones = torch.from_numpy(dones).to(self.device)
+        
+        with torch.no_grad():
+            td_errors1, td_errors2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)
+
+        return np.squeeze(np.abs(td_errors1.cpu().numpy()) + np.abs(td_errors2.cpu().numpy()))
 
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):

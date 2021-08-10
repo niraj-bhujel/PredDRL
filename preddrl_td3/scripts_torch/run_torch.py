@@ -27,6 +27,8 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
+    parser.set_defaults(use_prioritized_rb=True)
+    parser.set_defaults(use_nstep_rb=True)
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
@@ -40,12 +42,6 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-
-        # parser.set_defaults(test_episodes=50)
-        # parser.set_defaults(episode_max_steps=int(1e4))
-        # parser.set_defaults(model_dir='./preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1')
-        # parser.set_defaults(show_test_progress=False)
-        # parser.set_defaults(save_model_interval=int(1e10))
 
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)

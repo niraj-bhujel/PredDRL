@@ -120,16 +120,16 @@ class DDPG(OffPolicyAgent):
 
         return torch.clamp(action, -max_action, max_action)
 
-    def train(self, states, actions, next_states, rewards, done, weights):
+    def train(self, states, actions, next_states, rewards, dones, weights):
 
         states = torch.from_numpy(states).to(self.device)
         actions = torch.from_numpy(actions).to(self.device)
         next_states = torch.from_numpy(next_states).to(self.device)
         rewards = torch.from_numpy(rewards).to(self.device)
-        done = torch.from_numpy(done).to(self.device)
+        dones = torch.from_numpy(dones).to(self.device)
         weights = torch.from_numpy(weights).to(self.device)
 
-        actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, done, weights)
+        actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
         return actor_loss.item(), critic_loss.item(), td_errors.detach().cpu().numpy()
 
@@ -142,9 +142,9 @@ class DDPG(OffPolicyAgent):
 
         optimizer.step()
 
-    def _train_body(self, states, actions, next_states, rewards, done, weights):
+    def _train_body(self, states, actions, next_states, rewards, dones, weights):
 
-        td_errors = self._compute_td_error_body(states, actions, next_states, rewards, done)
+        td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
@@ -163,12 +163,16 @@ class DDPG(OffPolicyAgent):
         return actor_loss, critic_loss, td_errors
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        pass
+        states = torch.from_numpy(states).to(self.device)
+        actions = torch.from_numpy(actions).to(self.device)
+        next_states = torch.from_numpy(next_states).to(self.device)
+        rewards = torch.from_numpy(rewards).to(self.device)
+        dones = torch.from_numpy(dones).to(self.device)
         
-        # with torch.no_grad():
-        #     td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
+        with torch.no_grad():
+            td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
-        # return np.abs(np.ravel(td_errors.cpu().numpy()))
+        return np.abs(np.ravel(td_errors.cpu().numpy()))
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):
 
