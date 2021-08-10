@@ -181,24 +181,24 @@ class Env:
         # while True:
         try:
             data = rospy.wait_for_message('scan', LaserScan, timeout=100)
-
-            state, done, success = self.getState(data)
-            
-            reward = self.setReward(state, done, success)
-            # added by niraj
-            if done:
-                self.pub_cmd_vel.publish(Twist())
-            # added by niraj
-            if success:
-                self.pub_cmd_vel.publish(Twist())
-                self.init_goal(position_check=True, test=self.test)
-
-            return np.array(state), reward, done, success, {}
-
             # if data is not None: break
         except rospy.ROSException:
             rospy.logerr('LaserScan timeout during env step')
-            return None, None, None, None, {}
+            raise ValueError
+
+        state, done, success = self.getState(data)
+        
+        reward = self.setReward(state, done, success)
+        # added by niraj
+        if done:
+            self.pub_cmd_vel.publish(Twist())
+        # added by niraj
+        if success:
+            self.pub_cmd_vel.publish(Twist())
+            self.init_goal(position_check=True, test=self.test)
+
+        return np.array(state), reward, done, success, {}
+
 
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
@@ -231,16 +231,17 @@ class Env:
         try:
             data = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
-            self.vel_cmd = [0., 0.]
-            self.goal_distance = self.getGoalDistace()
-
-            state, done, success = self.getState(data)
-
-            return np.array(state)
-
         except rospy.ROSException:
             rospy.logerr('LaserScan timeout during env reset')
-            return None
+            raise ValueError
+
+        self.vel_cmd = [0., 0.]
+        self.goal_distance = self.getGoalDistace()
+
+        state, done, success = self.getState(data)
+
+        return np.array(state)
+
 
 
 
