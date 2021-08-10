@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     except Exception as e:
         print(e)
-        continue
+        # continue
 
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
         print('-' * 89)
