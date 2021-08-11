@@ -17,7 +17,7 @@ from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 
 # from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from deeprl_replay.ReplayMemory import ReplayBuffer, PrioritizedReplayBuffer
+from deeprl_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
@@ -59,6 +59,8 @@ class Trainer:
         self._env = env
         self._test_env = self._env if test_env is None else test_env
 
+        self.nstep_buffer = [] 
+
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
@@ -98,6 +100,12 @@ class Trainer:
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
 
+        if self._use_prioritized_rb:
+            self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
+                                                    beta_frames=self._max_steps)
+        else:
+            self.replay_buffer = ReplayBuffer(size=self._buffer_size)
+
         # self.set_seed(args.seed)
 
     def set_seed(self, seed):
@@ -106,6 +114,17 @@ class Trainer:
         np.random.seed(seed)
         torch.manual_seed(seed)
 
+
+    def append_to_replay(self, s, a, r, s_, d):
+        self.nstep_buffer.append((s, a, r, s_, d))
+
+        if(len(self.nstep_buffer)<self._n_step):
+            return
+        
+        R = sum([self.nstep_buffer[i][2]*(self._policy.discount**i) for i in range(self._n_step)])
+        state, action, _, _, _ = self.nstep_buffer.pop(0)
+
+        self.replay_buffer.add((state, action, R, s_, d))
 
     def __call__(self):
         total_steps = 0
@@ -116,28 +135,6 @@ class Trainer:
         n_episode = 1
         #for success rate
         episode_success = 0
-        
-        # replay_buffer = get_replay_buffer(self._policy, 
-        #                                   self._env, 
-        #                                   self._use_prioritized_rb, 
-        #                                   self._use_nstep_rb, 
-        #                                   self._n_step)
-
-        # if self._use_prioritized_rb:
-        #     replay_buffer = PrioritizedReplayBuffer(size=self._n_step, 
-        #                                             state_dim=self._env.observation_space.shape[0],
-        #                                             act_dim=self._env.action_space.shape[0])
-
-        # else:
-        #     replay_buffer = ReplayBuffer(size=self._n_step, 
-        #                                 state_dim=self._env.observation_space.shape[0],
-        #                                 act_dim=self._env.action_space.shape[0])
-
-        if self._use_prioritized_rb:
-            replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
-                                                    beta_frames=self._max_steps)
-        else:
-            replay_buffer = ReplayBuffer(size=self._buffer_size)
 
         # separate input (laser scan, vel, polor)
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
@@ -167,7 +164,8 @@ class Trainer:
             #                   rew=reward, 
             #                   done=done)
 
-            replay_buffer.add([obs, action, reward, next_obs, done])
+            self.append_to_replay(obs, action, reward, next_obs, done)
+
             obs = next_obs
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
@@ -199,7 +197,7 @@ class Trainer:
                 continue
 
             if total_steps % self._policy.update_interval == 0:
-                sampled_data, idxes, weights = replay_buffer.sample(self._policy.batch_size)
+                sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
                 obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
                 samples = {"obs": np.asarray(obs_batch),
                             "act": np.asarray(act_batch),
@@ -235,7 +233,7 @@ class Trainer:
                                                              samples["rew"], 
                                                              samples["done"])
 
-                    replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
+                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
 
 
