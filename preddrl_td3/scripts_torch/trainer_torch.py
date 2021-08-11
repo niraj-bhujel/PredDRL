@@ -389,7 +389,7 @@ class Trainer:
                             help='Save rendering results')
 
         # replay buffer
-        parser.add_argument('--buffer_size', type=int, default=1e4,
+        parser.add_argument('--buffer_size', type=int, default=100000,
                             help='Size of buffer')
         parser.add_argument('--use-prioritized-rb', action='store_true',
                             help='Flag to use prioritized experience replay')
