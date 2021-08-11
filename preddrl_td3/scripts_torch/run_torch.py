@@ -10,7 +10,7 @@ from policy.ddpg_torch import DDPG
 from trainer_torch import Trainer
 
 # from gym.utils import seeding as _s 
-from preddrl_env.environment_stage_3_bk import Env
+from preddrl_td3.env.environment_stage_3_bk import Env
 
 if __name__ == '__main__':
 
