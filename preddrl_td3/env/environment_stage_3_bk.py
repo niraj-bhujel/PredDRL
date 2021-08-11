@@ -8,10 +8,9 @@ from geometry_msgs.msg import Twist, Point, Pose, PoseStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
-from gazebo_msgs.msg import ModelStates
-
+# from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from .respawnGoal import Respawn
-from preddrl_tracker.scripts.node import Node
+
 
 class Env:
     def __init__(self):
@@ -49,7 +48,6 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
-        self.nodes = {}
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -101,6 +99,8 @@ class Env:
             heading += 2 * pi
 
         self.heading = round(heading, 2)
+        # print(0)
+        # print(goal_angle)
 
     def getTracks(self, ):
         try:
@@ -148,24 +148,32 @@ class Env:
             
         return node_states
 
-            
-
-    def getState(self,):
-
+    def getState(self, ):
+        scan_range = []
+        scan_range_collision = []
+        heading = self.heading
         done = False
         success = False # added by niraj
 
+        # moved from step to getState - niraj
         try:
             scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
+            # if data is not None: break
         except rospy.ROSException:
-            rospy.logerr('LaserScan timeout')
+            rospy.logerr('LaserScan timeout during env step')
             raise ValueError
 
-        scan_ranges = np.array(scan.ranges)
-        scan_ranges[scan_ranges==np.inf]==3.5
-        scan_ranges[scan_ranges==np.nan] == 1e-6
+        for i in range(len(scan.ranges)):
+            if scan.ranges[i] == float('Inf'):
+                scan_range_collision.append(3.5)
+            elif np.isnan(scan.ranges[i]):
+                scan_range_collision.append(0)
+            else:
+                scan_range_collision.append(scan.ranges[i])
 
-        if self.collision_threshold > min(scan_ranges):
+        # obstacle_min_range = round(min(scan_range), 2)
+        # obstacle_angle = np.argmin(scan_range)
+        if self.collision_threshold > min(scan_range_collision) > 0:
             rospy.loginfo("Collision!!")
             done = True
 
@@ -175,7 +183,8 @@ class Env:
             rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
             success = True # modified by niraj
             
-        state = scan_ranges.tolist() + self.vel_cmd + [self.heading, current_distance] # 极坐标
+        # print(scan_range_collision)
+        state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         # state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
         return state, done, success
@@ -184,7 +193,7 @@ class Env:
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        # distance_rate = (self.past_distance - current_distance)
+        distance_rate = (self.past_distance - current_distance)
         self.past_distance = current_distance
 
         if done:
@@ -214,7 +223,7 @@ class Env:
         vel_cmd.angular.z = action[1]
         self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
         self.pub_cmd_vel.publish(vel_cmd)
-    
+
         state, done, success = self.getState()
         
         reward = self.setReward(state, done, success)
@@ -256,17 +265,10 @@ class Env:
         if initGoal:
             self.init_goal()
 
+
         self.vel_cmd = [0., 0.]
         self.goal_distance = self.getGoalDistace()
 
         state, done, success = self.getState()
 
         return np.array(state)
-
-
-
-
-
-
-
-

@@ -6,7 +6,7 @@ sys.path.insert(0, './')
 import gym
 import rospy
 
-from preddrl_env.environment_stage_3_bk import Env
+from preddrl_td3.env.environment_stage_3_bk import Env
 
 from policy.td3 import TD3
 

@@ -190,7 +190,7 @@ class Trainer:
 
             if total_steps % self._policy.update_interval == 0:
                 samples = replay_buffer.sample(self._policy.batch_size)
-                print({k:v.shape for k,v in samples.items()})
+                # print({k:v.shape for k,v in samples.items()})
 
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
                     actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
@@ -214,7 +214,7 @@ class Trainer:
                                                              samples["next_obs"],
                                                              samples["rew"], 
                                                              np.array(samples["done"], dtype=np.float32))
-                    print(td_error)
+                    # print(td_error)
                     replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
 
 
@@ -404,7 +404,7 @@ if __name__ == '__main__':
 
     from policy.td3_torch import TD3
     from policy.ddpg_torch import DDPG
-    from preddrl_env.environment_stage_3_bk import Env
+    from preddrl_td3.env.environment_stage_3_bk import Env
 
 
     # from gym.utils import seeding as _s 

@@ -120,7 +120,9 @@ class Trainer:
                                                     act_dim=self._env.action_space.shape[0])
 
         else:
-            replay_buffer = ReplayBuffer()
+            replay_buffer = ReplayBuffer(size=self._n_step, 
+                                        state_dim=self._env.observation_space.shape[0],
+                                        act_dim=self._env.action_space.shape[0])
 
         # replay_buffer = get_replay_buffer(self._policy, 
         #                                   self._env, 
@@ -214,7 +216,7 @@ class Trainer:
                                                              samples["next_obs"],
                                                              samples["rew"], 
                                                              samples["done"])
-                    print(np.abs(td_error) + 1e-6)
+
                     replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
 
 
@@ -405,7 +407,7 @@ if __name__ == '__main__':
     from policy.td3_torch import TD3
     from policy.ddpg_torch import DDPG
 
-    from preddrl_env.environment_stage_3_bk import Env
+    from preddrl_td3.env.environment_stage_3_bk import Env
 
     # from gym.utils import seeding as _s 
     
@@ -418,7 +420,7 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
-    parser.set_defaults(use_prioritized_rb=True)
+    parser.set_defaults(use_prioritized_rb=False)
     parser.set_defaults(use_nstep_rb=True)
 
     args = parser.parse_args()
