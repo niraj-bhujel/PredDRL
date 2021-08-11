@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import argparse
-
+import shutil
 import random
 import torch
 import numpy as np
@@ -392,8 +392,10 @@ class Trainer:
                             help='Add prefix to log dir')
         parser.add_argument('--seed', default=1901858486, type=int, 
                             help='Seed value.')
-        parser.add_argument('--debug', default=0, type=int, 
+        parser.add_argument('--debug_level', default=0, type=int, 
                             help='Seed value.')
+        parser.add_argument('--clean', action='store_true', 
+                            help='Remove outputs when exit.')
         return parser
 
 if __name__ == '__main__':
@@ -418,8 +420,8 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
-    parser.set_defaults(use_prioritized_rb=True)
-    parser.set_defaults(use_nstep_rb=True)
+    parser.set_defaults(use_prioritized_rb=False)
+    parser.set_defaults(use_nstep_rb=False)
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
@@ -433,7 +435,7 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug_level)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
@@ -478,4 +480,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
+
+        if args.clean:
+            shutil.rmtree(trainer._output_dir)
         sys.exit()

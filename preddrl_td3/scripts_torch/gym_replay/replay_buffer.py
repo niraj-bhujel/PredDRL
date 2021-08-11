@@ -2,7 +2,7 @@ import numpy as np
 import random
 from collections import defaultdict
 
-from replay.segment_tree import SumSegmentTree, MinSegmentTree
+from .segment_tree import SumSegmentTree, MinSegmentTree
 
 
 class ReplayBuffer(object):
@@ -23,8 +23,6 @@ class ReplayBuffer(object):
         self.act_dim = act_dim
         self.rew_dim = rew_dim
 
-        print(state_dim)
-
     def __len__(self):
         return len(self._storage)
 
@@ -37,6 +35,7 @@ class ReplayBuffer(object):
         else:
             self._storage[self._next_idx] = data
         self._next_idx = (self._next_idx + 1) % self._maxsize
+        # print(self._next_idx)
 
     def _encode_sample(self, idxes):
 

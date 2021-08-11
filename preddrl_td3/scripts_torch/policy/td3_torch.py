@@ -97,11 +97,11 @@ class TD3(DDPG):
         return actor_loss, critic_loss, torch.abs(td_error1) + torch.abs(td_error2)
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        states = torch.from_numpy(states).to(self.device)
-        actions = torch.from_numpy(actions).to(self.device)
-        next_states = torch.from_numpy(next_states).to(self.device)
-        rewards = torch.from_numpy(rewards).to(self.device)
-        dones = torch.from_numpy(dones).to(self.device)
+        states = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
         
         with torch.no_grad():
             td_errors1, td_errors2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)

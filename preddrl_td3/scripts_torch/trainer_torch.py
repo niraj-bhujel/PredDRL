@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import argparse
-
+import shutil
 import random
 import torch
 import numpy as np
@@ -15,7 +15,9 @@ from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
-from replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+
+# from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from deeprl_replay.ReplayMemory import ReplayBuffer, PrioritizedReplayBuffer
 
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
@@ -37,6 +39,7 @@ class Trainer:
         self._logdir = args.logdir
 
         # replay buffer
+        self._buffer_size = args.buffer_size
         self._use_prioritized_rb = args.use_prioritized_rb
         self._use_nstep_rb = args.use_nstep_rb
         self._n_step = args.n_step
@@ -114,21 +117,27 @@ class Trainer:
         #for success rate
         episode_success = 0
         
-        if self._use_prioritized_rb:
-            replay_buffer = PrioritizedReplayBuffer(size=self._n_step, 
-                                                    state_dim=self._env.observation_space.shape[0],
-                                                    act_dim=self._env.action_space.shape[0])
-
-        else:
-            replay_buffer = ReplayBuffer(size=self._n_step, 
-                                        state_dim=self._env.observation_space.shape[0],
-                                        act_dim=self._env.action_space.shape[0])
-
         # replay_buffer = get_replay_buffer(self._policy, 
         #                                   self._env, 
         #                                   self._use_prioritized_rb, 
         #                                   self._use_nstep_rb, 
         #                                   self._n_step)
+
+        # if self._use_prioritized_rb:
+        #     replay_buffer = PrioritizedReplayBuffer(size=self._n_step, 
+        #                                             state_dim=self._env.observation_space.shape[0],
+        #                                             act_dim=self._env.action_space.shape[0])
+
+        # else:
+        #     replay_buffer = ReplayBuffer(size=self._n_step, 
+        #                                 state_dim=self._env.observation_space.shape[0],
+        #                                 act_dim=self._env.action_space.shape[0])
+
+        if self._use_prioritized_rb:
+            replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
+                                                    beta_frames=self._max_steps)
+        else:
+            replay_buffer = ReplayBuffer(size=self._buffer_size)
 
         # separate input (laser scan, vel, polor)
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
@@ -158,8 +167,7 @@ class Trainer:
             #                   rew=reward, 
             #                   done=done)
 
-            replay_buffer.add(obs, action, reward, next_obs, done)
-
+            replay_buffer.add([obs, action, reward, next_obs, done])
             obs = next_obs
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
@@ -191,8 +199,18 @@ class Trainer:
                 continue
 
             if total_steps % self._policy.update_interval == 0:
-                samples = replay_buffer.sample(self._policy.batch_size)
+                sampled_data, idxes, weights = replay_buffer.sample(self._policy.batch_size)
+                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
+                samples = {"obs": np.asarray(obs_batch),
+                            "act": np.asarray(act_batch),
+                            "next_obs":np.asarray(next_obs_batch),
+                            "rew": np.expand_dims(rew_batch, 1),
+                            "done":np.expand_dims(done_batch, 1),
+                            "weights": np.asarray(weights),
+                            "indexes": np.asarray(idxes),
+                }
                 # print({k:v.shape for k,v in samples.items()})
+
                 with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
                     actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
                                                                            samples["act"], 
@@ -217,7 +235,7 @@ class Trainer:
                                                              samples["rew"], 
                                                              samples["done"])
 
-                    replay_buffer.update_priorities(samples["indexes"], np.abs(td_error) + 1e-6)
+                    replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
 
 
@@ -371,6 +389,8 @@ class Trainer:
                             help='Save rendering results')
 
         # replay buffer
+        parser.add_argument('--buffer_size', type=int, default=1e4,
+                            help='Size of buffer')
         parser.add_argument('--use-prioritized-rb', action='store_true',
                             help='Flag to use prioritized experience replay')
         parser.add_argument('--use-nstep-rb', action='store_true',
@@ -386,7 +406,7 @@ class Trainer:
                             help='batch size')
         parser.add_argument('--n_warmup', default=3000, type=int, 
                             help='Number of warmup steps') # 重新训练的话要改回 10000
-        parser.add_argument('--restore_checkpoint', action='store_true', default=False,
+        parser.add_argument('--restore_checkpoint', action='store_true',
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
@@ -396,7 +416,8 @@ class Trainer:
                             help='Seed value.')
         parser.add_argument('--debug', default=0, type=int, 
                             help='Seed value.')
-
+        parser.add_argument('--clean', action='store_true', 
+                            help='Remove outputs when exit.')
         return parser
 
 if __name__ == '__main__':
@@ -420,7 +441,7 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
-    parser.set_defaults(use_prioritized_rb=False)
+    parser.set_defaults(use_prioritized_rb=True)
     parser.set_defaults(use_nstep_rb=True)
 
     args = parser.parse_args()
@@ -480,4 +501,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
+
+        if args.clean:
+            print('Cleaning output dir ... ')
+            shutil.rmtree(trainer._output_dir)
         sys.exit()
