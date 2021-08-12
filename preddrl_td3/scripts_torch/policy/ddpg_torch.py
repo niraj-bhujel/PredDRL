@@ -42,8 +42,7 @@ class Critic(nn.Module):
         self.l3 = nn.Linear(units[1], 1)
 
 
-    def forward(self, inputs):
-        states, actions = inputs
+    def forward(self, states, actions):
         features = torch.cat([states, actions], axis=1)
         features = F.relu(self.l1(features))
         features = F.relu(self.l2(features))
@@ -78,13 +77,13 @@ class DDPG(OffPolicyAgent):
         # Define and initialize Actor network
         self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
         self.actor_target = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
-        self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
+        self.soft_update_of_target_network(self.actor, self.actor_target)
 
 
         # Define and initialize Critic network
         self.critic = Critic(state_shape, action_dim, critic_units).to(self.device)
         self.critic_target = Critic(state_shape, action_dim, critic_units).to(self.device)
-        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
+        self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
         self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
@@ -134,9 +133,12 @@ class DDPG(OffPolicyAgent):
         
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
-        return actor_loss.item(), critic_loss.item(), td_errors.detach().cpu().numpy()
+        if actor_loss is not None:
+            actor_loss = actor_loss.item()
 
-    def optimization_step(self, optimizer, network, loss, clip_norm=None, retain_graph=False):
+        return actor_loss , critic_loss.item(), td_errors.detach().cpu().numpy()
+
+    def optimization_step(self, optimizer, loss, clip_norm=None, retain_graph=False):
         optimizer.zero_grad()
         loss.backward(retain_graph=retain_graph)
 
@@ -149,19 +151,22 @@ class DDPG(OffPolicyAgent):
 
         td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
+        # Compute critic loss
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
-        # update critic step
-        self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
+        # Optimize the critic
+        self.optimization_step(self.critic_optimizer,  critic_loss)
 
+        # Compute actor loss
         next_action = self.actor(states)
-        actor_loss = -self.critic([states, next_action]).mean()
-        # update actor
-        self.optimization_step(self.critic_optimizer, self.critic, critic_loss)
+        actor_loss = -self.critic(states, next_action).mean()
+
+        # Optimize the actor 
+        self.optimization_step(self.actor_optimizer, actor_loss)
 
         # Update target networks
-        self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
-        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
+        self.soft_update_of_target_network(self.actor, self.actor_target)
+        self.soft_update_of_target_network(self.critic, self.critic_target)
 
         return actor_loss, critic_loss, td_errors
 
@@ -175,26 +180,26 @@ class DDPG(OffPolicyAgent):
         with torch.no_grad():
             td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
-        return np.abs(np.ravel(td_errors.cpu().numpy()))
+        return td_errors.cpu().numpy()
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):
 
         not_dones = 1. - dones
 
         with torch.no_grad():
-            target_Q = self.critic_target([next_states, self.actor_target(next_states)])
+            target_Q = self.critic_target(next_states, self.actor_target(next_states))
             target_Q = rewards + (not_dones * self.discount * target_Q)
 
-        current_Q = self.critic([states, actions])
+        current_Q = self.critic(states, actions)
 
         td_errors = target_Q - current_Q
 
         return td_errors
 
-    def soft_update_of_target_network(self, local_model, target_model, tau):
+    def soft_update_of_target_network(self, local_model, target_model):
         """Updates the target network in the direction of the local network but by taking a step size
         less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-            target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+            target_param.data.copy_(self.tau*local_param.data + (1.0-self.tau)*target_param.data)
 
 

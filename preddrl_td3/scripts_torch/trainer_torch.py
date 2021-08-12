@@ -124,6 +124,9 @@ class Trainer:
         R = sum([self.nstep_buffer[i][2]*(self._policy.discount**i) for i in range(self._n_step)])
         state, action, _, _, _ = self.nstep_buffer.pop(0)
 
+        R = np.array(R, ndmin=1)
+        d = np.array(d, ndmin=1)
+
         self.replay_buffer.add((state, action, R, s_, d))
 
     def __call__(self):
@@ -198,14 +201,15 @@ class Trainer:
 
             if total_steps % self._policy.update_interval == 0:
                 sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
+
                 obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
-                samples = {"obs": np.asarray(obs_batch),
-                            "act": np.asarray(act_batch),
-                            "next_obs":np.asarray(next_obs_batch),
-                            "rew": np.expand_dims(rew_batch, 1),
-                            "done":np.expand_dims(done_batch, 1),
-                            "weights": np.asarray(weights),
-                            "indexes": np.asarray(idxes),
+                samples = {"obs": obs_batch,
+                            "act": act_batch,
+                            "next_obs":next_obs_batch,
+                            "rew": rew_batch,
+                            "done":done_batch,
+                            "weights": weights,
+                            "indexes": idxes,
                 }
                 # print({k:v.shape for k,v in samples.items()})
 
@@ -435,7 +439,7 @@ if __name__ == '__main__':
     parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')

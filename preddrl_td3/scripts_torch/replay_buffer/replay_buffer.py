@@ -1,12 +1,81 @@
+
+
 import random
 import numpy as np
+from collections import deque
+import heapq
+from itertools import count
+# from .segment_tree import SegmentTree, MinSegmentTree, SumSegmentTree
 
-from .segment_tree import SegmentTree, MinSegmentTree, SumSegmentTree
+'''
+Adopted from https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman/
+'''
+class NstepPrioritizedBuffer:
+    """docstring for """
+    def __init__(self, size=4, alpha=0.6, gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
 
+        self.n_step = size
+        self.alpha = alpha
+        self.gamma = gamma 
+        
+        self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
+        
+        self.buffer = []
+        self.n_step_buffer = deque([], size)
+        
+        self.cnt = count()
+        
+    def add(self, state, action, reward, next_state, done, td_error):
+      
+        # n-step queue for calculating return of n previous steps
+        self.n_step_buffer.append((state, action, reward, next_state, done))
+        
+        if len(self.n_step_buffer) < self.n_step:
+          return
+
+        l_reward, l_next_state, l_done = self.n_step_buffer[-1][-3:]
+
+        for transition in reversed(list(self.n_step_buffer)[:-1]):
+            r, n_s, d = transition[-3:]
+
+            l_reward = r + self.gamma * l_reward * (1 - d)
+            l_next_state, l_done = (n_s, d) if d else (l_next_state, l_done)
+        
+        l_state, l_action = self.n_step_buffer[0][:2]
+
+        t = (l_state, l_action, l_reward, l_next_state, l_done)
+        heapq.heappush(self.buffer, (-td_error, next(self.cnt), t))
+        
+        if len(self.buffer) > 100000:
+            self.buffer = self.buffer[:-1]
+            
+        heapq.heapify(self.buffer)
+
+    def sample(self, batch_size):
+        
+        # Semi Stochastic Prioritization
+        prioritization = int(batch_size*self.alpha)
+        batch_prioritized = heapq.nsmallest(prioritization, self.buffer)
+        
+        batch_uniform = random.sample(self.buffer, batch_size-prioritization)
+        batch = batch_prioritized + batch_uniform
+        
+        batch = [e for (_, _, e) in batch]
+            
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+            
+        return batch
+
+'''
+Adopted from https://github.com/ShangtongZhang/DeepRL/blob/master/deep_rl/component/replay.py
+'''
 
 class ReplayBuffer:
     def __init__(self, size):
-        
+
         self._storage = []
         self._maxsize = size
 
@@ -58,6 +127,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         self._it_sum = SumSegmentTree(it_capacity)
         self._it_min = MinSegmentTree(it_capacity)
+        
         self._max_priority = 1.0
 
     def beta_by_frame(self, frame_idx):
@@ -138,7 +208,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
         # weights = torch.tensor(weights, device=device, dtype=torch.float)
-        weights = np.array(weights, dtype=np.float32) 
+        weights = np.array(weights, dtype=np.float32)
+        idxes = np.array(idxes, dtype=np.int32)
         encoded_sample = self._encode_sample(idxes)
 
         return encoded_sample, idxes, weights
@@ -203,3 +274,14 @@ class RecurrentExperienceReplayMemory:
 
     def __len__(self):
         return len(self.memory)
+
+
+if __name__=='__main__':
+    nstep_buffer = NstepPrioritizedBuffer()
+    for i in range(10):
+        nstep_buffer.add(state=np.random.random((24,)), 
+                         action=np.random.random((2)), 
+                         reward=np.random.random((1)), 
+                         next_state=np.random.random((24,)), 
+                         td_error=np.random.random((1,)), 
+                         done=np.random.randint(0, 1, size=(1)))

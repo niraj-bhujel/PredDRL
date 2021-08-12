@@ -200,10 +200,10 @@ class Trainer:
                                                                            np.array(samples["done"], dtype=np.float32),
                                                                            samples["weights"] if self._use_prioritized_rb \
                                                                            else np.ones(self._policy.batch_size))
-
-                    tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                                      data=actor_loss)
-                    
+                    if actor_loss is not None:
+                        tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
+                                          data=actor_loss)
+                        
                     tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
                                       data=critic_loss)
 
@@ -416,11 +416,11 @@ if __name__ == '__main__':
     parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=5000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
-    parser.set_defaults(use_prioritized_rb=False)
+    parser.set_defaults(use_prioritized_rb=True)
     parser.set_defaults(use_nstep_rb=False)
 
     args = parser.parse_args()

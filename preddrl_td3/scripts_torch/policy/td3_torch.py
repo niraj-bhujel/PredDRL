@@ -18,17 +18,18 @@ class Critic(nn.Module):
     def __init__(self, state_shape, action_dim, units=[400, 300], name="Critic"):
         super(Critic, self).__init__()
 
+        # Q1
         self.l1 = nn.Linear(state_shape[0]+action_dim, units[0])
         self.l2 = nn.Linear(units[0], units[1])
         self.l3 = nn.Linear(units[1], 1)
 
+        #Q2
         self.l4 = nn.Linear(state_shape[0]+action_dim, units[0])
         self.l5 = nn.Linear(units[0], units[1])
         self.l6 = nn.Linear(units[1], 1)
             
 
-    def forward(self, inputs):
-        states, actions = inputs
+    def forward(self, states, actions):
         
         xu = torch.cat([states, actions], axis=1)
 
@@ -42,6 +43,13 @@ class Critic(nn.Module):
 
         return x1, x2
 
+    def Q1(self, states, actions):
+        sa = torch.cat([states, actions], 1)
+
+        q1 = F.relu(self.l1(sa))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+        return q1
 
 class TD3(DDPG):
     def __init__(
@@ -62,7 +70,7 @@ class TD3(DDPG):
 
         self.critic = Critic(state_shape, action_dim, critic_units)
         self.critic_target = Critic(state_shape, action_dim, critic_units)
-        self.soft_update_of_target_network(self.critic, self.critic_target, self.tau)
+        self.soft_update_of_target_network(self.critic, self.critic_target)
 
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
 
@@ -70,29 +78,33 @@ class TD3(DDPG):
         self._noise_clip = noise_clip
 
         self._actor_update_freq = actor_update_freq
-        # self._it = tf.Variable(0, dtype=tf.int32)
-        self._it = 0
+        self.total_it = 0
 
     def _train_body(self, states, actions, next_states, rewards, dones, weights):
+        
+        self.total_it += 1
 
+        # Compute critic loss
         td_error1, td_error2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)
-
         critic_loss = torch.mean(huber_loss(td_error1, delta=self.max_grad) * weights) + \
                       torch.mean(huber_loss(td_error2, delta=self.max_grad) * weights)
 
-        # optimization step
-        self.optimization_step(self.critic_optimizer, self.critic, critic_loss)
-        self.soft_update_of_target_network(self.critic, self.critic_target, tau=self.tau)
-        
-        self._it += 1
-        next_actions = self.actor(states)
+        # # Optimize the critic
+        self.optimization_step(self.critic_optimizer, critic_loss)
 
-        actor_loss = -torch.cat(self.critic([states, next_actions])).mean()
+        actor_loss = None
+        # Delayed policy updates
+        if self.total_it % self._actor_update_freq==0:
 
-        if self._it % self._actor_update_freq==0:
-            self.optimization_step(self.actor_optimizer, self.actor, actor_loss)        
+            # Compute actor losse
+            actor_loss = -self.critic.Q1(states, self.actor(states)).mean() # based on original source code
+            # actor_loss = -torch.cat(self.critic(states, next_actions)).mean()
+
+            self.optimization_step(self.actor_optimizer,  actor_loss)  
+
             # Update target networks
-            self.soft_update_of_target_network(self.actor, self.actor_target, tau=self.tau)
+            self.soft_update_of_target_network(self.actor, self.actor_target)
+            self.soft_update_of_target_network(self.critic, self.critic_target)
 
         return actor_loss, critic_loss, torch.abs(td_error1) + torch.abs(td_error2)
 
@@ -114,19 +126,22 @@ class TD3(DDPG):
         not_dones = 1. - dones
 
         with torch.no_grad():
+
+            # generate noise
+            noise = (torch.randn_like(actions) * self._policy_noise).clamp(-self._noise_clip, self._noise_clip)
+
             # Get noisy action
             next_action = self.actor_target(next_states)
-            noise = torch.empty_like(next_action).normal_(mean=0,std=self._policy_noise).clamp(-self._noise_clip, self._noise_clip)
+            next_action = (next_action + noise).clamp(-self.actor_target.max_action, self.actor_target.max_action)
 
-            next_action = torch.clamp(next_action + noise, -self.actor_target.max_action, self.actor_target.max_action)
+            # Compute the target Q value
+            target_Q1, target_Q2 = self.critic_target(next_states, next_action)
 
-            target_Q1, target_Q2 = self.critic_target([next_states, next_action])
+            target_Q = torch.min(target_Q1, target_Q2)
 
-            target_Q = torch.min(torch.cat([target_Q1, target_Q2], dim=-1), dim=-1)[0].unsqueeze(-1) # [bs, 1]
+            target_Q = rewards + not_dones * self.discount * target_Q
 
-            target_Q = rewards + (not_dones * self.discount * target_Q)
-
-        current_Q1, current_Q2 = self.critic([states, actions])
+        current_Q1, current_Q2 = self.critic(states, actions)
 
 
         return target_Q - current_Q1, target_Q - current_Q2
