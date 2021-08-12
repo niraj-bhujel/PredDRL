@@ -1,0 +1,45 @@
+<launch>
+  <arg name="model" default="burger"/>
+  <arg name="x_pos" default="-0.0"/>
+  <arg name="y_pos" default="0.0"/>
+  <arg name="z_pos" default="0.0"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+   <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/turtlebot3_stage_2.world"/>
+   <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/maze1.world"/> -->
+    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/train_env_2.world"/> -->
+    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/6.5_env_2.world"/> -->
+    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/6.5_env_3.world"/> -->
+    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/corridor_env.world"/> -->
+    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/social_contexts.world"/> -->
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="false"/>
+    <arg name="gui" value="false"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>  
+
+  <param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+
+  <!-- Load the URDF into the ROS Parameter Server  inorder-->
+	<!-- <param name="robot_description"
+		command="$(find xacro)/xacro '$(find p3dx_description)/urdf/pioneer3dx.xacro'" />
+
+	
+	<node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"
+		respawn="false" output="screen" args="-urdf -model p3dx -param robot_description -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -R 0.0 -P 0.0 -Y 0.0" />
+
+  	
+  	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+	
+ 	<node pkg="tf" type="static_transform_publisher" name="base_swivel_broadcaster" args="-0.185 0 0.055 0 0 0 base_link swivel 100" />
+ 	<node pkg="tf" type="static_transform_publisher" name="swivel_hubcap_broadcaster" args="-0.026 0 -0.016 0 0 0 swivel center_wheel 100" /> -->
+
+  <!-- <node pkg="turtlebot3_dqn"  type="combination_obstacle_1" name="combination_obstacle_1" output="screen" /> -->
+  <!-- <node pkg="turtlebot3_dqn"  type="combination_obstacle_2" name="combination_obstacle_2" output="screen" /> -->
+  <!-- <node pkg="turtlebot3_dqn"  type="moving_obstacle" name="moving_obstacle" output="screen" /> -->
+  <node pkg="turtlebot3_dqn"  type="odomtopath" name="odomtopath" output="screen" />
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" />
+  <!-- <node pkg="preddrl_tracker" type="pedestrian_state_publisher.py" name="pedestrian_state_publisher"  output="screen"> </node> -->
+</launch>
