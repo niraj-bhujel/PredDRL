@@ -7,7 +7,7 @@ import numpy as np
 from collections import deque 
 
 class Node(object):
-    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100):
+    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100, goal=[0.0, 0.0]):
         # self.data = data
         self.first_timestep = first_timestep
         self.id = node_id
@@ -19,13 +19,16 @@ class Node(object):
         self.quat = deque([], maxlen=max_len)
         self.rot = deque([], maxlen=max_len)
         self.time_stamp = deque([], maxlen=max_len)
-        
-    def update_states(self, p, v, q, r):
+        self.goal = goal
+    def update_states(self, p, v, q, r, goal=None):
         # self.states.append([p, v, q, r])
         self.pos.append(p)
         self.vel.append(v)
         self.quat.append(q)
         self.rot.append(r)
+
+        self.goal = goal
+        
         self.time_stamp.append(time.time())
         
         

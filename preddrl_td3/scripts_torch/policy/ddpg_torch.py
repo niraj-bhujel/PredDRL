@@ -133,8 +133,8 @@ class DDPG(OffPolicyAgent):
         
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
-        if actor_loss is not None:
-            actor_loss = actor_loss.item()
+        
+        actor_loss = actor_loss.item() if actor_loss is not None else actor_loss
 
         return actor_loss , critic_loss.item(), td_errors.detach().cpu().numpy()
 
@@ -149,9 +149,8 @@ class DDPG(OffPolicyAgent):
 
     def _train_body(self, states, actions, next_states, rewards, dones, weights):
 
-        td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
-
         # Compute critic loss
+        td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic

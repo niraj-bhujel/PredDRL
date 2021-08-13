@@ -102,14 +102,14 @@ class Env:
         # print(0)
         # print(goal_angle)
 
-    def getTracks(self, ):
+    def getNodeState(self, ):
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
         except rospy.ROSException:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        node_states = []
+        current_nodes = []
         # keep track of model states
         for i in range(model_states.name):
             m_name = model_states.name[i]
@@ -128,6 +128,9 @@ class Env:
             else:
                 node_type = 'pedestrian'
 
+            if node_type=='robot':
+                goal = (self.goal_x, self.goal_y)
+
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
@@ -142,11 +145,11 @@ class Env:
                 
             else:
                 node = Node(node_id=str(m_name), node_type=node_type)
-                node.update(m_pos, m_vel, m_quat, m_rot)
+                node.update(m_pos, m_vel, m_quat, m_rot, goal=goal)
 
-            node_states.append(node)
+            current_nodes.append(node)
             
-        return node_states
+        return current_nodes
 
     def getState(self, ):
         scan_range = []
@@ -184,9 +187,9 @@ class Env:
             success = True # modified by niraj
             
         # print(scan_range_collision)
-        state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
-        # state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
-        
+        # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
+        state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
+        # state = self.getNodeState()
         return state, done, success
        
     def setReward(self, state, done, success):

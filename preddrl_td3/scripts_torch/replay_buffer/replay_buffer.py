@@ -2,33 +2,43 @@
 
 import random
 import numpy as np
-from collections import deque
+from collections import deque, defaultdict
 import heapq
 from itertools import count
-# from .segment_tree import SegmentTree, MinSegmentTree, SumSegmentTree
+
+from .segment_tree import SegmentTree, MinSegmentTree, SumSegmentTree
 
 '''
 Adopted from https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman/
 '''
-class NstepPrioritizedBuffer:
+class NstepBuffer:
     """docstring for """
-    def __init__(self, size=4, alpha=0.6, gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
+    def __init__(self, size=4,  gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
 
         self.n_step = size
-        self.alpha = alpha
         self.gamma = gamma 
         
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         
-        self.buffer = []
+
         self.n_step_buffer = deque([], size)
         
         self.cnt = count()
         
-    def add(self, state, action, reward, next_state, done, td_error):
-      
+        self.Nstep_size = size
+        self.Nstep_gamma = gamma
+        self.stored_size = 0
+        self.buffer_size = self.Nstep_size - 1
+        
+        # self.buffer = defaultdict(lambda: deque([], maxlen=self.Nstep_size))
+        self.buffer = defaultdict(list)
+        
+    def add_(self, state, action, reward, next_state, done, td_error):
+        '''
+        https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
+        '''
         # n-step queue for calculating return of n previous steps
         self.n_step_buffer.append((state, action, reward, next_state, done))
         
@@ -46,38 +56,148 @@ class NstepPrioritizedBuffer:
         l_state, l_action = self.n_step_buffer[0][:2]
 
         t = (l_state, l_action, l_reward, l_next_state, l_done)
-        heapq.heappush(self.buffer, (-td_error, next(self.cnt), t))
-        
-        if len(self.buffer) > 100000:
-            self.buffer = self.buffer[:-1]
-            
-        heapq.heapify(self.buffer)
+        return t
 
-    def sample(self, batch_size):
+    def add(self, state, action, reward, next_state, done, **kwargs):
+        """Add envronment into local buffer.
+        Paremeters
+        ----------
+        **kwargs : keyword arguments
+            Values to be added.
+        Returns
+        -------
+        env : dict or None
+            Values with Nstep reward calculated. When the local buffer does not
+            store enough cache items, returns 'None'.
+        """
         
-        # Semi Stochastic Prioritization
-        prioritization = int(batch_size*self.alpha)
-        batch_prioritized = heapq.nsmallest(prioritization, self.buffer)
-        
-        batch_uniform = random.sample(self.buffer, batch_size-prioritization)
-        batch = batch_prioritized + batch_uniform
-        
-        batch = [e for (_, _, e) in batch]
+        N = 1 # assume 1 samples now
+        end = self.stored_size + N
+
+
+        # Case 1
+        #   If Nstep buffer don't become full, store all the input transitions.
+        #   These transitions are partially calculated.
+        if end <= self.buffer_size:
             
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+            self.buffer['state'].append(state)
+            self.buffer['action'].append(action)
+            self.buffer['done'].append(done)
             
-        return batch
+            # for name, stored_b in self.buffer.items():
+            #     if self.Nstep_rew is not None and np.isin(name, self.Nstep_rew).any():
+            #         # Calculate later.
+            #         pass
+            #     elif (self.Nstep_next is not None
+            #           and np.isin(name,self.Nstep_next).any()):
+            #         # Do nothing.
+            #         pass
+            #     else:
+            #         stored_b[self.stored_size:end] = self._extract(kwargs,name) # _extract return array of shape (-1, dim)
+
+            # Nstep reward must be calculated after "done" filling
+            # gamma = (1.0 - self.buffer["done"][:end]) * self.Nstep_gamma # numpy array of shape (end, 1)
+            gamma = [1.0-self.buffer['done'][i]*self.Nstep_gamma for i in range(0, end)]
+            
+            # work on progress!
+            # # if self.Nstep_rew is not None:
+            #     max_slide = min(self.Nstep_size - self.stored_size, N)
+            #     max_slide *= -1
+            #     # for name in self.Nstep_rew:
+                    
+            #         # ext_b = self._extract(kwargs, name).copy() # reward array of shape (-1, 1)
+            #         # self.buffer[name][self.stored_size:end] = ext_b
+            #         self.buffer['reward'][self.stored_size:end] = reward
+        
+            #         for i in range(self.stored_size-1, max_slide, -1):
+            #             stored_begin = max(i, 0)
+            #             stored_end = i+N
+            #             ext_begin = max(-i, 0)
+            #             ext_b[ext_begin:] *= gamma[stored_begin:stored_end]
+            #             self.buffer[name][stored_begin:stored_end] +=ext_b[ext_begin:]
+    
+            self.stored_size = end
+            return None
+
+        # Case 2
+        #   If we have enough transitions, return calculated transtions
+        diff_N = self.buffer_size - self.stored_size
+        add_N = N - diff_N
+        NisBigger = (add_N > self.buffer_size)
+        end = self.buffer_size if NisBigger else add_N
+
+        # Nstep reward must be calculated before "done" filling
+        gamma = np.ones((self.stored_size + N,1),dtype=np.single)
+        gamma[:self.stored_size] -= self.buffer["done"][:self.stored_size]
+        gamma[self.stored_size:] -= self._extract(kwargs,"done")
+        gamma *= self.Nstep_gamma
+        if self.Nstep_rew is not None:
+            max_slide = min(self.Nstep_size - self.stored_size,N)
+            max_slide *= -1
+            for name in self.Nstep_rew:
+                stored_b = self.buffer[name]
+                ext_b = self._extract(kwargs,name)
+
+                copy_ext = ext_b.copy()
+                if diff_N:
+                    stored_b[self.stored_size:] = ext_b[:diff_N]
+                    ext_b = ext_b[diff_N:]
+
+                for i in range(self.stored_size-1,max_slide,-1):
+                    stored_begin = max(i,0)
+                    stored_end = i+N
+                    ext_begin = max(-i,0)
+                    copy_ext[ext_begin:] *= gamma[stored_begin:stored_end]
+                    if stored_end <= self.buffer_size:
+                        stored_b[stored_begin:stored_end] += copy_ext[ext_begin:]
+                    else:
+                        spilled_N = stored_end - self.buffer_size
+                        stored_b[stored_begin:] += copy_ext[ext_begin:-spilled_N]
+                        ext_b[:spilled_N] += copy_ext[-spilled_N:]
+
+                self._roll(stored_b,ext_b,end,NisBigger,kwargs,name,add_N)
+
+        for name, stored_b in self.buffer.items():
+            if self.Nstep_rew is not None and np.isin(name,self.Nstep_rew).any():
+                # Calculated.
+                pass
+            elif (self.Nstep_next is not None
+                  and np.isin(name,self.Nstep_next).any()):
+                kwargs[name] = self._extract(kwargs,name)[diff_N:]
+            else:
+                ext_b = self._extract(kwargs,name)
+
+                if diff_N:
+                    stored_b[self.stored_size:] = ext_b[:diff_N]
+                    ext_b = ext_b[diff_N:]
+
+                self._roll(stored_b,ext_b,end,NisBigger,kwargs,name,add_N)
+
+        done = kwargs["done"]
+
+        for i in range(1,self.buffer_size):
+            if i <= add_N:
+                done[:-i] += kwargs["done"][i:]
+                done[-i:] += self.buffer["done"][:i]
+            else:
+                done += self.buffer["done"][i-add_N:i]
+
+        self.stored_size = self.buffer_size
+        return kwargs
+
+
 
 '''
 Adopted from https://github.com/ShangtongZhang/DeepRL/blob/master/deep_rl/component/replay.py
 '''
 
 class ReplayBuffer:
-    def __init__(self, size):
+    def __init__(self, size, use_nstep=False, n_step=4, gamma=0.995):
 
         self._storage = []
         self._maxsize = size
+        if use_nstep:
+            self.n_step_buffer = NstepBuffer(size=n_step, gamma=gamma)
 
     def add(self, transition):
         self._storage.append(transition)
@@ -96,7 +216,7 @@ class ReplayBuffer:
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=100000):
+    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=100000, use_nstep=False, n_step=4):
         """Create Prioritized Replay buffer.
         Parameters
         ----------
@@ -129,6 +249,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min = MinSegmentTree(it_capacity)
         
         self._max_priority = 1.0
+
+        # if use_nstep:
+        #     self.n_step_buffer = NstepBuffer(size=n_step)
 
     def beta_by_frame(self, frame_idx):
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)

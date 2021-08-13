@@ -49,7 +49,7 @@ def get_replay_buffer(policy, env, use_prioritized_rb=False,
 
     if size is not None:
         kwargs["size"] = size
-    print(kwargs)
+
     # on-policy policy
     if not issubclass(type(policy), OffPolicyAgent):
         kwargs["size"] = policy.horizon

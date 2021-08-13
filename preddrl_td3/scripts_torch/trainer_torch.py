@@ -16,9 +16,6 @@ from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 
-# from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from deeprl_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-
 if tf.config.experimental.list_physical_devices('GPU'):
     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
         print(cur_device)
@@ -39,7 +36,6 @@ class Trainer:
         self._logdir = args.logdir
 
         # replay buffer
-        self._buffer_size = args.buffer_size
         self._use_prioritized_rb = args.use_prioritized_rb
         self._use_nstep_rb = args.use_nstep_rb
         self._n_step = args.n_step
@@ -59,20 +55,17 @@ class Trainer:
         self._env = env
         self._test_env = self._env if test_env is None else test_env
 
-        self.nstep_buffer = [] 
-
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
         # prepare log directory
-        suffix = '_'.join(['%s'%self._policy.policy_name,
-                        # 'warmup_%d'%self._policy.n_warmup,
-                        # 'n_step_%d'%self._n_step,
-                        # 'max_steps_%d'%self._max_steps,
-                        # 'episode_max_steps_%d'%self._episode_max_steps,
+        suffix = '_'.join(['%s'%policy.policy_name,
+                        'warmup_%d'%self._policy.n_warmup,
+                        'batch_size_%d'%policy.batch_size,
                         'seed_%d'%args.seed,
                         ])
+
 
         if self._use_prioritized_rb:
             suffix += '_use_prioritized_rb'
@@ -92,6 +85,11 @@ class Trainer:
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
+        # if args.evaluate:
+        #     assert args.model_dir is not None
+
+        # self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
+
         if self._evaluate or self._restore_checkpoint:
             load_ckpt(self._policy, self._output_dir, last_step=1e4)
 
@@ -99,12 +97,6 @@ class Trainer:
         # prepare TensorBoard output
         self.writer = tf.summary.create_file_writer(self._output_dir)
         self.writer.set_as_default()
-
-        if self._use_prioritized_rb:
-            self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
-                                                    beta_frames=self._max_steps)
-        else:
-            self.replay_buffer = ReplayBuffer(size=self._buffer_size)
 
         # self.set_seed(args.seed)
 
@@ -115,20 +107,6 @@ class Trainer:
         torch.manual_seed(seed)
 
 
-    def append_to_replay(self, s, a, r, s_, d):
-        self.nstep_buffer.append((s, a, r, s_, d))
-
-        if(len(self.nstep_buffer)<self._n_step):
-            return
-        
-        R = sum([self.nstep_buffer[i][2]*(self._policy.discount**i) for i in range(self._n_step)])
-        state, action, _, _, _ = self.nstep_buffer.pop(0)
-
-        R = np.array(R, ndmin=1)
-        d = np.array(d, ndmin=1)
-
-        self.replay_buffer.add((state, action, R, s_, d))
-
     def __call__(self):
         total_steps = 0
         tf.summary.experimental.set_step(total_steps)
@@ -138,6 +116,12 @@ class Trainer:
         n_episode = 1
         #for success rate
         episode_success = 0
+        #
+        replay_buffer = get_replay_buffer(self._policy, 
+                                          self._env, 
+                                          self._use_prioritized_rb, 
+                                          self._use_nstep_rb, 
+                                          self._n_step)
 
         # separate input (laser scan, vel, polor)
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
@@ -161,13 +145,17 @@ class Trainer:
 
             tf.summary.experimental.set_step(total_steps)
 
-            # replay_buffer.add(obs=obs, 
-            #                   act=action, 
-            #                   next_obs=next_obs, 
-            #                   rew=reward, 
-            #                   done=done)
+            done_flag = done
 
-            self.append_to_replay(obs, action, reward, next_obs, done)
+            # this line will never executed since env doesn't have _max_episode_steps attribute - note by niraj
+            if hasattr(self._env, "_max_episode_steps") and episode_steps == self._env._max_episode_steps:
+                done_flag = False
+
+            replay_buffer.add(obs=obs, 
+                              act=action, 
+                              next_obs=next_obs, 
+                              rew=reward, 
+                              done=done_flag)
 
             obs = next_obs
             #for success rate
@@ -200,44 +188,31 @@ class Trainer:
                 continue
 
             if total_steps % self._policy.update_interval == 0:
-                sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
+                samples = replay_buffer.sample(self._policy.batch_size)
 
-                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
-                samples = {"obs": obs_batch,
-                            "act": act_batch,
-                            "next_obs":next_obs_batch,
-                            "rew": rew_batch,
-                            "done":done_batch,
-                            "weights": weights,
-                            "indexes": idxes,
-                }
-                # print({k:v.shape for k,v in samples.items()})
-
-                with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
-                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
-                                                                           samples["act"], 
-                                                                           samples["next_obs"],
-                                                                           samples["rew"], 
-                                                                           samples["done"],
-                                                                           samples["weights"] if self._use_prioritized_rb \
-                                                                           else np.ones(self._policy.batch_size, dtype=np.float32))
-
+                actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                                                                       samples["act"], 
+                                                                       samples["next_obs"],
+                                                                       samples["rew"], 
+                                                                       np.array(samples["done"], dtype=np.float32),
+                                                                       samples["weights"] if self._use_prioritized_rb \
+                                                                       else np.ones(self._policy.batch_size))
+                if actor_loss is not None:
                     tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
                                       data=actor_loss)
                     
                     tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
                                       data=critic_loss)
-
+                    # self.logger.info("Step {}/{}- actor_loss:{:.5f}, critic_loss:{:.5f} td_errors:{:.5f}".format(total_steps, self._max_steps, actor_loss, critic_loss, np.mean(td_errors)))
+            
                 if self._use_prioritized_rb:
-                    # td_error = np.ravel(td_errors) # use previous td_error ->niraj
-
                     td_error = self._policy.compute_td_error(samples["obs"], 
                                                              samples["act"], 
                                                              samples["next_obs"],
                                                              samples["rew"], 
-                                                             samples["done"])
-
-                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
+                                                             np.array(samples["done"], dtype=np.float32))
+                    # print(td_error)
+                    replay_buffer.update_priorities(samples["indexes"], np.abs(np.ravel(td_error)))
 
 
 
@@ -245,8 +220,6 @@ class Trainer:
                 
                 avg_test_return = self.evaluate_policy(total_steps)
 
-                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                    total_steps, avg_test_return, self._test_episodes))
 
                 tf.summary.scalar(name="Common/average_test_return", 
                                   data=avg_test_return)
@@ -255,6 +228,9 @@ class Trainer:
                                   data=fps)
 
                 self.writer.flush()
+
+                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
+                    total_steps, avg_test_return, self._test_episodes))
 
             if total_steps % self._save_model_interval == 0:
                 # self.checkpoint_manager.save()
@@ -391,8 +367,6 @@ class Trainer:
                             help='Save rendering results')
 
         # replay buffer
-        parser.add_argument('--buffer_size', type=int, default=100000,
-                            help='Size of buffer')
         parser.add_argument('--use-prioritized-rb', action='store_true',
                             help='Flag to use prioritized experience replay')
         parser.add_argument('--use-nstep-rb', action='store_true',
@@ -408,7 +382,7 @@ class Trainer:
                             help='batch size')
         parser.add_argument('--n_warmup', default=3000, type=int, 
                             help='Number of warmup steps') # 重新训练的话要改回 10000
-        parser.add_argument('--restore_checkpoint', action='store_true',
+        parser.add_argument('--restore_checkpoint', action='store_true', default=False,
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
@@ -416,7 +390,7 @@ class Trainer:
                             help='Add prefix to log dir')
         parser.add_argument('--seed', default=1901858486, type=int, 
                             help='Seed value.')
-        parser.add_argument('--debug', default=0, type=int, 
+        parser.add_argument('--debug_level', default=0, type=int, 
                             help='Seed value.')
         parser.add_argument('--clean', action='store_true', 
                             help='Remove outputs when exit.')
@@ -427,24 +401,25 @@ if __name__ == '__main__':
     sys.path.insert(0, './')
 
     import rospy
+
     from policy.td3_torch import TD3
     from policy.ddpg_torch import DDPG
-
     from preddrl_td3.env.environment_stage_3_bk import Env
 
+
     # from gym.utils import seeding as _s 
-    
+
     parser = Trainer.get_argument()
 
     parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
     parser.set_defaults(use_prioritized_rb=True)
-    parser.set_defaults(use_nstep_rb=True)
+    parser.set_defaults(use_nstep_rb=False)
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
@@ -458,7 +433,7 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug_level)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
@@ -505,6 +480,6 @@ if __name__ == '__main__':
         print('Exiting from training early because of KeyboardInterrupt')
 
         if args.clean:
-            print('Cleaning output dir ... ')
             shutil.rmtree(trainer._output_dir)
+            print('Cleaned output dir ... ')
         sys.exit()

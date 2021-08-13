@@ -43,13 +43,13 @@ class Critic(nn.Module):
 
         return x1, x2
 
-    def Q1(self, states, actions):
-        sa = torch.cat([states, actions], 1)
+    # def Q1(self, states, actions):
+    #     sa = torch.cat([states, actions], 1)
 
-        q1 = F.relu(self.l1(sa))
-        q1 = F.relu(self.l2(q1))
-        q1 = self.l3(q1)
-        return q1
+    #     q1 = F.relu(self.l1(sa))
+    #     q1 = F.relu(self.l2(q1))
+    #     q1 = self.l3(q1)
+    #     return q1
 
 class TD3(DDPG):
     def __init__(
@@ -91,20 +91,20 @@ class TD3(DDPG):
 
         # # Optimize the critic
         self.optimization_step(self.critic_optimizer, critic_loss)
+        self.soft_update_of_target_network(self.critic, self.critic_target)
 
         actor_loss = None
         # Delayed policy updates
         if self.total_it % self._actor_update_freq==0:
 
             # Compute actor losse
-            actor_loss = -self.critic.Q1(states, self.actor(states)).mean() # based on original source code
-            # actor_loss = -torch.cat(self.critic(states, next_actions)).mean()
+            # actor_loss = -self.critic.Q1(states, self.actor(states)).mean() # based on original source code
+            actor_loss = -torch.cat(self.critic(states, self.actor(states))).mean()
 
             self.optimization_step(self.actor_optimizer,  actor_loss)  
 
             # Update target networks
             self.soft_update_of_target_network(self.actor, self.actor_target)
-            self.soft_update_of_target_network(self.critic, self.critic_target)
 
         return actor_loss, critic_loss, torch.abs(td_error1) + torch.abs(td_error2)
 
@@ -118,7 +118,8 @@ class TD3(DDPG):
         with torch.no_grad():
             td_errors1, td_errors2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)
 
-        return np.squeeze(np.abs(td_errors1.cpu().numpy()) + np.abs(td_errors2.cpu().numpy()))
+        return (td_errors1.abs() + td_errors2.abs()).squeeze(-1).cpu().numpy()
+        # return np.squeeze(np.abs(td_errors1.cpu().numpy()) + np.abs(td_errors2.cpu().numpy()))
 
 
     def _compute_td_error_body(self, states, actions, next_states, rewards, dones):
@@ -128,15 +129,17 @@ class TD3(DDPG):
         with torch.no_grad():
 
             # generate noise
-            noise = (torch.randn_like(actions) * self._policy_noise).clamp(-self._noise_clip, self._noise_clip)
+            noise = torch.empty_like(actions).normal_(mean=0,std=self._policy_noise)
+            noise = noise.clamp(-self._noise_clip, self._noise_clip)
 
             # Get noisy action
-            next_action = self.actor_target(next_states)
-            next_action = (next_action + noise).clamp(-self.actor_target.max_action, self.actor_target.max_action)
+            next_actions = self.actor_target(next_states) + noise
+            next_actions = next_actions.clamp(-self.actor_target.max_action, self.actor_target.max_action)
 
             # Compute the target Q value
-            target_Q1, target_Q2 = self.critic_target(next_states, next_action)
+            target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
 
+            # target_Q = torch.min(torch.cat([target_Q1, target_Q2], dim=-1), dim=-1)[0].unsqueeze(-1)
             target_Q = torch.min(target_Q1, target_Q2)
 
             target_Q = rewards + not_dones * self.discount * target_Q
