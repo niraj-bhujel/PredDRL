@@ -205,8 +205,8 @@ class Trainer:
             if total_steps % self._policy.update_interval == 0:
                 sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
 
-                samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
-                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = samples
+                # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
+                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
                 samples = dict(obs=obs_batch, 
                                act=act_batch, 
                                rew=rew_batch, 
@@ -216,29 +216,29 @@ class Trainer:
                                indexes=idxes)
                 # print({k:v.shape for k,v in samples.items()})
 
-                actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
-                                                                       samples["act"], 
-                                                                       samples["next_obs"],
-                                                                       samples["rew"], 
-                                                                       samples["done"],
-                                                                       samples["weights"] if self._use_prioritized_rb \
-                                                                       else np.ones(self._policy.batch_size, dtype=np.float32))
+                # actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                #                                                        samples["act"], 
+                #                                                        samples["next_obs"],
+                #                                                        samples["rew"], 
+                #                                                        samples["done"],
+                #                                                        samples["weights"] if self._use_prioritized_rb \
+                #                                                        else np.ones(self._policy.batch_size))
 
-                if actor_loss is not None:
-                    tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                                      data=actor_loss)
+                # if actor_loss is not None:
+                #     tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
+                #                       data=actor_loss)
                     
-                    tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
-                                      data=critic_loss)
+                #     tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
+                #                       data=critic_loss)
 
-                if self._use_prioritized_rb:
-                    td_error = self._policy.compute_td_error(samples["obs"], 
-                                                             samples["act"], 
-                                                             samples["next_obs"],
-                                                             samples["rew"], 
-                                                             samples["done"])
-                    # print(td_error.shape)
-                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
+                # if self._use_prioritized_rb:
+                #     td_error = self._policy.compute_td_error(samples["obs"], 
+                #                                              samples["act"], 
+                #                                              samples["next_obs"],
+                #                                              samples["rew"], 
+                #                                              samples["done"])
+                #     # print(td_error.shape)
+                #     self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
 
 
@@ -444,8 +444,8 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
-    parser.set_defaults(use_prioritized_rb=True)
-    parser.set_defaults(use_nstep_rb=True)
+    parser.set_defaults(use_prioritized_rb=False)
+    parser.set_defaults(use_nstep_rb=False)
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})

@@ -1,6 +1,8 @@
 import rospy
 import numpy as np
 import math
+from copy import deepcopy
+
 from gym import spaces
 from gym.utils import seeding
 from math import pi
@@ -8,9 +10,19 @@ from geometry_msgs.msg import Twist, Point, Pose, PoseStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
-# from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from .respawnGoal import Respawn
+from gazebo_msgs.msg import ModelStates
 
+from preddrl_tracker.scripts.node import Node
+
+def vector3_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z])
+
+def quat_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z, msg.w])
+
+def point_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z])
 
 class Env:
     def __init__(self):
@@ -48,6 +60,7 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
+        self.nodes = dict()
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -109,15 +122,17 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        current_nodes = []
+        nodes = []
         # keep track of model states
-        for i in range(model_states.name):
+        for i in range(len(model_states.name)):
             m_name = model_states.name[i]
             
             if 'square' in m_name:
                 continue
-            if 'goal' in m_name:
-                continue
+
+            # if 'goal' in m_name:
+            #     continue
+
             if 'gound' in m_name:
                 continue
             
@@ -128,28 +143,35 @@ class Env:
             else:
                 node_type = 'pedestrian'
 
-            if node_type=='robot':
-                goal = (self.goal_x, self.goal_y)
 
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
             m_pos = point_to_numpy(pose.position)
             m_quat = quat_to_numpy(pose.orientation)
+
             m_vel = vector3_to_numpy(twist.linear)
             m_rot = vector3_to_numpy(twist.angular)
 
+                
             if m_name in self.nodes.keys():
                 node = self.nodes[m_name]
-                node.update(m_pos, m_vel, m_quat, m_rot)
-                
             else:
                 node = Node(node_id=str(m_name), node_type=node_type)
-                node.update(m_pos, m_vel, m_quat, m_rot, goal=goal)
+                self.nodes[m_name] = node
 
-            current_nodes.append(node)
-            
-        return current_nodes
+            node.update_states(m_pos, m_vel, m_quat, m_rot)
+
+            if node_type=='robot':
+                node.goal = (self.goal_x, self.goal_y, 0)
+                # m_vel = (self.vel_cmd[0], 0, self.vel_cmd[1])
+            else:
+                node.goal = node.cv_prediction(node.last_timestep)[-1]
+
+            # state = (m_pos, v_vel, goal)
+            nodes.append(deepcopy(node))
+        
+        return node_states
 
     def getState(self, ):
         scan_range = []
@@ -184,19 +206,19 @@ class Env:
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
         if current_distance < self.goal_threshold:
             rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
-            success = True # modified by niraj
+            success = True
             
         # print(scan_range_collision)
         # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
-        # state = self.getNodeState()
+        
         return state, done, success
        
     def setReward(self, state, done, success):
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        distance_rate = (self.past_distance - current_distance)
+        # distance_rate = (self.past_distance - current_distance)
         self.past_distance = current_distance
 
         if done:
@@ -208,6 +230,7 @@ class Env:
         else:
             reward = (self.goal_threshold-state[-1]) * 0.1 #- 0.25*abs(state[-3])15*distance_rate
             # reward = 15*distance_rate
+        
         # 增加一层膨胀区域，越靠近障碍物负分越多
         obstacle_min_range = round(min(state[:self.num_beams]), 2)
         if obstacle_min_range < self.inflation_rad:
@@ -224,8 +247,8 @@ class Env:
 
         vel_cmd.linear.x = (action[0] + 2.0) / 20.0
         vel_cmd.angular.z = action[1]
-        self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
         self.pub_cmd_vel.publish(vel_cmd)
+        self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
 
         state, done, success = self.getState()
         

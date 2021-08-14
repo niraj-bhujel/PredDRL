@@ -7,45 +7,79 @@ import numpy as np
 from collections import deque 
 
 class Node(object):
-    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100, goal=[0.0, 0.0]):
+    def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100, goal=None):
         # self.data = data
-        self.first_timestep = first_timestep
-        self.id = node_id
-        self.type = node_type
-        
-        # self.states = deque([], maxlen=max_len)
-        self.pos = deque([], maxlen=max_len)
-        self.vel = deque([], maxlen=max_len)
-        self.quat = deque([], maxlen=max_len)
-        self.rot = deque([], maxlen=max_len)
-        self.time_stamp = deque([], maxlen=max_len)
-        self.goal = goal
-    def update_states(self, p, v, q, r, goal=None):
-        # self.states.append([p, v, q, r])
-        self.pos.append(p)
-        self.vel.append(v)
-        self.quat.append(q)
-        self.rot.append(r)
+        self._first_timestep = first_timestep
+        self._id = node_id
+        self._type = node_type
+        self._length = 0
+        self._goal = goal
 
-        self.goal = goal
+        self._pos = deque([], maxlen=max_len)
+        self._vel = deque([], maxlen=max_len)
+        self._acc = deque([], maxlen=max_len)
+        self._quat = deque([], maxlen=max_len)
+        self._rot = deque([], maxlen=max_len)
+        self._time_stamp = deque([], maxlen=max_len)
+
+    def __len__(self):
+        return len(self._pos)
         
-        self.time_stamp.append(time.time())
+    def update_states(self, p, v, q, r):
+        '''
+        p: position, could be (x, y) or (x, y, z)
+        v: linear velocity, (vx, vy) or (vx, vy, vz)
+        q: quaternion (w, x, y, z)
+        r: angular velocity (x, y) or (x, y, z) as in Twist
+        '''
         
+        curr_timestamp = time.time()
+
+        if len(self)>0:
+            a = np.asarray(self._vel[-1]) - np.asarray(v)
+            a = a/(self._time_stamp[-1] - curr_timestamp)
+        else:
+            a = np.zeros_like(v)
+
+        self._pos.append(p)
+        self._vel.append(v)
+        self._acc.append(a)
+        self._quat.append(q)
+        self._rot.append(r)
         
-    def cv_prediction(self, t, prediction_horizon=12, desired_fps=2.5):
-                
-        pass
-    
+        self._time_stamp.append(curr_timestamp)
+        
+    # def update_goal(self, t, future_step=12):
+    #     preds = self.cv_prediction(t, future_step, time_step=1.0/self.frame_rate)
+    #     self._goal = preds[-1]
+
+    def cv_prediction(self, t, pred_steps=20, time_step=None):
+        if time_step is None:
+            time_step = 1.0/self.frame_rate
+
+        _idx = self.timestep_index(t)
+
+        preds = []
+        x, y, z = self._pos[_idx]
+        vx, vy, vz = self._vel[_idx]
+        ax, ay, az = self._acc[_idx]
+        sec_from_now = pred_steps * time_step
+        for time in np.arange(time_step, sec_from_now + time_step, time_step):
+            half_time_squared = 0.5 * time * time
+            preds.append((x + time * vx + half_time_squared * ax,
+                          y + time * vy + half_time_squared * ay,
+                          z + time * vz + half_time_squared * az))
+        return preds
     
     def states_at(self, t):
         
         ts_idx = self.timestep_index(t)
         
-        p = self.pos[ts_idx]
-        v = self.vel[ts_idx]
+        p = self._pos[ts_idx]
+        v = self._vel[ts_idx]
         
-        q = self.quat[ts_idx]
-        r = self.rot[ts_idx]
+        q = self._quat[ts_idx]
+        r = self._rot[ts_idx]
         
         return p, v, q, r
 
@@ -58,25 +92,35 @@ class Node(object):
             
         sampled_idx = np.arange(-1, -self.timesteps, step=-frame_interval)[::-1]
         
-        sampled_pos = np.array(self.pos)[sampled_idx]
+        sampled_pos = np.array(self._pos)[sampled_idx]
         
         return sampled_pos[-history_timesteps:]
 
     def timestep_index(self, t):
-        return t-self.first_timestep
+        return t-self._first_timestep
 
     @property
     def frame_rate(self):
-        if len(self.pos)>1:
-            fps = 1/np.mean(np.diff(self.time_stamp))
-        else:
+        if len(self)>1:
+            fps = 1/np.mean(np.diff(self._time_stamp))
+        elif len(self)==1:
             fps = 1
+        else:
+            fps = 0
         return fps
+
+    @ property
+    def goal(self):
+        return self._goal
 
     @property
     def timesteps(self):
-        return len(self.pos)
+        return len(self._pos)
 
     @property
     def last_timestep(self):
-        return self.first_timestep + self.timesteps - 1
+        return self._first_timestep + self.timesteps - 1
+
+    @goal.setter   #property-name.setter decorator
+    def goal(self, value):
+        self._goal = value
