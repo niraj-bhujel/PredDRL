@@ -16,7 +16,6 @@ from scipy.interpolate import interp1d
 from pyquaternion import Quaternion
 
 from node import Node
-from scene import Scene
 
 import rospy
 
@@ -123,7 +122,7 @@ def _gradient(x, dt=0.4, axis=0):
     
     return g
 
-def prepare_data(data_path, target_frame_rate=25):
+def prepare_data(data_path, target_frame_rate=25, max_peds=50):
     print('Preparing data .. ')
     target_frame_rate =  min(target_frame_rate, 25)
     
@@ -169,14 +168,13 @@ def prepare_data(data_path, target_frame_rate=25):
             r = [0., 0., 0.]
             
             node.update_states(p, v, q, r)
-            
-        # break
-            
+
         ped_nodes.append(node)
         
         ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
-
-        if num_ped_considered>50:
+        
+        num_ped_considered+=1
+        if num_ped_considered>max_peds:
             break
     
     ped_frames = []
@@ -202,7 +200,6 @@ if __name__ == '__main__':
     ros_rate = 10
     data_root = rospy.myargv(argv=sys.argv)
     data_path = '/crowds_zara01.txt'
-    # data_root = '/home/ros_admin/predDRL_ws/src'
     # data_path = '/preddrl_tracker/data/crowds_zara01.txt'
     
     frames, peds_per_frame, ped_nodes = prepare_data(data_root[1] + data_path, target_frame_rate=ros_rate)

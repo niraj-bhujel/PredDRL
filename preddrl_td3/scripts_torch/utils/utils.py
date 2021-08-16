@@ -8,6 +8,14 @@ from matplotlib import animation
 
 import torch
 
+def model_attributes(model, verbose=0):
+    attributes = {k:v for k, v in model.__dict__.items() if not k.startswith('_')}
+    
+    if verbose>0:
+        print(sorted(attributes.items()))
+        
+    return attributes
+
 def save_path(samples, filename):
     joblib.dump(samples, filename, compress=3)
 

@@ -1,0 +1,33 @@
+{
+	"state_dim": {
+		"pos": 2,
+		"vel": 2,
+		"acc": 2,
+		"hed": 1,
+		"dir": 1,
+		"diff": 2,
+		"dist": 1
+	},
+	"actor": {
+		"hidden_dim": 256, 
+		"num_layers": 4,
+		"in_dim_node": 2,
+		"in_dim_edge": 1,
+		"embed": true,
+		"mlp_readout_node": true,
+		"mlp_readout_edge": false,
+		"out_dim_node": 2,
+		"out_dim_edge": 1
+	},
+	"critic": {
+		"hidden_dim": 256, 
+		"num_layers": 4,
+		"in_dim_node": 2,
+		"in_dim_edge": 1,
+		"embed": true,
+		"mlp_readout_node": true,
+		"mlp_readout_edge": false,
+		"out_dim_node": 1,
+		"out_dim_edge": 1
+	}
+}
