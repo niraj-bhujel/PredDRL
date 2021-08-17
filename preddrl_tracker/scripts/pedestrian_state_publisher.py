@@ -16,7 +16,6 @@ from scipy.interpolate import interp1d
 from pyquaternion import Quaternion
 
 from node import Node
-from scene import Scene
 
 import rospy
 
@@ -69,7 +68,7 @@ def create_actor_msg(nodes, t):
 
     for node in nodes:
 
-        p, v, q, r = node.states_at(t)
+        p, v, a, q, r = node.states_at(t)
 
         state = AgentState()
 
@@ -123,7 +122,7 @@ def _gradient(x, dt=0.4, axis=0):
     
     return g
 
-def prepare_data(data_path, target_frame_rate=25):
+def prepare_data(data_path, target_frame_rate=25, max_peds=50):
     print('Preparing data .. ')
     target_frame_rate =  min(target_frame_rate, 25)
     
@@ -169,14 +168,13 @@ def prepare_data(data_path, target_frame_rate=25):
             r = [0., 0., 0.]
             
             node.update_states(p, v, q, r)
-            
-        # break
-            
+
         ped_nodes.append(node)
         
         ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
-
-        if num_ped_considered>50:
+        
+        num_ped_considered+=1
+        if num_ped_considered>max_peds:
             break
     
     ped_frames = []
@@ -200,12 +198,14 @@ def prepare_data(data_path, target_frame_rate=25):
 if __name__ == '__main__':
     
     ros_rate = 10
-    data_root = rospy.myargv(argv=sys.argv)
-    data_path = '/crowds_zara01.txt'
-    # data_root = '/home/ros_admin/predDRL_ws/src'
-    # data_path = '/preddrl_tracker/data/crowds_zara01.txt'
-    
-    frames, peds_per_frame, ped_nodes = prepare_data(data_root[1] + data_path, target_frame_rate=ros_rate)
+
+    # data_root = rospy.myargv(argv=sys.argv)[0]
+    # data_path = data_root + '/crowds_zara01.txt'
+
+    data_root = '/home/loc/peddrl_ws/src'
+    data_path = data_root + '/preddrl_tracker/data/crowds_zara01.txt'
+    print('Preparing data from: ', data_path)
+    frames, peds_per_frame, ped_nodes = prepare_data(data_path, target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents", anonymous=True, disable_signals=True)
@@ -261,11 +261,11 @@ if __name__ == '__main__':
                     actors_id_list.append(actor_id)
 
                 if actor.type==int(4):
-                    actors_id_list.remove(actor_id)
                     delete_model(actor_id)
+                    actors_id_list.remove(actor_id)
 
-            # if t>=len(frames)-1:
-            if t>100:
+            if t>=len(frames)-1:
+            # if t>100:
                 rospy.loginfo('[Frame-%d] Resetting frame to 0. '%(t))
                 [delete_model(actor_id) for actor_id in actors_id_list]
                 t = 0
@@ -274,14 +274,14 @@ if __name__ == '__main__':
             else:
                 t += 1
 
-            # rospy.sleep(1/ros_rate) # this doen't work well in python2
-            r.sleep() # turn of use_sim_time if r.sleep() doesn't work
+            rospy.sleep(1/ros_rate) # this doen't work well in python2
+            # r.sleep() # turn of use_sim_time if r.sleep() doesn't work
             
         except KeyboardInterrupt:
             print('Closing down .. ')
             # delete all model at exit
             # print('deleting existing actor models')
-            # [delete_model(actor_id) for actor_id in actors_id_list]  
+            [delete_model(actor_id) for actor_id in actors_id_list]  
             break         
 
 

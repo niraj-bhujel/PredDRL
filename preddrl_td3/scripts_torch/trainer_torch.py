@@ -6,7 +6,9 @@ import shutil
 import random
 import torch
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
+from collections import deque
+from torch.utils.tensorboard import SummaryWriter
 
 from gym.spaces import Box
 
@@ -15,11 +17,16 @@ from misc.initialize_logger import initialize_logger
 from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
+from utils.graph_utils import node_type_list
+from utils.vis_graph import network_draw
 
-if tf.config.experimental.list_physical_devices('GPU'):
-    for cur_device in tf.config.experimental.list_physical_devices("GPU"):
-        print(cur_device)
-        tf.config.experimental.set_memory_growth(cur_device, enable=True)
+# from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+
+# if tf.config.experimental.list_physical_devices('GPU'):
+#     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
+#         print(cur_device)
+#         tf.config.experimental.set_memory_growth(cur_device, enable=True)
 
 
 class Trainer:
@@ -36,6 +43,7 @@ class Trainer:
         self._logdir = args.logdir
 
         # replay buffer
+        self._buffer_size = args.buffer_size
         self._use_prioritized_rb = args.use_prioritized_rb
         self._use_nstep_rb = args.use_nstep_rb
         self._n_step = args.n_step
@@ -55,6 +63,8 @@ class Trainer:
         self._env = env
         self._test_env = self._env if test_env is None else test_env
 
+        self.nstep_buffer = [] 
+
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
@@ -62,10 +72,9 @@ class Trainer:
         # prepare log directory
         suffix = '_'.join(['%s'%policy.policy_name,
                         'warmup_%d'%self._policy.n_warmup,
-                        'batch_size_%d'%policy.batch_size,
+                        'bs%d'%policy.batch_size,
                         'seed_%d'%args.seed,
                         ])
-
 
         if self._use_prioritized_rb:
             suffix += '_use_prioritized_rb'
@@ -85,20 +94,28 @@ class Trainer:
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
-        # if args.evaluate:
-        #     assert args.model_dir is not None
-
-        # self._set_check_point(args.model_dir, args.restore_checkpoint, args.evaluate)
-
         if self._evaluate or self._restore_checkpoint:
             load_ckpt(self._policy, self._output_dir, last_step=1e4)
 
 
         # prepare TensorBoard output
-        self.writer = tf.summary.create_file_writer(self._output_dir)
-        self.writer.set_as_default()
+        self.writer = SummaryWriter(self._output_dir)
+        self._policy.writer = self.writer
 
+        if self._use_prioritized_rb:
+            self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
+                                                    beta_frames=self._max_steps)
+        else:
+            self.replay_buffer = ReplayBuffer(size=self._buffer_size)
+
+        self.n_step_buffer = deque([], self._n_step)
+        self.gamma = 0.995
         # self.set_seed(args.seed)
+        self._vis_graph = args.vis_graph
+        self.plot_dir = self._output_dir + '/graphs/'
+        if os.path.exists(self.plot_dir):
+            shutil.rmtree(self.plot_dir)
+        os.makedirs(self.plot_dir)
 
     def set_seed(self, seed):
         #setup seeds
@@ -107,56 +124,68 @@ class Trainer:
         torch.manual_seed(seed)
 
 
+    def append_to_replay(self, s, a, r, s_, d):
+        # https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
+        self.n_step_buffer.append((s, a, r, s_, d))
+
+        if(len(self.n_step_buffer)<self._n_step):
+            return
+        
+        l_reward, l_next_state, l_done = self.n_step_buffer[-1][-3:]
+
+        for transition in reversed(list(self.n_step_buffer)[:-1]):
+            r, n_s, d = transition[-3:]
+
+            l_reward = r + self.gamma * l_reward * (1 - d)
+            l_next_state, l_done = (n_s, d) if d else (l_next_state, l_done)
+        
+        l_state, l_action = self.n_step_buffer[0][:2]
+
+        transition = (l_state, l_action, l_reward, l_next_state, l_done)
+        # transitions = tuple(map(lambda x:np.array(x, copy=False, ndmin=1), transition))
+
+        self.replay_buffer.add(transition)
+
     def __call__(self):
+
         total_steps = 0
-        tf.summary.experimental.set_step(total_steps)
         episode_steps = 0
         episode_return = 0
-        episode_start_time = time.perf_counter()
+        
         n_episode = 1
-        #for success rate
         episode_success = 0
-        #
-        replay_buffer = get_replay_buffer(self._policy, 
-                                          self._env, 
-                                          self._use_prioritized_rb, 
-                                          self._use_nstep_rb, 
-                                          self._n_step)
+        success_rate = 0
 
-        # separate input (laser scan, vel, polor)
+        episode_start_time = time.perf_counter()
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         while total_steps < self._max_steps:
             # print('Step - {}/{}'.format(total_steps, self._max_steps))
 
             if total_steps < self._policy.n_warmup:
-                action = self._env.action_space.sample()
+                action = np.stack([self._env.action_space.sample() for _ in range(obs.number_of_nodes())], axis=0)
             else:
                 action = self._policy.get_action(obs)
 
-            next_obs, reward, done, success, _ = self._env.step(action)
-
-            if self._show_progress:
-                self._env.render()
+            # only robot action
+            robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
+            next_obs, reward, done, success = self._env.step(robot_action)
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
 
-            tf.summary.experimental.set_step(total_steps)
+            # tf.summary.experimental.set_step(total_steps)
+            self.append_to_replay(obs, action, reward, next_obs, done)
 
-            done_flag = done
-
-            # this line will never executed since env doesn't have _max_episode_steps attribute - note by niraj
-            if hasattr(self._env, "_max_episode_steps") and episode_steps == self._env._max_episode_steps:
-                done_flag = False
-
-            replay_buffer.add(obs=obs, 
-                              act=action, 
-                              next_obs=next_obs, 
-                              rew=reward, 
-                              done=done_flag)
-
+            if total_steps<100 and self._vis_graph:
+                network_draw(obs,
+                             show_node_label=True, node_label='cid',
+                             show_edge_labels=True, edge_label='dist',
+                             fsuffix = 'episode_step%d'%episode_steps,
+                             counter=total_steps,
+                             save_dir='./preddrl_td3/scripts_torch/graphs/', 
+                             )
             obs = next_obs
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
@@ -169,50 +198,66 @@ class Trainer:
 
                 fps = episode_steps / (time.perf_counter() - episode_start_time)
 
-                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
-                    n_episode, total_steps, episode_steps, episode_return, fps))
-
-                tf.summary.scalar(name="Common/training_return", data=episode_return)
+                # tf.summary.scalar(name="Common/training_return", data=episode_return)
 
                 success_rate = episode_success/n_episode
-                tf.summary.scalar(name="Common/success rate", data=success_rate)
+                # tf.summary.scalar(name="Common/success rate", data=success_rate)
+
+                self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
+                    n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()
 
                 episode_steps = 0
                 episode_return = 0
-                episode_start_time = time.perf_counter()   
+                episode_start_time = time.perf_counter() 
+
+                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
+                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
             if total_steps < self._policy.n_warmup:
                 continue
 
-            if total_steps % self._policy.update_interval == 0:
-                samples = replay_buffer.sample(self._policy.batch_size)
+            if total_steps % self._policy.update_interval==0:
+                sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
+
+                # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
+                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
+
+                samples = dict(obs=obs_batch, 
+                               act=np.concatenate(act_batch, axis=0), 
+                               rew=rew_batch, 
+                               next_obs=next_obs_batch, 
+                               done=done_batch, 
+                               weights=weights, 
+                               indexes=idxes)
+                # print({k:v.shape for k,v in samples.items()})
 
                 actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
                                                                        samples["act"], 
                                                                        samples["next_obs"],
                                                                        samples["rew"], 
-                                                                       np.array(samples["done"], dtype=np.float32),
+                                                                       samples["done"],
                                                                        samples["weights"] if self._use_prioritized_rb \
-                                                                       else np.ones(self._policy.batch_size))
-                if actor_loss is not None:
-                    tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                                      data=actor_loss)
-                    
-                    tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
-                                      data=critic_loss)
-                    # self.logger.info("Step {}/{}- actor_loss:{:.5f}, critic_loss:{:.5f} td_errors:{:.5f}".format(total_steps, self._max_steps, actor_loss, critic_loss, np.mean(td_errors)))
-            
+                                                                       else np.ones(self._policy.batch_size)
+                                                                       )
+
+                # if actor_loss is not None:
+                    # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
+                    #                                                                                              self._max_steps, 
+                    #                                                                                              episode_steps, 
+                    #                                                                                              actor_loss,
+                    #                                                                                              critic_loss,
+                    #                                                                                              np.mean(td_errors)))
+
                 if self._use_prioritized_rb:
                     td_error = self._policy.compute_td_error(samples["obs"], 
                                                              samples["act"], 
                                                              samples["next_obs"],
                                                              samples["rew"], 
-                                                             np.array(samples["done"], dtype=np.float32))
-                    # print(td_error)
-                    replay_buffer.update_priorities(samples["indexes"], np.abs(np.ravel(td_error)))
+                                                             samples["done"])
+                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
 
 
@@ -220,23 +265,17 @@ class Trainer:
                 
                 avg_test_return = self.evaluate_policy(total_steps)
 
-
-                tf.summary.scalar(name="Common/average_test_return", 
-                                  data=avg_test_return)
-
-                tf.summary.scalar(name="Common/fps", 
-                                  data=fps)
-
-                self.writer.flush()
-
                 self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
                     total_steps, avg_test_return, self._test_episodes))
 
+                self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
+                self.writer.add_scalar("Common/fps", fps, total_steps)
+
+
             if total_steps % self._save_model_interval == 0:
-                # self.checkpoint_manager.save()
                 save_ckpt(self._policy, self._output_dir, total_steps)
 
-        tf.summary.flush()
+        self.writer.close()
 
     def evaluate_policy_continuously(self):
         """
@@ -367,6 +406,8 @@ class Trainer:
                             help='Save rendering results')
 
         # replay buffer
+        parser.add_argument('--buffer_size', type=int, default=100000,
+                            help='Size of buffer')
         parser.add_argument('--use-prioritized-rb', action='store_true',
                             help='Flag to use prioritized experience replay')
         parser.add_argument('--use-nstep-rb', action='store_true',
@@ -377,12 +418,38 @@ class Trainer:
         parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
                             default='INFO', help='Logging level')
 
+        # graph
+        parser.add_argument('--input_states', nargs='+', default=['pos', 'vel', 'acc', 'hed', 'dir'],
+                            help='Input states for nodes')
+        parser.add_argument('--pred_states', nargs='+', default=['vel'],
+                            help='Prediction states of the nodes')
+        parser.add_argument('--input_edges', nargs='+', default=['diff', 'dist'], 
+                            help='Inter node disances, dist (l2norm) or diff (l1norm)')
+        parser.add_argument('--pred_edges', nargs='+', default=['dist'], 
+                            help='Inter node disances, dist (l2norm) or diff (l1norm)')
+        parser.add_argument('--vis_graph', action='store_true', default=False,
+                            help='Plot graph during training step. Plot in output_dir/graphs/')
+
+        # actor/critic paramaters
+        parser.add_argument('--in_feat_dropout', default=0, type=float,
+                            help='Apply dropout to input features')
+        parser.add_argument('--dropout', default=0, type=float,
+                            help='Apply dropout on hidden features')
+        parser.add_argument('--batch_norm', action='store_false', default=True,
+                            help='Apply batch norm between layer')
+        parser.add_argument('--residual', action='store_false', default=True,
+                            help='Apply batch norm between layer')
+        parser.add_argument('--activation', default='ReLU',
+                            help='Activation function')
+        parser.add_argument('--layer', default='gated_gcn',
+                            help='One of [gcn, edge_gcn, gated_gcn, custom_gcn]')
+
         # added by niraj
         parser.add_argument('--batch_size', default=100, type=int,
                             help='batch size')
         parser.add_argument('--n_warmup', default=3000, type=int, 
                             help='Number of warmup steps') # 重新训练的话要改回 10000
-        parser.add_argument('--restore_checkpoint', action='store_true', default=False,
+        parser.add_argument('--restore_checkpoint', action='store_true',
                             help='If begin from pretrained model')
         parser.add_argument('--last_step', default=1e4, type=int, 
                             help='Last step to restore.')
@@ -390,36 +457,40 @@ class Trainer:
                             help='Add prefix to log dir')
         parser.add_argument('--seed', default=1901858486, type=int, 
                             help='Seed value.')
-        parser.add_argument('--debug_level', default=0, type=int, 
-                            help='Seed value.')
+        parser.add_argument('--debug', default=0, type=int, 
+                            help='Debugging level for tensorflow.')
         parser.add_argument('--clean', action='store_true', 
                             help='Remove outputs when exit.')
+        parser.add_argument('--gpu', type=int, default=0,
+                            help='GPU id')
+
         return parser
 
 if __name__ == '__main__':
     import sys
     sys.path.insert(0, './')
-
+    sys.path.insert(0, './preddrl_td3/scripts_torch')
+    import json
     import rospy
-
+    from utils.utils import model_attributes
     from policy.td3_torch import TD3
     from policy.ddpg_torch import DDPG
-    from preddrl_td3.env.environment_stage_3_bk import Env
 
+    from env.environment_stage_3_bk import Env
 
     # from gym.utils import seeding as _s 
-
+    
     parser = Trainer.get_argument()
 
     parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(prefix='torch')
     parser.set_defaults(use_prioritized_rb=True)
-    parser.set_defaults(use_nstep_rb=False)
+    parser.set_defaults(use_nstep_rb=True)
 
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
@@ -433,7 +504,9 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug_level)
+    args.prefix = 'custom_buffer'
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
@@ -441,18 +514,25 @@ if __name__ == '__main__':
     test_env = Env()
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
+    with open("./preddrl_td3/scripts_torch/config.json", 'r') as f:
+        config = json.load(f)
 
-    policy = TD3(
+    policy = DDPG(
         state_shape=env.observation_space.shape,
         action_dim=env.action_space.high.size,
-        gpu=0,
+        gpu=args.gpu,
         memory_capacity=args.memory_capacity,
         max_action=env.action_space.high[0],
         batch_size=args.batch_size,
         actor_units=[400, 300],
-        n_warmup=args.n_warmup)
+        n_warmup=args.n_warmup,
+        config=config,
+        args=args)
 
     policy = policy.to(policy.device)
+    print(repr(policy))
+    for m_name, module in policy.named_children():
+        print(m_name, model_attributes(module, verbose=0), '\n')
 
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)
@@ -479,7 +559,6 @@ if __name__ == '__main__':
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
 
-        if args.clean:
-            shutil.rmtree(trainer._output_dir)
-            print('Cleaned output dir ... ')
-        sys.exit()
+    if args.clean:
+        print('Cleaning output dir ... ')
+        shutil.rmtree(trainer._output_dir)

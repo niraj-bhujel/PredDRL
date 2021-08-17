@@ -1,6 +1,8 @@
 import rospy
 import numpy as np
 import math
+from copy import deepcopy
+
 from gym import spaces
 from gym.utils import seeding
 from math import pi
@@ -8,9 +10,20 @@ from geometry_msgs.msg import Twist, Point, Pose, PoseStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
-# from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from .respawnGoal import Respawn
+from gazebo_msgs.msg import ModelStates
 
+from .respawnGoal import Respawn
+from preddrl_tracker.scripts.node import Node
+from utils.graph_utils import create_graph
+
+def vector3_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z])
+
+def quat_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z, msg.w])
+
+def point_to_numpy(msg):
+    return np.array([msg.x, msg.y, msg.z])
 
 class Env:
     def __init__(self):
@@ -48,6 +61,12 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
+        
+
+        # keep track of nodes and their id, added by niraj
+        self.nodes = dict()
+        self.nid = 0
+        self.max_goal_distance = 5
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -72,10 +91,12 @@ class Env:
         return goal_distance
 
     def getOdometry(self, odom):
-        self.position = odom.pose.pose.position
-        orientation = odom.pose.pose.orientation
+        self.robot_pos = odom.pose.pose
 
-        orientation_list = [orientation.x, orientation.y, orientation.z, orientation.w]
+        self.position = odom.pose.pose.position
+        self.orientation = odom.pose.pose.orientation
+
+        orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
         _, _, yaw = self.euler_from_quaternion(orientation_list)
 
         # goal_angle = math.atan2(self.goal_y - self.position.y, self.goal_x - self.position.x)
@@ -102,59 +123,78 @@ class Env:
         # print(0)
         # print(goal_angle)
 
-    def getNodeState(self, ):
+    def getState(self, ):
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
         except rospy.ROSException:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        current_nodes = []
+        nodes = []
         # keep track of model states
-        for i in range(model_states.name):
+        for i in range(len(model_states.name)):
             m_name = model_states.name[i]
             
             if 'square' in m_name:
                 continue
+
+            if 'ground' in m_name:
+                continue
+
             if 'goal' in m_name:
-                continue
-            if 'gound' in m_name:
-                continue
-            
-            if m_name=='obstacle':
+                node_type = 'goal'
+
+            elif 'obstacle' in m_name:
                 node_type = 'obstacle'
-            elif m_name == 'turtlebot3_burger':
+
+            elif 'burger' in m_name:
                 node_type = 'robot'
+
             else:
                 node_type = 'pedestrian'
 
-            if node_type=='robot':
-                goal = (self.goal_x, self.goal_y)
-
+            # print(node_type)
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
             m_pos = point_to_numpy(pose.position)
-            m_quat = quat_to_numpy(pose.orientation)
             m_vel = vector3_to_numpy(twist.linear)
+
+            m_quat = quat_to_numpy(pose.orientation)
             m_rot = vector3_to_numpy(twist.angular)
 
+            # if node_type!='robot':
+            #     m_pos -= point_to_numpy(self.position) # measured from robot pos
+            #     m_quat = self.orientation
+                
             if m_name in self.nodes.keys():
                 node = self.nodes[m_name]
-                node.update(m_pos, m_vel, m_quat, m_rot)
-                
             else:
-                node = Node(node_id=str(m_name), node_type=node_type)
-                node.update(m_pos, m_vel, m_quat, m_rot, goal=goal)
+                self.nid +=1 
+                node = Node(node_id=self.nid, node_type=node_type)
+                self.nodes[m_name] = node
+                
+            node.update_states(m_pos[:2], m_vel[:2], m_quat, m_rot)
 
-            current_nodes.append(node)
-            
-        return current_nodes
+            if node_type=='robot':
+                node._goal = (self.goal_x, self.goal_y)
+                # m_vel = (self.vel_cmd[0], 0, self.vel_cmd[1])
+            else:
+                node._goal = node.cv_prediction(node.last_timestep)[-1]
 
-    def getState(self, ):
-        scan_range = []
+            # node.update_heading(node.last_timestep)
+            # state = (m_pos, v_vel, goal)
+            nodes.append(node)
+        
+        g = create_graph(nodes, interaction_radius=5)
+
+        return g
+
+    def getReward(self, ):
+        # scan_range = [] # commented by niraj
         scan_range_collision = []
-        heading = self.heading
+        heading = self.heading # comment out by niraj
+
         done = False
         success = False # added by niraj
 
@@ -174,30 +214,45 @@ class Env:
             else:
                 scan_range_collision.append(scan.ranges[i])
 
+        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # obstacle_min_range = round(min(scan_range), 2)
         # obstacle_angle = np.argmin(scan_range)
         if self.collision_threshold > min(scan_range_collision) > 0:
             rospy.loginfo("Collision!!")
             done = True
+            reward = -150
 
-        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        if current_distance < self.goal_threshold:
+        elif current_distance < self.goal_threshold:
             rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
-            success = True # modified by niraj
-            
+            success = True
+            reward = 200
+
+        elif current_distance > self.max_goal_distance: # added by niraj
+            rospy.loginfo("Robot too far away from goal!!")
+            done = True
+            reward = -150
+
+        else:
+            reward = (self.goal_threshold-current_distance) * 0.1
+
+        # 增加一层膨胀区域，越靠近障碍物负分越多
+        obstacle_min_range = round(min(scan_range_collision), 2)
+        if obstacle_min_range < self.inflation_rad:
+            # reward += 100.0*(obstacle_min_range - self.inflation_rad)/self.inflation_rad
+            reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
+
         # print(scan_range_collision)
         # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
-        state = scan_range + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
-        # state = self.getNodeState()
-        return state, done, success
+        # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
+        
+        return done, success, reward
        
-    def setReward(self, state, done, success):
+    def _setReward(self, state, done, success):
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        distance_rate = (self.past_distance - current_distance)
-        self.past_distance = current_distance
+        # distance_rate = (self.past_distance - current_distance)
+        # self.past_distance = current_distance
 
         if done:
             reward = -150
@@ -208,6 +263,7 @@ class Env:
         else:
             reward = (self.goal_threshold-state[-1]) * 0.1 #- 0.25*abs(state[-3])15*distance_rate
             # reward = 15*distance_rate
+        
         # 增加一层膨胀区域，越靠近障碍物负分越多
         obstacle_min_range = round(min(state[:self.num_beams]), 2)
         if obstacle_min_range < self.inflation_rad:
@@ -216,20 +272,20 @@ class Env:
 
         return reward
 
-    def step(self, action):
-        self.pre_heading = self.heading
-        vel_cmd = Twist()
-        # vel_cmd.linear.x = (action[0]*2.5 + 5.0) / 20.0
-        # vel_cmd.linear.x = (action[0]*1.75 + 3.5) / 20.0
 
+    def step(self, action):
+        # self.pre_heading = self.heading
+
+        vel_cmd = Twist()
         vel_cmd.linear.x = (action[0] + 2.0) / 20.0
         vel_cmd.angular.z = action[1]
-        self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
-        self.pub_cmd_vel.publish(vel_cmd)
 
-        state, done, success = self.getState()
-        
-        reward = self.setReward(state, done, success)
+        self.pub_cmd_vel.publish(vel_cmd)
+        self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
+
+        state = self.getState() # graph
+        done, success, reward = self.getReward()
+
         # added by niraj
         if done:
             self.pub_cmd_vel.publish(Twist())
@@ -238,9 +294,7 @@ class Env:
             self.pub_cmd_vel.publish(Twist())
             self.init_goal(position_check=True, test=self.test)
 
-        return np.array(state), reward, done, success, {}
-
-
+        return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
     def init_goal(self, position_check=False, test=False):
@@ -252,13 +306,12 @@ class Env:
 
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
         self.goal_distance = self.getGoalDistace()
-
+        self.vel_cmd = [0., 0.]
 
     def reset(self, initGoal=False):
 
         try:
             rospy.wait_for_service('gazebo/reset_simulation')
-
             # print('Resetting environment ... ')
             self.reset_proxy()
             # print('Environment is reset.')
@@ -268,10 +321,8 @@ class Env:
         if initGoal:
             self.init_goal()
 
+        # set initial velocity and goal distance
+        # self.vel_cmd = [0., 0.]
+        # self.goal_distance = self.getGoalDistace()
 
-        self.vel_cmd = [0., 0.]
-        self.goal_distance = self.getGoalDistace()
-
-        state, done, success = self.getState()
-
-        return np.array(state)
+        return self.getState()
