@@ -142,12 +142,19 @@ class Node(object):
         return fps
 
     @property
+    def id(self):
+        return self._id
+    @property
     def goal(self):
         return self._goal
 
     @property
     def timesteps(self):
         return len(self._pos)
+
+    @property
+    def first_timestep(self):
+        return self._first_timestep
 
     @property
     def last_timestep(self):
