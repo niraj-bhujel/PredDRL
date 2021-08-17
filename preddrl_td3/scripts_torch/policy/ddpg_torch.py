@@ -42,10 +42,10 @@ class Actor(nn.Module):
         # a = self.max_action * torch.tanh(h)
         # store the action to the graph
         
-        a = torch.clamp(h, -self.max_action, self.max_action)
+        # a = torch.clamp(h, -self.max_action, self.max_action)
         # g.ndata['action'] = a
 
-        return a
+        return h
 
 class Critic(nn.Module):
     def __init__(self, config, args, action_dim, **kwargs):
@@ -66,7 +66,7 @@ class Critic(nn.Module):
                                layer=args.layer,)
 
     def forward(self, g, a):
-        a[g.ndata['cid']==node_type_list.index('obstacle')] = 0
+        a[g.ndata['cid']==node_type_list.index('obstacle')] = 0.0
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1) if len(self.input_edges)>1 else g.edata[self.input_edges]
@@ -104,21 +104,18 @@ class DDPG(OffPolicyAgent):
         # Define and initialize Actor network
         self.actor = Actor(config,  args, action_dim, max_action, **kwargs)
         self.actor_target = Actor(config, args, action_dim, max_action, **kwargs)
-        # self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
-        # self.actor_target = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
         self.soft_update_of_target_network(self.actor, self.actor_target)
 
         # Define and initialize Critic network
         self.critic = Critic(config, args, action_dim, **kwargs)
         self.critic_target = Critic(config, args, action_dim, **kwargs)
-        # self.critic = Critic(state_shape, action_dim, critic_units)
-        # self.critic_target = Critic(state_shape, action_dim, critic_units)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
         self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
 
+        self.step = 0
     def get_action(self, state, test=False, tensor=False):
         state = state.to(self.device)
         action = self._get_action_body(state, 
@@ -142,8 +139,8 @@ class DDPG(OffPolicyAgent):
 
         return torch.clamp(action, -max_action, max_action)
 
-    def train(self, states, actions, next_states, rewards, dones, weights):
-
+    def train(self, states, actions, next_states, rewards, dones, weights, step=0):
+        self.step += 1
         states = dgl.batch(states).to(self.device)
         next_states = dgl.batch(next_states).to(self.device)
         actions = torch.tensor(actions, dtype=torch.float32).to(self.device).view(-1, self.action_dim)
@@ -156,7 +153,6 @@ class DDPG(OffPolicyAgent):
         
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
-        
         actor_loss = actor_loss.item() if actor_loss is not None else actor_loss
 
         return actor_loss , critic_loss.item(), td_errors.detach().cpu().numpy()
@@ -190,6 +186,12 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.actor, self.actor_target)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
+        robot_action = next_action[states.ndata['cid']==node_type_list.index('robot')]
+        self.writer.add_histogram(self.policy_name + "/action", robot_action, self.step)
+        self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.step)
+        self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.step)
+        self.writer.add_scalar(self.policy_name + "/td_errors", td_errors.mean(), self.step)
+
         return actor_loss, critic_loss, td_errors
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
@@ -213,18 +215,20 @@ class DDPG(OffPolicyAgent):
 
             target_Q = self.critic_target(next_states, next_actions)
 
-            next_states.ndata['qval'] = target_Q
-            target_Q = torch.stack([torch.mean(g.ndata['qval'], dim=0) for g in dgl.unbatch(next_states)], axis=0)
+            # q value for robot only
+            target_Q = target_Q[next_states.ndata['cid']==node_type_list.index('robot')]
             
             target_Q = rewards + (not_dones * self.discount * target_Q)
 
         current_Q = self.critic(states, actions)
-        # convert to batch size
-        states.ndata['qval'] = current_Q
-        current_Q = torch.stack([torch.mean(g.ndata['qval'], dim=0) for g in dgl.unbatch(states)], axis=0)
 
-        # print(target_Q.shape, current_Q.shape)
+        # q value of robot
+        current_Q = current_Q[states.ndata['cid']==node_type_list.index('robot')]
+
         td_errors = target_Q - current_Q
+
+        self.writer.add_scalar(self.policy_name + '/current_Q', current_Q.mean().item(), self.step)
+        self.writer.add_scalar(self.policy_name + '/target_Q', target_Q.mean().item(), self.step)
 
         return td_errors
 

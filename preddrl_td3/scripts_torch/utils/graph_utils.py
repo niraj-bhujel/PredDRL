@@ -5,7 +5,24 @@ from copy import copy
 import numpy as np
 from collections import defaultdict
 
-node_type_list = ['robot', 'obstacle', 'pedestrian']
+from .vis_graph import network_draw
+
+node_type_list = ['robot', 'pedestrian', 'obstacle', 'goal']
+
+INTERACTION_RADIUS = {
+    ('robot', 'robot'): 0.0,
+    ('robot', 'pedestrian'): 5.0,
+    ('robot', 'obstacle'): 5.0,
+    ('robot', 'goal'): 20.0,
+
+    ('pedestrian', 'pedestrian'): 5.0,
+    ('pedestrian', 'obstacle') : 5.0,
+    ('pedestrian', 'goal'): 20.0,
+
+    ('obstacle', 'obstacle'): 0.00,
+    ('obstacle', 'goal'): 0.0,
+    
+}
 
 
 def create_graph(nodes, interaction_radius=5):
@@ -20,6 +37,7 @@ def create_graph(nodes, interaction_radius=5):
 
         src_node = nodes[i]
 
+        # print(node_type_list.index(src_node._type), src_node._type)
         # src_node_states = np.concatenate(src_node.states_at(src_node.last_timestep), axis=-1)
 
         nodes_data['pos'].append(src_node._pos[src_node.last_timestep])
@@ -40,8 +58,13 @@ def create_graph(nodes, interaction_radius=5):
             diff = np.array(src_node._pos[src_node.last_timestep]) - np.array(dst_node._pos[dst_node.last_timestep])
 
             dist = np.linalg.norm(diff, keepdims=True)
-            
-            if dist > interaction_radius:
+
+            try:
+                rad = INTERACTION_RADIUS[src_node._type, dst_node._type]
+            except:
+                rad = INTERACTION_RADIUS[dst_node._type, src_node._type]
+
+            if dist > rad:
                 continue
             
             # bidirectional edges

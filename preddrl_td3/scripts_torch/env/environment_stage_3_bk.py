@@ -61,10 +61,12 @@ class Env:
 
         self.respawn_goal = Respawn()
         self.past_distance = 0.
+        
 
-        # keep track of nodes and their id
+        # keep track of nodes and their id, added by niraj
         self.nodes = dict()
         self.nid = 0
+        self.max_goal_distance = 5
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -89,6 +91,8 @@ class Env:
         return goal_distance
 
     def getOdometry(self, odom):
+        self.robot_pos = odom.pose.pose
+
         self.position = odom.pose.pose.position
         self.orientation = odom.pose.pose.orientation
 
@@ -134,13 +138,13 @@ class Env:
             if 'square' in m_name:
                 continue
 
-            if 'goal' in m_name:
-                continue
-
             if 'ground' in m_name:
                 continue
-            
-            if 'obstacle' in m_name:
+
+            if 'goal' in m_name:
+                node_type = 'goal'
+
+            elif 'obstacle' in m_name:
                 node_type = 'obstacle'
 
             elif 'burger' in m_name:
@@ -149,18 +153,18 @@ class Env:
             else:
                 node_type = 'pedestrian'
 
-            # print(m_name)
+            # print(node_type)
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
-            m_pos = point_to_numpy(pose.position)[:2]
-            m_vel = vector3_to_numpy(twist.linear)[:2]
+            m_pos = point_to_numpy(pose.position)
+            m_vel = vector3_to_numpy(twist.linear)
 
             m_quat = quat_to_numpy(pose.orientation)
             m_rot = vector3_to_numpy(twist.angular)
 
-            # if node_type=='robot':
-            #     m_pos = self.position
+            # if node_type!='robot':
+            #     m_pos -= point_to_numpy(self.position) # measured from robot pos
             #     m_quat = self.orientation
                 
             if m_name in self.nodes.keys():
@@ -170,7 +174,7 @@ class Env:
                 node = Node(node_id=self.nid, node_type=node_type)
                 self.nodes[m_name] = node
                 
-            node.update_states(m_pos, m_vel, m_quat, m_rot)
+            node.update_states(m_pos[:2], m_vel[:2], m_quat, m_rot)
 
             if node_type=='robot':
                 node._goal = (self.goal_x, self.goal_y)
@@ -211,8 +215,6 @@ class Env:
                 scan_range_collision.append(scan.ranges[i])
 
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-
         # obstacle_min_range = round(min(scan_range), 2)
         # obstacle_angle = np.argmin(scan_range)
         if self.collision_threshold > min(scan_range_collision) > 0:
@@ -225,8 +227,13 @@ class Env:
             success = True
             reward = 200
 
+        elif current_distance > self.max_goal_distance: # added by niraj
+            rospy.loginfo("Robot too far away from goal!!")
+            done = True
+            reward = -150
+
         else:
-            reward = (self.goal_threshold-current_distance) * 0.1 #- 0.25*abs(state[-3])15*distance_rate
+            reward = (self.goal_threshold-current_distance) * 0.1
 
         # 增加一层膨胀区域，越靠近障碍物负分越多
         obstacle_min_range = round(min(scan_range_collision), 2)

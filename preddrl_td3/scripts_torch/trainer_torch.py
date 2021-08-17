@@ -8,7 +8,7 @@ import torch
 import numpy as np
 # import tensorflow as tf
 from collections import deque
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from gym.spaces import Box
 
@@ -18,6 +18,7 @@ from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 from utils.graph_utils import node_type_list
+from utils.vis_graph import network_draw
 
 # from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -99,8 +100,7 @@ class Trainer:
 
         # prepare TensorBoard output
         self.writer = SummaryWriter(self._output_dir)
-        # self.writer = tf.summary.create_file_writer(self._output_dir)
-        # self.writer.set_as_default()
+        self._policy.writer = self.writer
 
         if self._use_prioritized_rb:
             self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
@@ -111,6 +111,11 @@ class Trainer:
         self.n_step_buffer = deque([], self._n_step)
         self.gamma = 0.995
         # self.set_seed(args.seed)
+
+        self.plot_dir = './preddrl_td3/scripts_torch/graphs/'
+        if os.path.exists(self.plot_dir):
+            shutil.rmtree(self.plot_dir)
+        os.makedirs(self.plot_dir)
 
     def set_seed(self, seed):
         #setup seeds
@@ -173,6 +178,14 @@ class Trainer:
             # tf.summary.experimental.set_step(total_steps)
             self.append_to_replay(obs, action, reward, next_obs, done)
 
+            if total_steps<100:
+                network_draw(obs,
+                             show_node_label=True, node_label='cid',
+                             show_edge_labels=True, edge_label='dist',
+                             fsuffix = 'episode_step%d'%episode_steps,
+                             counter=total_steps,
+                             save_dir='./preddrl_td3/scripts_torch/graphs/', 
+                             )
             obs = next_obs
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
@@ -190,8 +203,8 @@ class Trainer:
                 success_rate = episode_success/n_episode
                 # tf.summary.scalar(name="Common/success rate", data=success_rate)
 
-                self.logger.info("Total Epi:{0:5} Steps:{1:7} Episode Steps:{2:5} Return:{3:3.4f} SucessRate:{5:2.4f} FPS:{4:3.2f}".format(
-                    n_episode, total_steps, episode_steps, episode_return, fps, success_rate))
+                self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
+                    n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()
@@ -227,16 +240,16 @@ class Trainer:
                                                                        samples["rew"], 
                                                                        samples["done"],
                                                                        samples["weights"] if self._use_prioritized_rb \
-                                                                       else np.ones(self._policy.batch_size))
+                                                                       else np.ones(self._policy.batch_size)
+                                                                       )
 
-                if actor_loss is not None:
-                    self.writer.add_scalar(self._policy.policy_name + "/actor_loss", actor_loss, total_steps)
-                    self.writer.add_scalar(self._policy.policy_name + "/critic_loss", critic_loss, total_steps)
-                    # tf.summary.scalar(name=self._policy.policy_name+"/actor_loss",
-                    #                   data=actor_loss)
-                    
-                    # tf.summary.scalar(name=self._policy.policy_name+"/critic_loss",
-                    #                   data=critic_loss)
+                # if actor_loss is not None:
+                    # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
+                    #                                                                                              self._max_steps, 
+                    #                                                                                              episode_steps, 
+                    #                                                                                              actor_loss,
+                    #                                                                                              critic_loss,
+                    #                                                                                              np.mean(td_errors)))
 
                 if self._use_prioritized_rb:
                     td_error = self._policy.compute_td_error(samples["obs"], 
@@ -257,14 +270,9 @@ class Trainer:
 
                 self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
                 self.writer.add_scalar("Common/fps", fps, total_steps)
-                # tf.summary.scalar(name="Common/average_test_return", 
-                #                   data=avg_test_return)
 
-                # tf.summary.scalar(name="Common/fps", 
-                #                   data=fps)
 
             if total_steps % self._save_model_interval == 0:
-                # self.checkpoint_manager.save()
                 save_ckpt(self._policy, self._output_dir, total_steps)
 
         self.writer.close()
