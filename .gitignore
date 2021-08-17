@@ -4,6 +4,7 @@ results/*
 */results/*
 */*/results/*
 */*/*/results/*
+*/graphs/*
 __pycache__/
 
 *.egg-info/*
