@@ -111,8 +111,8 @@ class Trainer:
         self.n_step_buffer = deque([], self._n_step)
         self.gamma = 0.995
         # self.set_seed(args.seed)
-
-        self.plot_dir = './preddrl_td3/scripts_torch/graphs/'
+        self._vis_graph = args.vis_graph
+        self.plot_dir = self._output_dir + '/graphs/'
         if os.path.exists(self.plot_dir):
             shutil.rmtree(self.plot_dir)
         os.makedirs(self.plot_dir)
@@ -178,7 +178,7 @@ class Trainer:
             # tf.summary.experimental.set_step(total_steps)
             self.append_to_replay(obs, action, reward, next_obs, done)
 
-            if total_steps<100:
+            if total_steps<100 and self._vis_graph:
                 network_draw(obs,
                              show_node_label=True, node_label='cid',
                              show_edge_labels=True, edge_label='dist',
@@ -427,6 +427,8 @@ class Trainer:
                             help='Inter node disances, dist (l2norm) or diff (l1norm)')
         parser.add_argument('--pred_edges', nargs='+', default=['dist'], 
                             help='Inter node disances, dist (l2norm) or diff (l1norm)')
+        parser.add_argument('--vis_graph', action='store_true', default=False,
+                            help='Plot graph during training step. Plot in output_dir/graphs/')
 
         # actor/critic paramaters
         parser.add_argument('--in_feat_dropout', default=0, type=float,
@@ -461,6 +463,7 @@ class Trainer:
                             help='Remove outputs when exit.')
         parser.add_argument('--gpu', type=int, default=0,
                             help='GPU id')
+
         return parser
 
 if __name__ == '__main__':
