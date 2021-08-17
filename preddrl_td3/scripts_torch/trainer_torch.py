@@ -169,12 +169,15 @@ class Trainer:
 
             # only robot action
             robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
+            self.writer.add_histogram(self._policy.policy_name + "/robot_actions", robot_action, total_steps)
+
             next_obs, reward, done, success = self._env.step(robot_action)
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
 
+            fps = episode_steps / (time.perf_counter() - episode_start_time)
             # tf.summary.experimental.set_step(total_steps)
             self.append_to_replay(obs, action, reward, next_obs, done)
 
@@ -187,6 +190,7 @@ class Trainer:
                              save_dir='./preddrl_td3/scripts_torch/graphs/', 
                              )
             obs = next_obs
+
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
 
@@ -196,25 +200,21 @@ class Trainer:
                 if total_steps > self._policy.n_warmup:    
                     n_episode += 1
 
-                fps = episode_steps / (time.perf_counter() - episode_start_time)
-
-                # tf.summary.scalar(name="Common/training_return", data=episode_return)
-
                 success_rate = episode_success/n_episode
-                # tf.summary.scalar(name="Common/success rate", data=success_rate)
+
+                if done or episode_steps == self._episode_max_steps:
+                    obs = self._env.reset()
 
                 self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
                     n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
-                if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()
+                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
+                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter() 
 
-                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
-                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
             if total_steps < self._policy.n_warmup:
                 continue

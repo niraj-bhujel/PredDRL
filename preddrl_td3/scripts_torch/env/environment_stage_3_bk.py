@@ -34,11 +34,10 @@ class Env:
         self.pre_heading = 0
         self.max_v = 0.2
         self.max_w = 1.5
-        self.goal_threshold = 0.3#0.4
+        self.goal_threshold = 0.3
         self.collision_threshold = 0.15
         self.vel_cmd = [0., 0.]
-        # self.initGoal = True # coment out by niraj
-        # self.get_goalbox = False # removed by niraj
+        
         self.position = Point()
         self.test = False
         self.num_beams = 20  # 激光数
@@ -66,7 +65,7 @@ class Env:
         # keep track of nodes and their id, added by niraj
         self.nodes = dict()
         self.nid = 0
-        self.max_goal_distance = 5
+        self.max_goal_distance = 3
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -98,18 +97,10 @@ class Env:
 
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
         _, _, yaw = self.euler_from_quaternion(orientation_list)
-
-        # goal_angle = math.atan2(self.goal_y - self.position.y, self.goal_x - self.position.x)
-        # goal_angle = math.atan2(self.goal_y - self.position.position.y, self.goal_x - self.position.position.x)
         
         inc_y = self.goal_y - self.position.y
         inc_x = self.goal_x - self.position.x
         goal_angle = math.atan2(inc_y, inc_x)
-
-        # if inc_y>0 and inc_x<0:
-        #     goal_angle += pi
-        # elif inc_y<0 and inc_x<0:
-        #     goal_angle -= pi
         
         heading = goal_angle - yaw
 
@@ -120,8 +111,6 @@ class Env:
             heading += 2 * pi
 
         self.heading = round(heading, 2)
-        # print(0)
-        # print(goal_angle)
 
     def getState(self, ):
         try:

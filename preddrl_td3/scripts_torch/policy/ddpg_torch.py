@@ -39,11 +39,10 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1) if len(self.input_edges)>1 else g.edata[self.input_edges]
         g, h, e = self.net(g, h, e)
 
-        # a = self.max_action * torch.tanh(h)
-        # store the action to the graph
+        h = self.max_action * torch.tanh(h)
         
-        # a = torch.clamp(h, -self.max_action, self.max_action)
-        # g.ndata['action'] = a
+        # h = torch.clamp(h, -self.max_action, self.max_action)
+        # g.ndata['action'] = h
 
         return h
 
@@ -67,6 +66,8 @@ class Critic(nn.Module):
 
     def forward(self, g, a):
         a[g.ndata['cid']==node_type_list.index('obstacle')] = 0.0
+        a[g.ndata['cid']==node_type_list.index('goal')] = 0.0
+
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1) if len(self.input_edges)>1 else g.edata[self.input_edges]
@@ -186,11 +187,8 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.actor, self.actor_target)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
-        robot_action = next_action[states.ndata['cid']==node_type_list.index('robot')]
-        self.writer.add_histogram(self.policy_name + "/action", robot_action, self.step)
         self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.step)
         self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.step)
-        self.writer.add_scalar(self.policy_name + "/td_errors", td_errors.mean(), self.step)
 
         return actor_loss, critic_loss, td_errors
 
