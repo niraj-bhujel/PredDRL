@@ -9,23 +9,38 @@ from .vis_graph import network_draw
 
 node_type_list = ['robot', 'pedestrian', 'obstacle', 'goal']
 
-INTERACTION_RADIUS = {
-    ('robot', 'robot'): 0.0,
+# define edges, influnce between nodes for e.g. robot influences pedestrian
+interaction_direction = {
     ('robot', 'pedestrian'): 5.0,
-    ('robot', 'obstacle'): 5.0,
-    ('robot', 'goal'): 20.0,
+    ('robot', 'goal'): 1e6,
 
     ('pedestrian', 'pedestrian'): 5.0,
-    ('pedestrian', 'obstacle') : 5.0,
-    ('pedestrian', 'goal'): 20.0,
+    ('pedestrian', 'robot') : 5.0,
+    ('pedestrian', 'goal'): 1e6,
 
-    ('obstacle', 'obstacle'): 0.00,
-    ('obstacle', 'goal'): 0.0,
+    ('obstacle', 'pedestrian'): 20.0, # large distance to prevent graph creatiion error due to zero edges
+    ('obstacle', 'robot'): 20.0,
+
+    ('goal', 'robot'): 1e6,
+    ('goal', 'pedestrian'): 1e6,
     
 }
 
+state_dims = {
+        "pos": 2,
+        "vel": 2,
+        "acc": 2,
+        "rot": 1,
+        "yaw": 1,
+        "hed": 1,
+        "gdist": 1,
+        "diff": 2,
+        "dist": 1,
+        "action": 2,
+        "goal": 2,
+    }
 
-def create_graph(nodes, interaction_radius=5):
+def create_graph(nodes, bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''
@@ -43,37 +58,44 @@ def create_graph(nodes, interaction_radius=5):
         nodes_data['pos'].append(src_node._pos[src_node.last_timestep])
         nodes_data['vel'].append(src_node._vel[src_node.last_timestep])
         nodes_data['acc'].append(src_node._acc[src_node.last_timestep])
+        nodes_data['rot'].append(src_node._rot[src_node.last_timestep])
+        nodes_data['yaw'].append(src_node._yaw[src_node.last_timestep])
         nodes_data['hed'].append(src_node.heading(src_node.last_timestep))
-        # nodes_data['goal'].append(src_node._goal)
-        nodes_data['dir'].append(src_node.distance_to_goal(src_node.last_timestep))
-        
+        nodes_data['goal'].append(src_node._goal) # call this after heading
+        nodes_data['gdist'].append(src_node.distance_to_goal(src_node.last_timestep))
+        nodes_data['time_step'].append(src_node.time_step)
+
         nodes_data['tid'].append(src_node._id)
         nodes_data['cid'].append(node_type_list.index(src_node._type))
         
         # spatial edges
-        for j in range(i+1, len(nodes)):
-
+        for j in range(len(nodes)):
             dst_node = nodes[j]
+            try:
+                rad = interaction_direction[src_node._type, dst_node._type]
+            except:
+                continue
             
             diff = np.array(src_node._pos[src_node.last_timestep]) - np.array(dst_node._pos[dst_node.last_timestep])
 
             dist = np.linalg.norm(diff, keepdims=True)
 
-            try:
-                rad = INTERACTION_RADIUS[src_node._type, dst_node._type]
-            except:
-                rad = INTERACTION_RADIUS[dst_node._type, src_node._type]
-
             if dist > rad:
                 continue
-            
-            # bidirectional edges
-            edges_data['src'].extend([i, j])
-            edges_data['des'].extend([j, i])
-            edges_data['dist'].extend([dist, dist])
-            edges_data['diff'].extend([-diff, diff]) # difference measured from destination
 
-            edges_data['spatial_mask'].extend([1.0, 1.0])
+            # edges from source to dest
+            edges_data['src'].extend([i])
+            edges_data['des'].extend([j])
+            edges_data['dist'].extend([dist])
+            edges_data['diff'].extend([diff])
+            edges_data['spatial_mask'].extend([1.0])
+
+            if bidirectional:
+                edges_data['src'].extend([j])
+                edges_data['des'].extend([i])
+                edges_data['dist'].extend([dist])
+                edges_data['diff'].extend([-diff])
+                edges_data['spatial_mask'].extend([1.0])
 
     # Construct the DGL graph
     g = dgl.graph((edges_data['src'], edges_data['des']), num_nodes=len(nodes))
@@ -82,16 +104,23 @@ def create_graph(nodes, interaction_radius=5):
     g.ndata['tid'] = torch.tensor(nodes_data['tid'], dtype=torch.int32)
     g.ndata['cid'] = torch.tensor(nodes_data['cid'], dtype=torch.int32)
     
-    g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32)
-    g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32)
-    g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32)
-    g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).unsqueeze(1)
-    # g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0))
-    g.ndata['dir'] = torch.tensor(np.stack(nodes_data['dir'], axis=0), dtype=torch.float32).unsqueeze(1)
+
+    g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
+    g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
+    g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32).view(-1, state_dims['acc'])
+
+    g.ndata['rot'] = torch.tensor(np.stack(nodes_data['rot'], axis=0), dtype=torch.float32).view(-1, state_dims['rot'])
+    g.ndata['yaw'] = torch.tensor(np.stack(nodes_data['yaw'], axis=0), dtype=torch.float32).view(-1, state_dims['yaw'])
+    g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])
     
-    g.edata['dist'] = torch.tensor(np.stack(edges_data['dist'], axis=0), dtype=torch.float32)
-    g.edata['diff'] = torch.tensor(np.stack(edges_data['diff'], axis=0), dtype=torch.float32)
-    g.edata['spatial_mask'] = torch.tensor(np.reshape(edges_data['spatial_mask'], (-1, 1)), dtype=torch.int32)
+    g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
+    g.ndata['gdist'] = torch.tensor(np.stack(nodes_data['gdist'], axis=0), dtype=torch.float32).view(-1, state_dims['gdist'])
+
+    g.ndata['time_step'] = torch.tensor(np.stack(nodes_data['time_step'], axis=0), dtype=torch.float32).view(-1, 1)
+    
+    g.edata['dist'] = torch.tensor(np.stack(edges_data['dist'], axis=0), dtype=torch.float32).view(-1, state_dims['dist'])
+    g.edata['diff'] = torch.tensor(np.stack(edges_data['diff'], axis=0), dtype=torch.float32).view(-1, state_dims['diff'])
+    g.edata['spatial_mask'] = torch.tensor(np.reshape(edges_data['spatial_mask'], (-1, 1)), dtype=torch.int32).view(-1, 1)
     
     return g
 

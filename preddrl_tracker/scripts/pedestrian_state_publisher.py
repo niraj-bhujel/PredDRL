@@ -197,7 +197,7 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=50):
 #%%
 if __name__ == '__main__':
     
-    ros_rate = 10
+    ros_rate = 25
 
     # data_root = rospy.myargv(argv=sys.argv)[0]
     # data_path = data_root + '/crowds_zara01.txt'
@@ -230,8 +230,9 @@ if __name__ == '__main__':
     # print('Inititating pedestrain state publisher node ...')
     # rospy.init_node('pedestrain_states_publisher', anonymous=True)
     r = rospy.Rate(ros_rate)
-    print('Publishing pedestrian states ...')
     state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=10)
+    print('Publishing pedestrian states for {} frames'.format(len(frames)))
+    
     t = 0
     
     actors_id_list = []
@@ -261,6 +262,7 @@ if __name__ == '__main__':
                     actors_id_list.append(actor_id)
 
                 if actor.type==int(4):
+                    rospy.loginfo("[Frame-%d] Deleting model: actor_id = %s"%(t, actor_id))
                     delete_model(actor_id)
                     actors_id_list.remove(actor_id)
 

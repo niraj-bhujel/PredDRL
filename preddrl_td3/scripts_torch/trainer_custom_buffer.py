@@ -1,33 +1,29 @@
+'''
+This verison uses custom replay buffer. 
+'''
+
 import os
 import time
 import logging
-import argparse
 import shutil
 import random
-import torch
 import numpy as np
-# import tensorflow as tf
 from collections import deque
+
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from gym.spaces import Box
 
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
-from misc.get_replay_buffer import get_replay_buffer
+
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 from utils.graph_utils import node_type_list
 from utils.vis_graph import network_draw
 
-# from gym_replay.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-
-# if tf.config.experimental.list_physical_devices('GPU'):
-#     for cur_device in tf.config.experimental.list_physical_devices("GPU"):
-#         print(cur_device)
-#         tf.config.experimental.set_memory_growth(cur_device, enable=True)
-
 
 class Trainer:
     def __init__(self, policy, env, args, test_env=None):
@@ -87,6 +83,7 @@ class Trainer:
         self._output_dir = prepare_output_dir(args=args, 
                                               user_specified_dir=self._logdir, 
                                               time_format='%Y_%m_%d_%H-%M-%S',
+                                              # time_format='%Y_%m_%d',
                                               suffix=suffix
                                               )
         # backup scripts
@@ -112,10 +109,10 @@ class Trainer:
         self.gamma = 0.995
         # self.set_seed(args.seed)
         self._vis_graph = args.vis_graph
-        self.plot_dir = self._output_dir + '/graphs/'
-        if os.path.exists(self.plot_dir):
-            shutil.rmtree(self.plot_dir)
-        os.makedirs(self.plot_dir)
+        self._plot_dir = self._output_dir + '/graphs/'
+        if os.path.exists(self._plot_dir):
+            shutil.rmtree(self._plot_dir)
+        os.makedirs(self._plot_dir)
 
     def set_seed(self, seed):
         #setup seeds
@@ -163,30 +160,25 @@ class Trainer:
             # print('Step - {}/{}'.format(total_steps, self._max_steps))
 
             if total_steps < self._policy.n_warmup:
-                action = np.stack([self._env.action_space.sample() for _ in range(obs.number_of_nodes())], axis=0)
+                action = self._env.action_space.sample()
             else:
                 action = self._policy.get_action(obs)
 
-            # only robot action
-            robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-            next_obs, reward, done, success = self._env.step(robot_action)
+            self.writer.add_histogram(self._policy.policy_name + "/actions", action, total_steps)
+
+            next_obs, reward, done, success = self._env.step(action)
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
 
-            # tf.summary.experimental.set_step(total_steps)
+            fps = episode_steps / (time.perf_counter() - episode_start_time)
+            
+            # update states
             self.append_to_replay(obs, action, reward, next_obs, done)
 
-            if total_steps<100 and self._vis_graph:
-                network_draw(obs,
-                             show_node_label=True, node_label='cid',
-                             show_edge_labels=True, edge_label='dist',
-                             fsuffix = 'episode_step%d'%episode_steps,
-                             counter=total_steps,
-                             save_dir='./preddrl_td3/scripts_torch/graphs/', 
-                             )
             obs = next_obs
+
             #for success rate
             if done or episode_steps == self._episode_max_steps or success:
 
@@ -196,25 +188,21 @@ class Trainer:
                 if total_steps > self._policy.n_warmup:    
                     n_episode += 1
 
-                fps = episode_steps / (time.perf_counter() - episode_start_time)
-
-                # tf.summary.scalar(name="Common/training_return", data=episode_return)
-
                 success_rate = episode_success/n_episode
-                # tf.summary.scalar(name="Common/success rate", data=success_rate)
+
+                if done or episode_steps == self._episode_max_steps:
+                    obs = self._env.reset()
 
                 self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
                     n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
-                if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()
+                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
+                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter() 
 
-                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
-                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
             if total_steps < self._policy.n_warmup:
                 continue
@@ -226,7 +214,7 @@ class Trainer:
                 obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
 
                 samples = dict(obs=obs_batch, 
-                               act=np.concatenate(act_batch, axis=0), 
+                               act=act_batch, 
                                rew=rew_batch, 
                                next_obs=next_obs_batch, 
                                done=done_batch, 
@@ -363,108 +351,6 @@ class Trainer:
 
         return avg_test_return / self._test_episodes
 
-    @staticmethod
-    def get_argument(parser=None):
-        if parser is None:
-            parser = argparse.ArgumentParser(conflict_handler='resolve')
-        # experiment settings
-        parser.add_argument('--max-steps', type=int, default=int(1e6),
-                            help='Maximum number steps to interact with env.')
-        parser.add_argument('--episode-max-steps', type=int, default=int(1e3),
-                            help='Maximum steps in an episode')
-        parser.add_argument('--n-experiments', type=int, default=1,
-                            help='Number of experiments')
-        parser.add_argument('--show-progress', action='store_true',
-                            help='Call `render` in training process')
-        parser.add_argument('--save-model-interval', type=int, default=int(1e4),
-                            help='Interval to save model')
-        parser.add_argument('--save-summary-interval', type=int, default=int(1e3),
-                            help='Interval to save summary')
-        parser.add_argument('--model-dir', type=str, default=None,
-                            help='Directory to restore model')
-        parser.add_argument('--dir-suffix', type=str, default='',
-                            help='Suffix for directory that contains results')
-        parser.add_argument('--normalize-obs', action='store_true',
-                            help='Normalize observation')
-        parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
-                            help='Output directory')
-
-        # test settings
-        parser.add_argument('--evaluate', action='store_true',
-                            help='Evaluate trained model')
-        parser.add_argument('--test-interval', type=int, default=int(1e6),
-                            help='Interval to evaluate trained model')
-        parser.add_argument('--show-test-progress', action='store_true',
-                            help='Call `render` in evaluation process')
-        parser.add_argument('--test-episodes', type=int, default=5,
-                            help='Number of episodes to evaluate at once')
-        parser.add_argument('--save-test-path', action='store_true',
-                            help='Save trajectories of evaluation')
-        parser.add_argument('--show-test-images', action='store_true',
-                            help='Show input images to neural networks when an episode finishes')
-        parser.add_argument('--save-test-movie', action='store_true',
-                            help='Save rendering results')
-
-        # replay buffer
-        parser.add_argument('--buffer_size', type=int, default=100000,
-                            help='Size of buffer')
-        parser.add_argument('--use-prioritized-rb', action='store_true',
-                            help='Flag to use prioritized experience replay')
-        parser.add_argument('--use-nstep-rb', action='store_true',
-                            help='Flag to use nstep experience replay')
-        parser.add_argument('--n-step', type=int, default=4,
-                            help='Number of steps to look over')
-        # others
-        parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
-                            default='INFO', help='Logging level')
-
-        # graph
-        parser.add_argument('--input_states', nargs='+', default=['pos', 'vel', 'acc', 'hed', 'dir'],
-                            help='Input states for nodes')
-        parser.add_argument('--pred_states', nargs='+', default=['vel'],
-                            help='Prediction states of the nodes')
-        parser.add_argument('--input_edges', nargs='+', default=['diff', 'dist'], 
-                            help='Inter node disances, dist (l2norm) or diff (l1norm)')
-        parser.add_argument('--pred_edges', nargs='+', default=['dist'], 
-                            help='Inter node disances, dist (l2norm) or diff (l1norm)')
-        parser.add_argument('--vis_graph', action='store_true', default=False,
-                            help='Plot graph during training step. Plot in output_dir/graphs/')
-
-        # actor/critic paramaters
-        parser.add_argument('--in_feat_dropout', default=0, type=float,
-                            help='Apply dropout to input features')
-        parser.add_argument('--dropout', default=0, type=float,
-                            help='Apply dropout on hidden features')
-        parser.add_argument('--batch_norm', action='store_false', default=True,
-                            help='Apply batch norm between layer')
-        parser.add_argument('--residual', action='store_false', default=True,
-                            help='Apply batch norm between layer')
-        parser.add_argument('--activation', default='ReLU',
-                            help='Activation function')
-        parser.add_argument('--layer', default='gated_gcn',
-                            help='One of [gcn, edge_gcn, gated_gcn, custom_gcn]')
-
-        # added by niraj
-        parser.add_argument('--batch_size', default=100, type=int,
-                            help='batch size')
-        parser.add_argument('--n_warmup', default=3000, type=int, 
-                            help='Number of warmup steps') # 重新训练的话要改回 10000
-        parser.add_argument('--restore_checkpoint', action='store_true',
-                            help='If begin from pretrained model')
-        parser.add_argument('--last_step', default=1e4, type=int, 
-                            help='Last step to restore.')
-        parser.add_argument('--prefix', type=str, default=None,
-                            help='Add prefix to log dir')
-        parser.add_argument('--seed', default=1901858486, type=int, 
-                            help='Seed value.')
-        parser.add_argument('--debug', default=0, type=int, 
-                            help='Debugging level for tensorflow.')
-        parser.add_argument('--clean', action='store_true', 
-                            help='Remove outputs when exit.')
-        parser.add_argument('--gpu', type=int, default=0,
-                            help='GPU id')
-
-        return parser
 
 if __name__ == '__main__':
     import sys
@@ -472,23 +358,27 @@ if __name__ == '__main__':
     sys.path.insert(0, './preddrl_td3/scripts_torch')
     import json
     import rospy
+    import args
     from utils.utils import model_attributes
-    from policy.td3_torch import TD3
-    from policy.ddpg_torch import DDPG
+
+    from policy.td3 import TD3
+    from policy.ddpg import DDPG
+    from policy.ddpg_graph import GraphDDPG
 
     from env.environment_stage_3_bk import Env
 
     # from gym.utils import seeding as _s 
-    
-    parser = Trainer.get_argument()
+
+    parser = args.get_argument()
+
 
     parser = DDPG.get_argument(parser)
 
-    parser.set_defaults(batch_size=100)
+    parser.set_defaults(batch_size=64)
     parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(prefix='torch')
+    parser.set_defaults(prefix='custom_rb')
     parser.set_defaults(use_prioritized_rb=True)
     parser.set_defaults(use_nstep_rb=True)
 
