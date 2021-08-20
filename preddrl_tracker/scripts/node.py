@@ -33,6 +33,7 @@ class Node(object):
         self._acc = deque([], max_len)
         self._quat = deque([], max_len)
         self._rot = deque([], max_len)
+        self._yaw = deque([], max_len)
         self._time_stamp = deque([], max_len)
 
     def __len__(self):
@@ -43,7 +44,8 @@ class Node(object):
         p: position, could be (x, y) or (x, y, z)
         v: linear velocity, (vx, vy) or (vx, vy, vz)
         q: quaternion (w, x, y, z)
-        r: angular velocity (x, y) or (x, y, z) as in Twist
+        r: angular z velocity
+
         '''
         
         curr_timestamp = time.time()
@@ -59,24 +61,23 @@ class Node(object):
         self._acc.append(a)
         self._quat.append(q)
         self._rot.append(r)
-        
+        self._yaw.append(euler_from_quaternion(q)[-1])
         self._time_stamp.append(curr_timestamp)
     
     def distance_to_goal(self, t):
 
         return round(math.hypot(self._goal[0] - self._pos[t][0], self._goal[1] - self._pos[t][1]), 2)
 
+    def rpy(self, t):
+        return euler_from_quaternion(self._quat[t])
+
     def heading(self, t):
-        if not self._goal:
-            self._goal = self.cv_prediction(t)[-1]
-        
-        _, _, yaw = euler_from_quaternion(self._quat[t])
         
         inc_y = self._goal[1] - self._pos[t][1]
         inc_x = self._goal[0] - self._pos[t][0]
         goal_angle = math.atan2(inc_y, inc_x)
 
-        heading = goal_angle - yaw
+        heading = goal_angle - self._yaw[t]
 
         if heading > np.pi:
             heading -= 2 * np.pi

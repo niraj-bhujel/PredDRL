@@ -312,7 +312,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             Array of shape (batch_size,) and dtype np.int32
             idexes in buffer of sampled experiences
         """
-
+        batch_size = min(batch_size, len(self._storage))
         idxes = self._sample_proportional(batch_size)
 
         weights = []

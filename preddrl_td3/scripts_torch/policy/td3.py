@@ -6,12 +6,11 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.distributions as tdist
 
-from policy.policy_base_torch import OffPolicyAgent
-
 
 from misc.huber_loss import huber_loss
 
-from policy.ddpg_torch import DDPG, Actor
+from policy.policy_base import OffPolicyAgent
+from policy.ddpg import DDPG, Actor
 
 
 class Critic(nn.Module):

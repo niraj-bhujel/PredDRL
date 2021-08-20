@@ -99,7 +99,10 @@ def prepare_output_dir(args, user_specified_dir=None, argv=None,
                     '{} is not a directory'.format(user_specified_dir))
         outdir = os.path.join(user_specified_dir, time_str)
         if os.path.exists(outdir):
-            raise RuntimeError('{} exists'.format(outdir))
+            if not args.overwrite:
+                raise RuntimeError('{} exists'.format(outdir))
+            else:
+                print('Overwritting existing directory')
         else:
             os.makedirs(outdir)
     else:
