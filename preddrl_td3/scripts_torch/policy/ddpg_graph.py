@@ -61,7 +61,7 @@ class Critic(nn.Module):
                                layer=args.layer,)
 
     def forward(self, g, a):
-
+        
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)

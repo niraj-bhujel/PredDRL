@@ -393,7 +393,8 @@ if __name__ == '__main__':
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(use_prioritized_rb=False)
     parser.set_defaults(use_nstep_rb=True)
-
+    parser.set_defaults(policy='graph_ddpg')
+    
     args = parser.parse_args()
     print({val[0]:val[1] for val in sorted(vars(args).items())})
 
