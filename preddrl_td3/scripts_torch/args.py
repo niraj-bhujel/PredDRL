@@ -5,29 +5,29 @@ def get_argument(parser=None):
         parser = argparse.ArgumentParser(conflict_handler='resolve')
 
     # policy setting
-    parser.add_argument('--policy', type=str, default='ddpg',
+    parser.add_argument('--policy', type=str, default='ddpg_graph',
                         help="Model name one of [td3, ddpg, graph_ddpg, gcn]")
 
-    parser.add_argument('--memory-capacity', type=int, default=int(1e6))
+    parser.add_argument('--memory_capacity', type=int, default=int(1e6))
 
     # experiment settings
-    parser.add_argument('--max-steps', type=int, default=int(1e6),
+    parser.add_argument('--max_steps', type=int, default=int(1e6),
                         help='Maximum number steps to interact with env.')
-    parser.add_argument('--episode-max-steps', type=int, default=int(1e3),
+    parser.add_argument('--episode_max_steps', type=int, default=int(1e3),
                         help='Maximum steps in an episode')
-    parser.add_argument('--n-experiments', type=int, default=1,
+    parser.add_argument('--n_experiments', type=int, default=1,
                         help='Number of experiments')
-    parser.add_argument('--show-progress', action='store_true',
+    parser.add_argument('--show_progress', action='store_true',
                         help='Call `render` in training process')
-    parser.add_argument('--save-model-interval', type=int, default=int(1e6),
+    parser.add_argument('--save_model_interval', type=int, default=int(1e6),
                         help='Interval to save model')
-    parser.add_argument('--save-summary-interval', type=int, default=int(1e3),
+    parser.add_argument('--save_summary_interval', type=int, default=int(1e3),
                         help='Interval to save summary')
-    parser.add_argument('--model-dir', type=str, default=None,
+    parser.add_argument('--model_dir', type=str, default=None,
                         help='Directory to restore model')
-    parser.add_argument('--dir-suffix', type=str, default='',
+    parser.add_argument('--dir_suffix', type=str, default='',
                         help='Suffix for directory that contains results')
-    parser.add_argument('--normalize-obs', action='store_true',
+    parser.add_argument('--normalize_obs', action='store_true',
                         help='Normalize observation')
     parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
                         help='Output directory')
@@ -37,34 +37,34 @@ def get_argument(parser=None):
     # test settings
     parser.add_argument('--evaluate', action='store_true',
                         help='Evaluate trained model')
-    parser.add_argument('--test-interval', type=int, default=int(1e6),
+    parser.add_argument('--test_interval', type=int, default=int(1e6),
                         help='Interval to evaluate trained model')
-    parser.add_argument('--show-test-progress', action='store_true',
+    parser.add_argument('--show_test_progress', action='store_true',
                         help='Call `render` in evaluation process')
-    parser.add_argument('--test-episodes', type=int, default=5,
+    parser.add_argument('--test_episodes', type=int, default=5,
                         help='Number of episodes to evaluate at once')
-    parser.add_argument('--save-test-path', action='store_true',
+    parser.add_argument('--save_test_path', action='store_true',
                         help='Save trajectories of evaluation')
-    parser.add_argument('--show-test-images', action='store_true',
+    parser.add_argument('--show_test_images', action='store_true',
                         help='Show input images to neural networks when an episode finishes')
-    parser.add_argument('--save-test-movie', action='store_true',
+    parser.add_argument('--save_test_movie', action='store_true',
                         help='Save rendering results')
 
     # replay buffer
     parser.add_argument('--buffer_size', type=int, default=100000,
                         help='Size of buffer')
-    parser.add_argument('--use-prioritized-rb', action='store_true',
+    parser.add_argument('--use_prioritized_rb', action='store_true',
                         help='Flag to use prioritized experience replay')
-    parser.add_argument('--use-nstep-rb', action='store_true',
+    parser.add_argument('--use_nstep_rb', action='store_true',
                         help='Flag to use nstep experience replay')
-    parser.add_argument('--n-step', type=int, default=4,
+    parser.add_argument('--n_step', type=int, default=4,
                         help='Number of steps to look over')
     # others
-    parser.add_argument('--logging-level', choices=['DEBUG', 'INFO', 'WARNING'],
+    parser.add_argument('--logging_level', choices=['DEBUG', 'INFO', 'WARNING'],
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'vel', 'rot', 'hed', 'gdist', 'goal'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'vel', 'rot', 'hed', 'gdist'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')

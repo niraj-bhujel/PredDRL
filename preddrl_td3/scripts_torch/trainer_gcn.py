@@ -82,8 +82,6 @@ class Trainer:
                                               time_format='%Y_%m_%d',
                                               suffix=suffix
                                               )
-        if os.path.exists(self._output_dir):
-            shutil.rmtree(self._output_dir)
 
         # backup scripts
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')

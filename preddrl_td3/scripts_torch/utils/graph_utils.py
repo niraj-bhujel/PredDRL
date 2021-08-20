@@ -18,8 +18,8 @@ interaction_direction = {
     ('pedestrian', 'robot') : 5.0,
     ('pedestrian', 'goal'): 1e6,
 
-    ('obstacle', 'pedestrian'): 5.0,
-    ('obstacle', 'robot'): 5.0,
+    ('obstacle', 'pedestrian'): 20.0, # large distance to prevent graph creatiion error due to zero edges
+    ('obstacle', 'robot'): 20.0,
 
     ('goal', 'robot'): 1e6,
     ('goal', 'pedestrian'): 1e6,
@@ -28,8 +28,8 @@ interaction_direction = {
 
 state_dims = {
         "pos": 2,
-        "vel": 1,
-        "acc": 1,
+        "vel": 2,
+        "acc": 2,
         "rot": 1,
         "yaw": 1,
         "hed": 1,
@@ -40,7 +40,7 @@ state_dims = {
         "goal": 2,
     }
 
-def create_graph(nodes, interaction_radius=5, bidirectional=False):
+def create_graph(nodes, bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''
@@ -63,7 +63,7 @@ def create_graph(nodes, interaction_radius=5, bidirectional=False):
         nodes_data['hed'].append(src_node.heading(src_node.last_timestep))
         nodes_data['goal'].append(src_node._goal) # call this after heading
         nodes_data['gdist'].append(src_node.distance_to_goal(src_node.last_timestep))
-        nodes_data['time_step'].append(1/src_node.frame_rate)
+        nodes_data['time_step'].append(src_node.time_step)
 
         nodes_data['tid'].append(src_node._id)
         nodes_data['cid'].append(node_type_list.index(src_node._type))

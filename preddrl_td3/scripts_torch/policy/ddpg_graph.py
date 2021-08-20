@@ -61,7 +61,7 @@ class Critic(nn.Module):
                                layer=args.layer,)
 
     def forward(self, g, a):
-        
+
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
@@ -95,6 +95,7 @@ class GraphDDPG(OffPolicyAgent):
         self.sigma = sigma
         self.tau = tau
         self.action_dim = action_dim
+        self.max_action = max_action
 
         # Define and initialize Actor network
         self.actor = Actor(config,  args, action_dim, max_action, **kwargs)
@@ -116,7 +117,7 @@ class GraphDDPG(OffPolicyAgent):
         state = state.to(self.device)
         action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
-                                       self.actor.max_action)
+                                       self.max_action)
         if tensor:
             return action
         else:
@@ -132,7 +133,7 @@ class GraphDDPG(OffPolicyAgent):
 
         self.actor.train()
 
-        return torch.clamp(action, -max_action, max_action)
+        return action
 
     def train(self, states, actions, next_states, rewards, dones, weights, step=0):
         self.step += 1
@@ -143,6 +144,7 @@ class GraphDDPG(OffPolicyAgent):
         dones = torch.from_numpy(np.array(dones, dtype=np.float32)).view(-1, 1).to(self.device)
         weights = torch.from_numpy(np.array(weights)).to(self.device)
 
+        # print({int(cid):(states.ndata['cid']==cid).sum().item() for cid in states.ndata['cid'].unique()})
         # print(actions.shape, rewards.shape, dones.shape, weights.shape)
         # torch.Size([100, 24]) torch.Size([100, 2]) torch.Size([100, 24]) torch.Size([100, 1]) torch.Size([100, 1]) torch.Size([100])
         
@@ -152,12 +154,12 @@ class GraphDDPG(OffPolicyAgent):
 
         return actor_loss , critic_loss.item(), td_errors.detach().cpu().numpy()
 
-    def optimization_step(self, optimizer, loss, clip_norm=None, retain_graph=False):
+    def optimization_step(self, optimizer, model, loss, clip_norm=1, retain_graph=False):
         optimizer.zero_grad()
         loss.backward(retain_graph=retain_graph)
 
         if clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(net.parameters(), clip_norm) #clip gradients to help stabilise training
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
 
         optimizer.step()
 
@@ -168,14 +170,15 @@ class GraphDDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer,  critic_loss)
+        self.optimization_step(self.critic_optimizer, self.critic,  critic_loss)
 
         # Compute actor loss
-        next_action = self.actor(states)
-        actor_loss = -self.critic(states, next_action).mean()
+        robot_mask = states.ndata['cid']==node_type_list.index('robot')
+ 
+        actor_loss = -self.critic(states, self.actor(states))[robot_mask].mean()
 
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss)
+        self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)
@@ -189,9 +192,9 @@ class GraphDDPG(OffPolicyAgent):
     def compute_td_error(self, states, actions, next_states, rewards, dones, phase='test'):
         states = dgl.batch(states).to(self.device)
         next_states = dgl.batch(next_states).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.float32).to(self.device).view(-1, self.action_dim)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device).view(-1, 1)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device).view(-1, 1)
+        actions = torch.from_numpy(np.array(actions, dtype=np.float32)).view(-1, self.action_dim).to(self.device)
+        rewards = torch.from_numpy(np.array(rewards, dtype=np.float32)).view(-1, 1).to(self.device)
+        dones = torch.from_numpy(np.array(dones, dtype=np.float32)).view(-1, 1).to(self.device)
         
         with torch.no_grad():
             td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones, phase)
@@ -202,22 +205,18 @@ class GraphDDPG(OffPolicyAgent):
 
         not_dones = 1. - dones
 
+        _mask = states.ndata['cid']==node_type_list.index('robot')
+
         with torch.no_grad():
             next_actions = self.actor_target(next_states)
 
             target_Q = self.critic_target(next_states, next_actions)
 
-            # q value for robot only
-            target_Q = target_Q[next_states.ndata['cid']==node_type_list.index('robot')]
-            
-            target_Q = rewards + (not_dones * self.discount * target_Q)
+            target_Q = rewards + (not_dones * self.discount * target_Q[_mask])
 
         current_Q = self.critic(states, actions)
 
-        # q value of robot
-        current_Q = current_Q[states.ndata['cid']==node_type_list.index('robot')]
-
-        td_errors = target_Q - current_Q
+        td_errors = target_Q - current_Q[_mask]
 
         # NOTE adding writer here will also add while called from compute_td_error
         if phase=='train':

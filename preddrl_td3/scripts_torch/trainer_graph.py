@@ -82,6 +82,8 @@ class Trainer:
                                               time_format='%Y_%m_%d',
                                               suffix=suffix
                                               )
+
+
         # backup scripts
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
@@ -154,18 +156,23 @@ class Trainer:
 
         while total_steps < self._max_steps:
             # print('Step - {}/{}'.format(total_steps, self._max_steps))
-
+            mask = obs.ndata['cid']==node_type_list.index('robot')
             if total_steps < self._policy.n_warmup:
                 action = np.zeros((obs.number_of_nodes(), self._policy.action_dim))
-                action[obs.ndata['cid']==node_type_list.index('robot')] = self._env.action_space.sample()
+                sampled_action = self._env.action_space.sample() #(2, )
+                # sampled_action[0]  = (sampled_action[0] + 2)/20
+                action[obs.ndata['cid']==node_type_list.index('robot')] = sampled_action
                 # action = self._env.action_space.sample()
 
             else:
                 action = self._policy.get_action(obs)
+                # action[:, 0] += 2
+                # action[:, 0] /= 20
+                action[obs.ndata['cid']!=node_type_list.index('robot')] = 0.0
 
             # only robot action
             robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-            # print(robot_action)
+            
             self.writer.add_histogram(self._policy.policy_name + "/robot_actions", robot_action, total_steps)
 
             next_obs, reward, done, success = self._env.step(robot_action)
@@ -173,6 +180,8 @@ class Trainer:
             episode_steps += 1
             episode_return += reward
             total_steps += 1
+
+            print('{}/{}: Robot Action: {}, Rewards: {}'.format(total_steps, self._max_steps, robot_action, reward))
 
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
@@ -223,6 +232,7 @@ class Trainer:
 
                 # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
                 obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
+                # print(np.array(act_batch))
 
                 samples = dict(obs=obs_batch, 
                                act=act_batch, 
@@ -390,13 +400,14 @@ if __name__ == '__main__':
     parser.set_defaults(batch_size=64)
     parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
+    parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(use_prioritized_rb=False)
+    parser.set_defaults(use_prioritized_rb=True)
     parser.set_defaults(use_nstep_rb=True)
     parser.set_defaults(policy='graph_ddpg')
-    
+
     args = parser.parse_args()
-    print({val[0]:val[1] for val in sorted(vars(args).items())})
+    # print({val[0]:val[1] for val in sorted(vars(args).items())})
 
     # test param, modified by niraj
     if args.evaluate:
@@ -432,9 +443,9 @@ if __name__ == '__main__':
         args=args)
 
     policy = policy.to(policy.device)
-    print(repr(policy))
-    for m_name, module in policy.named_children():
-        print(m_name, model_attributes(module, verbose=0), '\n')
+    # print(repr(policy))
+    # for m_name, module in policy.named_children():
+    #     print(m_name, model_attributes(module, verbose=0), '\n')
 
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)

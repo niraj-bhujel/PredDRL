@@ -36,7 +36,7 @@ class Env:
         self.max_w = 1.5
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
-        self.vel_cmd = [0., 0.]
+        # self.vel_cmd = [0., 0.]
 
         self.position = Point()
         self.test = False
@@ -111,7 +111,7 @@ class Env:
 
         self.heading = round(heading, 2)
 
-    def getGraphState(self, ):
+    def getGraphState(self, action=[0, 0]):
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
         except rospy.ROSException:
@@ -130,8 +130,8 @@ class Env:
                 continue
 
             elif 'goal' in m_name:
-                continue
-                # node_type = 'goal'
+                # continue
+                node_type = 'goal'
 
             elif 'obstacle' in m_name:
                 node_type = 'obstacle'
@@ -147,29 +147,37 @@ class Env:
             twist = model_states.twist[i]
 
             m_pos = point_to_numpy(pose.position)
-            m_quat = quat_to_numpy(pose.orientation)
-
             m_vel = vector3_to_numpy(twist.linear)
+
+            m_quat = quat_to_numpy(pose.orientation)
             m_rot = vector3_to_numpy(twist.angular)
 
-            if node_type =='robot':
-                m_pos = point_to_numpy(self.position)
-                m_quat = quat_to_numpy(self.orientation)
-                m_vel[0] = self.vel_cmd[0]
-                m_rot[2] = self.vel_cmd[1]
-
-            else:
-                m_pos -= point_to_numpy(self.position) # measured from robot pos
-
+            # get the corresponding node
             if m_name in self.nodes.keys():
                 node = self.nodes[m_name]
             else:
                 self.nid +=1 
                 node = Node(node_id=self.nid, node_type=node_type)
                 self.nodes[m_name] = node
-                
-            node.update_states(m_pos[:2], m_vel[0], m_quat, m_rot[2])
 
+            if node_type =='robot':
+                m_pos = point_to_numpy(self.position)
+                m_quat = quat_to_numpy(self.orientation)
+                m_vel[0] = action[0]
+                m_rot[2] = action[1]
+
+            else: # relative pos and vel
+                m_pos -= point_to_numpy(self.position) # measured from robot pos
+
+                if len(node)>0:
+                    # last_pos = node._pos[-1]
+                    m_vel = (m_pos[:2] - np.array(node._pos[-1]))/node.time_step
+                else:
+                    m_vel = np.zeros_like(m_pos)
+
+            node.update_states(m_pos[:2], m_vel[:2], m_quat, m_rot[2])
+
+            # udpate goal
             if node_type=='robot':
                 node._goal = [self.goal_x, self.goal_y]
                 
@@ -181,14 +189,14 @@ class Env:
 
             nodes.append(node)
         
-        g = create_graph(nodes, interaction_radius=5)
+        g = create_graph(nodes)
 
         return g
 
-    def getState(self, ):
+    def getState(self, action=[0, 0]):
         # scan_range = [] # commented by niraj
         scan_range_collision = []
-        heading = self.heading # comment out by niraj
+        heading = self.heading
 
         done = False
         success = False # added by niraj
@@ -221,6 +229,7 @@ class Env:
             rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
             success = True
             reward = 200
+            
 
         elif current_distance > self.max_goal_distance: # added by niraj
             rospy.loginfo("Robot too far away from goal!!")
@@ -237,7 +246,8 @@ class Env:
             reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
 
         # print(scan_range_collision)
-        state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
+        state = scan_range_collision + list(action) + [heading, current_distance] # by niraj
+        # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
         return state, done, success, reward
@@ -270,26 +280,31 @@ class Env:
 
     def step(self, action):
         # self.pre_heading = self.heading
-
+        action[0] = (action[0] + 2.0) * 1/20.0
+        
         vel_cmd = Twist()
-        vel_cmd.linear.x = (action[0] + 2.0) * 1/20.0
-        # vel_cmd.linear.x = action[0]
+        vel_cmd.linear.x = action[0]
         vel_cmd.angular.z = action[1]
 
         self.pub_cmd_vel.publish(vel_cmd)
-        self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
+        # self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
 
-        
-        state, done, success, reward = self.getState()
-        state = self.getGraphState() # in addition to getState, use this to get graph
+        state, done, success, reward = self.getState(action)
 
-        # added by niraj
-        if done:
-            self.pub_cmd_vel.publish(Twist())
-        # added by niraj
+        # goal must be respawned before collecting graph state, otherwise graph create fails. NOTE! applicable only if goal node is included in the graph
         if success:
-            self.pub_cmd_vel.publish(Twist())
             self.init_goal(position_check=True, test=self.test)
+
+        if done or success:
+            self.pub_cmd_vel.publish(Twist()) 
+
+        # NOTE, action is passed for accurate data, graph state after publishing 
+        state = self.getGraphState(action)
+
+        # stop agent
+        vel_cmd.linear.x = 0
+        vel_cmd.angular.z = 0
+        self.pub_cmd_vel.publish(vel_cmd)
 
         return state, reward, done, success
 
@@ -303,7 +318,7 @@ class Env:
 
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
         self.goal_distance = self.getGoalDistace()
-        self.vel_cmd = [0., 0.]
+        # self.vel_cmd = [0., 0.] # comment by niraj
 
     def reset(self, initGoal=False):
 

@@ -51,8 +51,9 @@ class Node(object):
         curr_timestamp = time.time()
 
         if len(self)>0:
-            a = np.asarray(self._vel[-1]) - np.asarray(v)
-            a = a/(self._time_stamp[-1] - curr_timestamp)
+            last_v = self._vel[-1]
+            dt = self._time_stamp[-1] - curr_timestamp
+            a = (np.array(v) - np.array(last_v))/dt
         else:
             a = np.zeros_like(v)
 
@@ -88,8 +89,9 @@ class Node(object):
         return round(heading, 2)
 
     def cv_prediction(self, t, pred_steps=12, time_step=None):
+
         if time_step is None:
-            time_step = 1.0/self.frame_rate
+            time_step = self.time_step
 
         _idx = self.timestep_index(t)
 
@@ -133,14 +135,13 @@ class Node(object):
         return t-self._first_timestep
 
     @property
-    def frame_rate(self):
+    def time_step(self):
         if len(self)>1:
-            fps = 1/np.mean(np.diff(self._time_stamp))
-        elif len(self)==1:
-            fps = 1
+            return np.mean(np.diff(self._time_stamp))
+        # elif len(self)==1:
+        #     fps = 1
         else:
-            fps = 0
-        return fps
+            return 1
 
     @property
     def id(self):
