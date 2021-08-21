@@ -82,7 +82,7 @@ def network_draw(g, show_node_label=True, show_edge_labels=False, node_label='ni
         tid_idx = np.where(unique_tid==traj_id)[0][0]
         node_colors.append(ped_colors[:, tid_idx])        
         
-        node_labels[u] = u_data[node_label].numpy()
+        node_labels[u] = u_data[node_label].numpy().round(2)
         # node_labels[u]=traj_id
         # node_labels[u]=u_data['tid'].numpy()-unique_tid.min()+1
 
@@ -131,21 +131,19 @@ def network_draw(g, show_node_label=True, show_edge_labels=False, node_label='ni
             elabel = e[edge_label]
             if isinstance(elabel, torch.Tensor):
                 if elabel.requires_grad:
-                    elabel = elabel.detach().item()
+                    elabel = elabel.detach().numpy().round(2)
                 else:
-                    elabel = elabel.item()
+                    elabel = elabel.numpy().round(2)
 
             # edge_labels[(u, v)] = np.around(elabel, decimals=3)
 
+            # use this for curved edges
             x1, y1 = pos[u]
             x2, y2 = pos[v]
-
             x12, y12 = (x1 + x2) / 2., (y1 + y2) / 2. # center of the edge
             dx, dy = x2 - x1, y2 - y1 # x and y offset
-                
             cx, cy = x12 + rad * dy, y12 - rad * dx
-            
-            ax.text(cx, cy, s='{:.2f}'.format(elabel), fontsize=8, zorder=1, clip_on=True)
+            ax.text(cx, cy, s='{}'.format(elabel), fontsize=8, zorder=1, clip_on=True)
             
         # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.2, font_size=8)
         
