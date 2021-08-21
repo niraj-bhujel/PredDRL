@@ -56,13 +56,17 @@ def create_graph(nodes, bidirectional=False):
         # src_node_states = np.concatenate(src_node.states_at(src_node.last_timestep), axis=-1)
 
         nodes_data['pos'].append(src_node._pos[src_node.last_timestep])
-        nodes_data['vel'].append(src_node._vel[src_node.last_timestep])
-        nodes_data['acc'].append(src_node._acc[src_node.last_timestep])
-        nodes_data['rot'].append(src_node._rot[src_node.last_timestep])
-        nodes_data['yaw'].append(src_node._yaw[src_node.last_timestep])
+        nodes_data['action'].append(src_node._action[src_node.last_timestep])
+
+        # nodes_data['vel'].append(src_node._vel[src_node.last_timestep])
+        # nodes_data['acc'].append(src_node._acc[src_node.last_timestep])
+        # nodes_data['rot'].append(src_node._rot[src_node.last_timestep])
+        # nodes_data['yaw'].append(src_node._yaw[src_node.last_timestep])
+
         nodes_data['hed'].append(src_node.heading(src_node.last_timestep))
         nodes_data['goal'].append(src_node._goal) # call this after heading
         nodes_data['gdist'].append(src_node.distance_to_goal(src_node.last_timestep))
+        
         nodes_data['time_step'].append(src_node.time_step)
 
         nodes_data['tid'].append(src_node._id)
@@ -106,13 +110,15 @@ def create_graph(nodes, bidirectional=False):
     
 
     g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
-    g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
-    g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32).view(-1, state_dims['acc'])
+    # g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
+    # g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32).view(-1, state_dims['acc'])
 
-    g.ndata['rot'] = torch.tensor(np.stack(nodes_data['rot'], axis=0), dtype=torch.float32).view(-1, state_dims['rot'])
-    g.ndata['yaw'] = torch.tensor(np.stack(nodes_data['yaw'], axis=0), dtype=torch.float32).view(-1, state_dims['yaw'])
-    g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])
+    # g.ndata['rot'] = torch.tensor(np.stack(nodes_data['rot'], axis=0), dtype=torch.float32).view(-1, state_dims['rot'])
+    # g.ndata['yaw'] = torch.tensor(np.stack(nodes_data['yaw'], axis=0), dtype=torch.float32).view(-1, state_dims['yaw'])
+
+    g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
     
+    g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
     g.ndata['gdist'] = torch.tensor(np.stack(nodes_data['gdist'], axis=0), dtype=torch.float32).view(-1, state_dims['gdist'])
 

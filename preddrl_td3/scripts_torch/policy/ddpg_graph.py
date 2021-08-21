@@ -38,7 +38,10 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         g, h, e = self.net(g, h, e)
 
-        h = self.max_action * torch.tanh(h)
+        # h[:, 0] = torch.sigmoid(h[:, 0])
+        # h[:, 1] = self.max_action * torch.tanh(h[:, 1])
+
+        # mask = g.ndata['cid']==node_type_list.index('robot')
 
         return h
 
@@ -66,7 +69,7 @@ class Critic(nn.Module):
         h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         _, h, _ = self.net(g, h, e)
-        # g.ndata['qvalue'] = h
+
         return h
 
 
@@ -77,8 +80,8 @@ class GraphDDPG(OffPolicyAgent):
             action_dim,
             name="DDPG",
             max_action=1.,
-            lr_actor=0.001,
-            lr_critic=0.001,
+            lr_actor=0.0001,
+            lr_critic=0.0001,
             actor_units=[400, 300],
             critic_units=[400, 300],
             sigma=0.1,
@@ -129,7 +132,7 @@ class GraphDDPG(OffPolicyAgent):
         with torch.no_grad():
             action = self.actor(state)
 
-            action += torch.empty_like(action).normal_(mean=0,std=sigma)
+            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
 
         self.actor.train()
 
@@ -159,7 +162,7 @@ class GraphDDPG(OffPolicyAgent):
         loss.backward(retain_graph=retain_graph)
 
         if clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
+            nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
 
         optimizer.step()
 
@@ -173,9 +176,9 @@ class GraphDDPG(OffPolicyAgent):
         self.optimization_step(self.critic_optimizer, self.critic,  critic_loss)
 
         # Compute actor loss
-        robot_mask = states.ndata['cid']==node_type_list.index('robot')
- 
-        actor_loss = -self.critic(states, self.actor(states))[robot_mask].mean()
+        _mask = states.ndata['cid']==node_type_list.index('robot')
+
+        actor_loss = -self.critic(states, self.actor(states)*_mask.unsqueeze(-1))[_mask].mean()
 
         # Optimize the actor 
         self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
@@ -208,13 +211,13 @@ class GraphDDPG(OffPolicyAgent):
         _mask = states.ndata['cid']==node_type_list.index('robot')
 
         with torch.no_grad():
-            next_actions = self.actor_target(next_states)
+            next_actions = self.actor_target(next_states) * _mask.unsqueeze(1)
 
             target_Q = self.critic_target(next_states, next_actions)
 
             target_Q = rewards + (not_dones * self.discount * target_Q[_mask])
 
-        current_Q = self.critic(states, actions)
+        current_Q = self.critic(states, actions * _mask.unsqueeze(1))
 
         td_errors = target_Q - current_Q[_mask]
 

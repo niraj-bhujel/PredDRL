@@ -151,6 +151,9 @@ class Trainer:
         episode_success = 0
         success_rate = 0
 
+        actor_loss = 0
+        critic_loss = 0
+
         episode_start_time = time.perf_counter()
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
@@ -172,31 +175,43 @@ class Trainer:
 
             # only robot action
             robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-            
-            self.writer.add_histogram(self._policy.policy_name + "/robot_actions", robot_action, total_steps)
+
 
             next_obs, reward, done, success = self._env.step(robot_action)
+
+            self.writer.add_scalar(self._policy.policy_name + "/v", robot_action[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/w", robot_action[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+            self.writer.add_histogram(self._policy.policy_name + "/robot_actions", robot_action, total_steps)
+            print('{}/{}: Robot Action: ({:.3f}, {:.3f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
+                                                                                            self._max_steps, 
+                                                                                            robot_action[0],
+                                                                                            robot_action[1], 
+                                                                                            reward,
+                                                                                            actor_loss, 
+                                                                                            critic_loss))            
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
 
-            print('{}/{}: Robot Action: {}, Rewards: {}'.format(total_steps, self._max_steps, robot_action, reward))
+
 
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
-            if self._vis_graph and total_steps<(self._policy.n_warmup +500):
+            if self._vis_graph and total_steps<100:
                 network_draw(obs,
-                             show_node_label=True, node_label='cid',
-                             show_edge_labels=True, edge_label='dist',
+                             show_node_label=True, node_label='pos',
+                             show_edge_labels=True, edge_label='diff',
+                             show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._plot_dir, 
                              )
             
             # update states
-            self.append_to_replay(obs, action, reward, next_obs, done)
-
+            # self.append_to_replay(obs, action, reward, next_obs, done)
+            self.replay_buffer.add([obs, action, reward, next_obs, done])
             obs = next_obs
 
             #for success rate
@@ -402,7 +417,7 @@ if __name__ == '__main__':
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(use_prioritized_rb=True)
+    parser.set_defaults(use_prioritized_rb=False)
     parser.set_defaults(use_nstep_rb=True)
     parser.set_defaults(policy='graph_ddpg')
 
