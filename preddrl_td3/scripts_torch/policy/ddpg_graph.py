@@ -38,8 +38,8 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         g, h, e = self.net(g, h, e)
 
-        # h[:, 0] = torch.sigmoid(h[:, 0])
-        # h[:, 1] = self.max_action * torch.tanh(h[:, 1])
+        h[:, 0] = torch.sigmoid(h[:, 0])
+        h[:, 1] = self.max_action * torch.tanh(h[:, 1])
 
         # mask = g.ndata['cid']==node_type_list.index('robot')
 
