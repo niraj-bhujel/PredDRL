@@ -194,9 +194,9 @@ class Env:
 
         done=False
         success = False
-        # current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
+        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
 
-        current_distance = g.ndata['gdist'][g.ndata['cid']==node_type_list.index('robot')]
+        # current_distance = g.ndata['gdist'][g.ndata['cid']==node_type_list.index('robot')]
 
         if self.collision_threshold > g.edata['dist'].min():
             rospy.loginfo("Collision!!")
@@ -295,7 +295,7 @@ class Env:
         # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
         # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
-        return state, done, success, reward
+        return state, reward, done, success
        
     def _setReward(self, state, done, success):
 
@@ -333,8 +333,8 @@ class Env:
         self.pub_cmd_vel.publish(vel_cmd)
         # self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
 
-        # state, done, success, reward = self.getState(v, w)
-        state, done, success, reward = self.getGraphState(v, w)
+        # state, reward, done, success = self.getState(v, w)
+        state, reward, done, success = self.getGraphState(v, w)
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
