@@ -161,48 +161,44 @@ class Trainer:
             # print('Step - {}/{}'.format(total_steps, self._max_steps))
             mask = obs.ndata['cid']==node_type_list.index('robot')
             if total_steps < self._policy.n_warmup:
-                action = np.zeros((obs.number_of_nodes(), self._policy.action_dim))
-                sampled_action = self._env.action_space.sample() #(2, )
+                action = self._env.action_space.sample() #(2, )
+                # action = np.zeros((self._policy.batch_size, self._policy.action_dim))
+                # sampled_action = self._env.action_space.sample() #(2, )
                 # sampled_action[0]  = (sampled_action[0] + 2)/20
-                action[obs.ndata['cid']==node_type_list.index('robot')] = sampled_action
-                # action = self._env.action_space.sample()
+                # action[obs.ndata['cid']==node_type_list.index('robot')] = sampled_action
 
             else:
                 action = self._policy.get_action(obs)
-                # action[:, 0] += 2
-                # action[:, 0] /= 20
-                action[obs.ndata['cid']!=node_type_list.index('robot')] = 0.0
+                # action[obs.ndata['cid']!=node_type_list.index('robot')] = 0.0
 
             # only robot action
-            robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
+            # robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
 
 
-            next_obs, reward, done, success = self._env.step(robot_action)
-
-            self.writer.add_scalar(self._policy.policy_name + "/v", robot_action[0], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/w", robot_action[1], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
-            self.writer.add_histogram(self._policy.policy_name + "/robot_actions", robot_action, total_steps)
-            print('{}/{}: Robot Action: ({:.3f}, {:.3f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
-                                                                                            self._max_steps, 
-                                                                                            robot_action[0],
-                                                                                            robot_action[1], 
-                                                                                            reward,
-                                                                                            actor_loss, 
-                                                                                            critic_loss))            
+            next_obs, reward, done, success = self._env.step(action)          
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
-
-
-
             fps = episode_steps / (time.perf_counter() - episode_start_time)
+
+            if total_steps%self._policy.update_interval==0:
+                self.writer.add_scalar(self._policy.policy_name + "/v", action[0], total_steps)
+                self.writer.add_scalar(self._policy.policy_name + "/w", action[1], total_steps)
+                self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+                self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
+                print('{}/{}: Robot Action: ({:.3f}, {:.3f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
+                                                                                                self._max_steps, 
+                                                                                                action[0],
+                                                                                                action[1], 
+                                                                                                reward,
+                                                                                                actor_loss, 
+                                                                                                critic_loss)) 
 
             if self._vis_graph and total_steps<100:
                 network_draw(obs,
-                             show_node_label=True, node_label='pos',
-                             show_edge_labels=True, edge_label='diff',
+                             show_node_label=True, node_label='action',
+                             show_edge_labels=True, edge_label='dist',
                              show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
@@ -392,10 +388,12 @@ if __name__ == '__main__':
     import sys
     sys.path.insert(0, './')
     sys.path.insert(0, './preddrl_td3/scripts_torch')
-    import json
+
     import rospy
     import args
-    from utils.utils import model_attributes
+    import yaml
+
+    from utils.utils import model_attributes, model_parameters
 
     from policy.td3 import TD3
     from policy.ddpg import DDPG
@@ -442,23 +440,24 @@ if __name__ == '__main__':
     test_env = Env()
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
-    with open("./preddrl_td3/scripts_torch/config.json", 'r') as f:
-        config = json.load(f)
+    with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
+        net_params = yaml.load(f, Loader = yaml.FullLoader)
 
     policy = policies[args.policy](
         state_shape=env.observation_space.shape,
         action_dim=env.action_space.high.size,
         gpu=args.gpu,
         memory_capacity=args.memory_capacity,
-        max_action=env.action_space.high[0],
+        max_action=env.action_space.high[1],
         batch_size=args.batch_size,
         actor_units=[400, 300],
         n_warmup=args.n_warmup,
-        config=config,
+        net_params=net_params,
         args=args)
 
     policy = policy.to(policy.device)
-    # print(repr(policy))
+    print(repr(policy))
+    model_parameters(policy)
     # for m_name, module in policy.named_children():
     #     print(m_name, model_attributes(module, verbose=0), '\n')
 

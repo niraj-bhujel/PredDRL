@@ -12,16 +12,16 @@ from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 from networks.gated_gcn_net import GatedGCNNet
 from utils.graph_utils import node_type_list, state_dims
-
+from layers.mlp_layer import MLP
 class Actor(nn.Module):
-    def __init__(self, config, args, action_dim, max_action, **kwargs):
+    def __init__(self, net_params, args, action_dim, max_action, **kwargs):
         # super(Actor, self).__init__()
         super(Actor, self).__init__()
 
-        config['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
-        config['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
-        config['net']['out_dim_node'] = action_dim
-        self.net = GatedGCNNet(config['net'], 
+        net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
+        net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
+        # net_params['net']['out_dim_node'] = action_dim
+        self.net = GatedGCNNet(net_params['net'], 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -29,6 +29,8 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
+        self.out = MLP(net_params['net']['hidden_dim'], action_dim, hidden_size=net_params['mlp']['hidden_size'])
+        
         self.max_action = max_action
         self.input_states = args.input_states
         self.input_edges = args.input_edges
@@ -38,24 +40,28 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         g, h, e = self.net(g, h, e)
 
-        h[:, 0] = torch.sigmoid(h[:, 0])
-        h[:, 1] = self.max_action * torch.tanh(h[:, 1])
+        # sum over batch nodes
+        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
 
-        # mask = g.ndata['cid']==node_type_list.index('robot')
+        h = self.out(h)
+
+        # h[:, 0] = torch.sigmoid(h[:, 0])
+        # h[:, 1] = self.max_action * torch.tanh(h[:, 1])
+        # h = self.max_action * torch.tanh(h)
 
         return h
 
 class Critic(nn.Module):
-    def __init__(self, config, args, action_dim, **kwargs):
+    def __init__(self, net_params, args, action_dim, **kwargs):
         super(Critic, self).__init__()
 
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        config['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states]) + action_dim
-        config['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
-        config['net']['out_dim_node'] = 1
-        self.net = GatedGCNNet(config['net'], 
+        net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
+        net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
+        # net_params['net']['out_dim_node'] = 1
+        self.net = GatedGCNNet(net_params['net'], 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -63,12 +69,21 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
+        self.out = MLP(net_params['net']['hidden_dim'] + action_dim, 1, hidden_size=(256, 64))
+
     def forward(self, g, a):
+        '''a: (bs, 1)'''
 
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
-        h = torch.cat([h, a], dim=-1)
+        # h = torch.cat([h, a], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
-        _, h, _ = self.net(g, h, e)
+        
+        g, h, _ = self.net(g, h, e)
+
+        # sum over batch nodes
+        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        h = torch.cat([h, a], dim=-1)
+        h = self.out(h)        
 
         return h
 
@@ -80,15 +95,15 @@ class GraphDDPG(OffPolicyAgent):
             action_dim,
             name="DDPG",
             max_action=1.,
-            lr_actor=0.0001,
-            lr_critic=0.0001,
+            lr_actor=3e-4,
+            lr_critic=3e-4,
             actor_units=[400, 300],
             critic_units=[400, 300],
             sigma=0.1,
             tau=0.005,
             n_warmup=int(1e4),
             memory_capacity=int(1e6),
-            config=None,
+            net_params=None,
             args=None,
             **kwargs):
 
@@ -101,13 +116,13 @@ class GraphDDPG(OffPolicyAgent):
         self.max_action = max_action
 
         # Define and initialize Actor network
-        self.actor = Actor(config,  args, action_dim, max_action, **kwargs)
-        self.actor_target = Actor(config, args, action_dim, max_action, **kwargs)
+        self.actor = Actor(net_params,  args, action_dim, max_action, **kwargs)
+        self.actor_target = Actor(net_params, args, action_dim, max_action, **kwargs)
         self.soft_update_of_target_network(self.actor, self.actor_target)
 
         # Define and initialize Critic network
-        self.critic = Critic(config, args, action_dim, **kwargs)
-        self.critic_target = Critic(config, args, action_dim, **kwargs)
+        self.critic = Critic(net_params, args, action_dim, **kwargs)
+        self.critic_target = Critic(net_params, args, action_dim, **kwargs)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
@@ -122,9 +137,9 @@ class GraphDDPG(OffPolicyAgent):
                                        self.sigma * (1. - test), 
                                        self.max_action)
         if tensor:
-            return action
+            return action.flatten()
         else:
-            return action.cpu().numpy()
+            return action.cpu().numpy().flatten()
 
     def _get_action_body(self, state, sigma, max_action):
 
@@ -176,9 +191,9 @@ class GraphDDPG(OffPolicyAgent):
         self.optimization_step(self.critic_optimizer, self.critic,  critic_loss)
 
         # Compute actor loss
-        _mask = states.ndata['cid']==node_type_list.index('robot')
+        # _mask = states.ndata['cid']==node_type_list.index('robot')
 
-        actor_loss = -self.critic(states, self.actor(states)*_mask.unsqueeze(-1))[_mask].mean()
+        actor_loss = -self.critic(states, self.actor(states)).mean()
 
         # Optimize the actor 
         self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
@@ -208,18 +223,18 @@ class GraphDDPG(OffPolicyAgent):
 
         not_dones = 1. - dones
 
-        _mask = states.ndata['cid']==node_type_list.index('robot')
+        # _mask = states.ndata['cid']==node_type_list.index('robot')
 
         with torch.no_grad():
-            next_actions = self.actor_target(next_states) * _mask.unsqueeze(1)
+            next_actions = self.actor_target(next_states)
 
             target_Q = self.critic_target(next_states, next_actions)
 
-            target_Q = rewards + (not_dones * self.discount * target_Q[_mask])
+            target_Q = rewards + (not_dones * self.discount * target_Q)
 
-        current_Q = self.critic(states, actions * _mask.unsqueeze(1))
+        current_Q = self.critic(states, actions)
 
-        td_errors = target_Q - current_Q[_mask]
+        td_errors = target_Q - current_Q
 
         # NOTE adding writer here will also add while called from compute_td_error
         if phase=='train':
