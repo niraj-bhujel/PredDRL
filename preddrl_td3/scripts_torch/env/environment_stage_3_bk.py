@@ -161,14 +161,13 @@ class Env:
             m_rot = vector3_to_numpy(twist.angular)
 
             if node_type =='robot':
+                # m_pos = [0.0, 0.0]
                 m_pos = point_to_numpy(self.position)
                 m_quat = quat_to_numpy(self.orientation)
-                # m_pos = [0.0, 0.0]
                 action = [v, w]
 
             else: # relative pos and vel
                 # m_pos -= point_to_numpy(self.position) # measured from robot pos
-
                 # if len(node)>0:
                 #     # last_pos = node._pos[-1]
                 #     m_vel = (m_pos[:2] - np.array(node._pos[-1]))/node.time_step
@@ -194,11 +193,14 @@ class Env:
 
         done=False
         success = False
+
+
         current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
 
         # current_distance = g.ndata['gdist'][g.ndata['cid']==node_type_list.index('robot')]
 
-        if self.collision_threshold > g.edata['dist'].min():
+        if self.collision_threshold > g.edata['dist'].min()- 0.2:
+        # if self.collision_threshold > min(scan_range_collision) + 1e-6:
             rospy.loginfo("Collision!!")
             done = True
             reward = -150
@@ -213,15 +215,15 @@ class Env:
             done = True
             reward = -150
 
-        # elif abs(v)>3:
-        #     reward =  -np.log(v**2)
+        elif abs(v)>1:
+            reward =  -np.log(v**2)
 
-        # elif abs(w)>np.pi:
-        #     reward = -np.log(w**2)
+        elif abs(w)>np.pi:
+            reward = -np.log(w**2)
 
         else:
             # reward = (self.goal_threshold-current_distance) * 0.1
-            reward = (current_distance - self.goal_threshold) * 0.1
+            reward = current_distance - self.goal_threshold # by niraj
 
         # # 增加一层膨胀区域，越靠近障碍物负分越多
         # obstacle_min_range = round(min(scan_range_collision), 2)
@@ -274,11 +276,11 @@ class Env:
             done = True
             reward = -150
 
-        elif abs(v)>3:
-            reward =  -np.log(v**2)
+        # elif abs(v)>3:
+        #     reward =  -np.log(v**2)
 
-        elif abs(w)>np.pi:
-            reward = -np.log(w**2)
+        # elif abs(w)>np.pi:
+        #     reward = -np.log(w**2)
 
         else:
             # reward = (self.goal_threshold-current_distance) * 0.1
@@ -296,31 +298,6 @@ class Env:
         # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
         
         return state, reward, done, success
-       
-    def _setReward(self, state, done, success):
-
-        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # current_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        # distance_rate = (self.past_distance - current_distance)
-        # self.past_distance = current_distance
-
-        if done:
-            reward = -150
-
-        elif success:
-            reward = 200
-
-        else:
-            reward = (self.goal_threshold-state[-1]) * 0.1 #- 0.25*abs(state[-3])15*distance_rate
-            # reward = 15*distance_rate
-        
-        # 增加一层膨胀区域，越靠近障碍物负分越多
-        obstacle_min_range = round(min(state[:self.num_beams]), 2)
-        if obstacle_min_range < self.inflation_rad:
-            # reward += 100.0*(obstacle_min_range - self.inflation_rad)/self.inflation_rad
-            reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
-
-        return reward
 
 
     def step(self, action):

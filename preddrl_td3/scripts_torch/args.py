@@ -64,7 +64,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['action', 'hed', 'gdist'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'action', 'hed', 'gdist'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')
@@ -76,13 +76,13 @@ def get_argument(parser=None):
                         help='Plot graph during training step. Plot in output_dir/graphs/')
 
     # gated gcn
-    parser.add_argument('--in_feat_dropout', default=0, type=float,
+    parser.add_argument('--in_feat_dropout', default=0.2, type=float,
                         help='Apply dropout to input features')
     parser.add_argument('--dropout', default=0, type=float,
                         help='Apply dropout on hidden features')
     parser.add_argument('--batch_norm', action='store_false', default=False,
                         help='Apply batch norm between layer')
-    parser.add_argument('--residual', action='store_false', default=False,
+    parser.add_argument('--residual', action='store_false', default=True,
                         help='Apply batch norm between layer')
     parser.add_argument('--activation', default='ReLU',
                         help='Activation function')
