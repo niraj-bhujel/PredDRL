@@ -45,7 +45,7 @@ class Env:
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_space = spaces.Box(low=np.array([0., 0.]), 
+        self.action_space = spaces.Box(low=np.array([-0.7, -0.7]), 
                                        high=np.array([0.7, 0.7]), 
                                        dtype=np.float32)
         
