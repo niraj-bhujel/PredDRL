@@ -34,7 +34,7 @@ class Node(object):
         self._quat = deque([], max_len)
         self._rot = deque([], max_len)
         self._action = deque([], max_len)
-        # self._yaw = deque([], max_len)
+        self._yaw = deque([], max_len)
         self._time_stamp = deque([], max_len)
 
     def __len__(self):
@@ -65,7 +65,7 @@ class Node(object):
         self._rot.append(r)
         if action is not None:
             self._action.append(action)
-        # self._yaw.append(euler_from_quaternion(q)[-1])
+        self._yaw.append(euler_from_quaternion(q)[-1])
         self._time_stamp.append(curr_timestamp)
     
     def distance_to_goal(self, t):

@@ -1,5 +1,5 @@
 net:
-    hidden_dim: 256
+    hidden_dim: 32
     num_layers: 2
     in_dim_node: 2
     in_dim_edge: 1
@@ -10,6 +10,5 @@ net:
     out_dim_edge: 1  # this will not be used if mlp_readout_edge=False
 mlp:
     hidden_size:
-    - 256
-    - 64
-    - 32
+    - 400
+    - 300

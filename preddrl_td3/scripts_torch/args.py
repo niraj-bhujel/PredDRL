@@ -64,7 +64,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'action', 'hed', 'gdist'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'action'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')
@@ -86,7 +86,7 @@ def get_argument(parser=None):
                         help='Apply batch norm between layer')
     parser.add_argument('--activation', default='ReLU',
                         help='Activation function')
-    parser.add_argument('--layer', default='gated_gcn',
+    parser.add_argument('--layer', default='edge_gcn',
                         help='One of [gcn, edge_gcn, gated_gcn, custom_gcn]')
 
     # added by niraj
@@ -108,5 +108,7 @@ def get_argument(parser=None):
                         help='Remove outputs when exit.')
     parser.add_argument('--gpu', type=int, default=0,
                         help='GPU id')
+    parser.add_argument('--verbose', type=int, default=0,
+                        help='One of [0, 1]')
 
     return parser

@@ -5,7 +5,7 @@ import shutil
 import random
 import numpy as np
 from collections import deque
-
+import pickle
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -54,7 +54,7 @@ class Trainer:
         self._policy = policy
         self._env = env
         self._test_env = self._env if test_env is None else test_env
-
+        self._verbose = args.verbose
         self.nstep_buffer = [] 
 
         if self._normalize_obs:
@@ -107,10 +107,11 @@ class Trainer:
         self.gamma = 0.995
         # self.set_seed(args.seed)
         self._vis_graph = args.vis_graph
-        self._plot_dir = self._output_dir + '/graphs/'
-        if os.path.exists(self._plot_dir):
-            shutil.rmtree(self._plot_dir)
-        os.makedirs(self._plot_dir)
+        self._vis_graph_dir = self._output_dir + '/graphs/'
+        # if os.path.exists(self._vis_graph_dir):
+        #     shutil.rmtree(self._vis_graph_dir)
+        if not os.path.exists(self._vis_graph_dir):
+            os.makedirs(self._vis_graph_dir)
 
     def set_seed(self, seed):
         #setup seeds
@@ -162,10 +163,6 @@ class Trainer:
             mask = obs.ndata['cid']==node_type_list.index('robot')
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample() #(2, )
-                # action = np.zeros((self._policy.batch_size, self._policy.action_dim))
-                # sampled_action = self._env.action_space.sample() #(2, )
-                # sampled_action[0]  = (sampled_action[0] + 2)/20
-                # action[obs.ndata['cid']==node_type_list.index('robot')] = sampled_action
 
             else:
                 action = self._policy.get_action(obs)
@@ -173,7 +170,6 @@ class Trainer:
 
             # only robot action
             # robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-
 
             next_obs, reward, done, success = self._env.step(action)          
 
@@ -183,17 +179,19 @@ class Trainer:
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
             if total_steps%self._policy.update_interval==0:
-                self.writer.add_scalar(self._policy.policy_name + "/v", action[0], total_steps)
-                self.writer.add_scalar(self._policy.policy_name + "/w", action[1], total_steps)
+                self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
+                self.writer.add_scalar(self._policy.policy_name + "/vy", action[1], total_steps)
                 self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
                 self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
-                print('{}/{}: Robot Action: ({:.3f}, {:.3f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
-                                                                                                self._max_steps, 
-                                                                                                action[0],
-                                                                                                action[1], 
-                                                                                                reward,
-                                                                                                actor_loss, 
-                                                                                                critic_loss)) 
+
+                if self._verbose>0:
+                    print('{}/{}: Robot Action: ({:.5f}, {:.5f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
+                                                                                                    self._max_steps, 
+                                                                                                    action[0],
+                                                                                                    action[1], 
+                                                                                                    reward,
+                                                                                                    actor_loss, 
+                                                                                                    critic_loss)) 
 
             if self._vis_graph and total_steps<100:
                 network_draw(obs,
@@ -202,8 +200,10 @@ class Trainer:
                              show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
-                             save_dir=self._plot_dir, 
+                             save_dir=self._vis_graph_dir, 
                              )
+                with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
+                    pickle.dump(obs, f)
             
             # update states
             # self.append_to_replay(obs, action, reward, next_obs, done)
@@ -410,7 +410,7 @@ if __name__ == '__main__':
 
     # parser = DDPG.get_argument(parser)
 
-    parser.set_defaults(batch_size=64)
+    parser.set_defaults(batch_size=100)
     parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(episode_max_steps=1000)
@@ -464,7 +464,7 @@ if __name__ == '__main__':
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)
 
-    trainer.set_seed(args.seed)
+    # trainer.set_seed(args.seed)
 
     
     try:
