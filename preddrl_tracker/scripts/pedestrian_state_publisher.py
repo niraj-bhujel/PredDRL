@@ -15,7 +15,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from pyquaternion import Quaternion
 
-from node import Node
+from preddrl_td3.scripts_torch.utils.node import Node
 
 import rospy
 
@@ -23,6 +23,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import *
 
 from gazebo_msgs.srv import SpawnModel, DeleteModel
+from gazebo_msgs.msg import ModelStates
 
 from rospkg import RosPack
 
@@ -282,8 +283,15 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print('Closing down .. ')
             # delete all model at exit
-            # print('deleting existing actor models')
-            [delete_model(actor_id) for actor_id in actors_id_list]  
+            
+            try:
+                model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+            except rospy.ROSException:
+                rospy.logerr('ModelStates timeout')
+                raise ValueError 
+
+            print('Deleting existing pedestrians models from', model_states.name)
+            [delete_model(actor_id) for actor_id in actors_id_list if actor_id in model_states.name]  
             break         
 
 

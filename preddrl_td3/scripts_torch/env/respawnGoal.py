@@ -8,9 +8,9 @@ from geometry_msgs.msg import Pose
 
 
 class Respawn():
-    def __init__(self):
-        self.stage = 2
-        # self.stage = 6 # added by niraj
+    def __init__(self, stage=2):
+        # self.stage = 2
+        self.stage = stage # added by niraj
         self.goal_position = Pose()
         self.init_goal_x = 0#1.5#0.5 1.5 0
         self.init_goal_y = 1#0.2#-1.5 0 -1
@@ -204,8 +204,12 @@ class Respawn():
                 # goal_y_list = [2., 1, -1, -1, 1, 1, -1.5, 3.5, 3.5, -1.5, 2, 2., 0.5, 3.5,  3.5, 4.5, 4.5]
 
                 # train_env_2
-                goal_x_list = [2., 1., 2.5, -2., -3., 2., -2., 0., 1., -1., -3.5, -1., 3.5]
-                goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
+                # goal_x_list = [2., 1., 2.5, -2., -3., 2., -2., 0., 1., -1., -3.5, -1., 3.5]
+                # goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
+
+                # social_context
+                goal_x_list = [12.0, 5,0, 8.0, -10.0, 12.0, 14.0]
+                goal_y_list = [-11.5, -8.3, 4.0, 13.1, 3.2, 8.6]
                 self.index = random.randrange(0, len(goal_x_list))
                 if self.last_index == self.index:
                     position_check = True

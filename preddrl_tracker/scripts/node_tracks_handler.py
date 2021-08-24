@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 
-from node import Node
+from preddrl_td3.scripts_torch.utils.node import Node
 
 import rospy
 

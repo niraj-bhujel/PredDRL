@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+
+torch.autograd.set_detect_anomaly(True)
+
 import dgl
 
 from policy.policy_base import OffPolicyAgent
@@ -13,6 +16,7 @@ from misc.huber_loss import huber_loss
 from networks.gated_gcn_net import GatedGCNNet
 from utils.graph_utils import node_type_list, state_dims
 from layers.mlp_layer import MLP
+
 class Actor(nn.Module):
     def __init__(self, net_params, args, action_dim, max_action, **kwargs):
         # super(Actor, self).__init__()
@@ -29,8 +33,8 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['net']['hidden_dim'], action_dim, hidden_size=net_params['mlp']['hidden_size'])
-        
+        self.out = MLP(net_params['net']['hidden_dim'], 2, hidden_size=net_params['mlp']['hidden_size'])
+
         self.max_action = max_action
         self.input_states = args.input_states
         self.input_edges = args.input_edges
@@ -38,17 +42,20 @@ class Actor(nn.Module):
     def forward(self, g):
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
+
+        # print(h)
+
         g, h, e = self.net(g, h, e)
 
         # sum over batch nodes
         h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        # print(h)
 
         h = self.out(h)
 
-        # h[:, 0] = torch.sigmoid(h[:, 0])
-        # h[:, 1] = self.max_action * torch.tanh(h[:, 1])
-        # h = self.max_action * torch.tanh(h)
-
+        # h = torch.clamp(h, 0, 1)
+        h = torch.tanh(h)
+        
         return h
 
 class Critic(nn.Module):
@@ -82,6 +89,8 @@ class Critic(nn.Module):
 
         # sum over batch nodes
         h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        
+
         h = torch.cat([h, a], dim=-1)
         h = self.out(h)        
 
@@ -146,9 +155,7 @@ class GraphDDPG(OffPolicyAgent):
         self.actor.eval()
         with torch.no_grad():
             action = self.actor(state)
-
             # action += torch.empty_like(action).normal_(mean=0,std=sigma)
-
         self.actor.train()
 
         return action
@@ -172,7 +179,7 @@ class GraphDDPG(OffPolicyAgent):
 
         return actor_loss , critic_loss.item(), td_errors.detach().cpu().numpy()
 
-    def optimization_step(self, optimizer, model, loss, clip_norm=1, retain_graph=False):
+    def optimization_step(self, optimizer, model, loss, clip_norm=None, retain_graph=False):
         optimizer.zero_grad()
         loss.backward(retain_graph=retain_graph)
 
@@ -188,7 +195,7 @@ class GraphDDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer, self.critic,  critic_loss)
+        self.optimization_step(self.critic_optimizer, self.critic,  critic_loss, clip_norm=1)
 
         # Compute actor loss
         # _mask = states.ndata['cid']==node_type_list.index('robot')
@@ -196,7 +203,7 @@ class GraphDDPG(OffPolicyAgent):
         actor_loss = -self.critic(states, self.actor(states)).mean()
 
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, self.actor, actor_loss)
+        self.optimization_step(self.actor_optimizer, self.actor, actor_loss, clip_norm=1)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)
@@ -236,11 +243,11 @@ class GraphDDPG(OffPolicyAgent):
 
         td_errors = target_Q - current_Q
 
-        # NOTE adding writer here will also add while called from compute_td_error
-        if phase=='train':
-            self.writer.add_histogram(self.policy_name + "/next_actions", next_actions, self.step)
-            self.writer.add_scalar(self.policy_name + '/current_Q', current_Q.mean().item(), self.step)
-            self.writer.add_scalar(self.policy_name + '/target_Q', target_Q.mean().item(), self.step)
+        # # NOTE adding writer here will also add while called from compute_td_error
+        # if phase=='train':
+        #     self.writer.add_histogram(self.policy_name + "/next_actions", next_actions, self.step)
+        #     self.writer.add_scalar(self.policy_name + '/current_Q', current_Q.mean().item(), self.step)
+        #     self.writer.add_scalar(self.policy_name + '/target_Q', target_Q.mean().item(), self.step)
 
         return td_errors
 
