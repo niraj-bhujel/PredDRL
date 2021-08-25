@@ -15,7 +15,7 @@ import torch
 def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=False, edge_label='id', 
                  show_legend=False, pos_attr='pos', edge_attr='dist', node_size=300, font_size=6, 
                  rad=0.04,  save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
-                 pad=(0, 0, 0, 0), extent=None, **kwargs):
+                 pad=(0, 0, 0, 0), extent=None, show_direction=False, **kwargs):
     '''
     Parameters
     ----------
@@ -158,7 +158,26 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
                                            label='tid-{}, cid-{}'.format(tid, g.ndata['cid'][g.ndata['tid']==tid][0].item())
                                            ))
         ax.legend(handles=legend_elements, fontsize='small', handlelength=1)
-    
+
+
+    if show_direction:
+        # current_pos = g.ndata['pos'].cpu().numpy()
+        current_vel = g.ndata['vel'].cpu().numpy()
+        # assert len(next_pos)==len(current_pos)
+        for i in range(len(current_vel)):
+            
+            # x, y = current_pos[i]
+            # dx, dy = next_pos[i]-current_pos[i]
+            dx, dy = current_vel[i]
+            ax.quiver(x, y, dx, dy, color=ped_colors[:, i], zorder=3,
+                      units='xy', 
+                      scale=1, scale_units='xy', 
+                      width=0.005*(y_max-y_min),
+                      # width=0.01*(y-y_min)/(y_max-y_min),
+                      headwidth=3, headlength=5, headaxislength=3,
+                      )
+
+
     plt.tight_layout()
     if save_dir is not None:
         if not os.path.exists(save_dir):

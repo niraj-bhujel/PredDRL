@@ -165,8 +165,11 @@ class Trainer:
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         while total_steps < self._max_steps:
-            print('Step - {}/{}'.format(total_steps, self._max_steps))
+            
             step_start = time.time()
+
+            if self._verbose>0:
+                print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample() #(2, )
@@ -175,12 +178,13 @@ class Trainer:
                 action = self._policy.get_action(obs)
 
             if self._verbose>0:
-                print('{}/{}: Action: [{:.5f}, {:.5f}]'.format(total_steps, self._max_steps, action[0], action[1]))
+                print('Action: [{:.2f}, {:.2f}]'.format(round(action[0], 2), round(action[1], 2)))
 
             next_obs, reward, done, success = self._env.step(action)          
 
             if self._verbose>0:
-                print('{}/{}: Rewards: {:.4f}'.format(total_steps, self._max_steps, reward))
+                print("Position after action:", [self._env.position.x, self._env.position.y])
+                print('Rewards: {:.4f}'.format(reward))
 
             # plot graph, 
             if self._vis_graph and total_steps<100:
@@ -191,30 +195,38 @@ class Trainer:
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
+                             show_dirction=True,
                              )
                 # with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
                 #     pickle.dump(obs, f)
 
-            # if done or success:
-            # self.append_to_replay(obs, action, reward, next_obs, done)
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            # ignore first step
+            if episode_steps==0:
+                # self.append_to_replay(obs, action, reward, next_obs, done)
+                self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
-            
             # update
             obs = next_obs
 
             if done or episode_steps == self._episode_max_steps:
                 obs = self._env.reset()
 
+                if self._verbose>0:
+                    print("Robot position after reset:", [self._env.position.x, self._env.position.z])
+
+                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
+                        n_episode, total_steps, episode_steps, episode_return, fps))
+
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter() 
 
+    
 
             if total_steps > self._policy.n_warmup:
                 # continue
@@ -255,14 +267,12 @@ class Trainer:
                                                                            samples["weights"] if self._use_prioritized_rb \
                                                                            else np.ones(self._policy.batch_size)
                                                                            )
-
-                    # if actor_loss is not None:
-                        # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
-                        #                                                                                              self._max_steps, 
-                        #                                                                                              episode_steps, 
-                        #                                                                                              actor_loss,
-                        #                                                                                              critic_loss,
-                        #                                                                                              np.mean(td_errors)))
+                    if self._verbose>0:
+                        print('action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(action[0], 
+                                                                                                                    action[1],
+                                                                                                                   reward,
+                                                                                                                   actor_loss,
+                                                                                                                   critic_loss,))
 
                     if self._use_prioritized_rb:
                         td_error = self._policy.compute_td_error(samples["obs"], 
@@ -273,7 +283,7 @@ class Trainer:
                         self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
                     if self._verbose>0:
-                        print('{}/{}: Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(total_steps, self._max_steps, actor_loss, critic_loss))
+                        print('Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(actor_loss, critic_loss))
 
                     self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
                     self.writer.add_scalar(self._policy.policy_name + "/vy", action[1], total_steps)
@@ -295,7 +305,9 @@ class Trainer:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
             self.r.sleep()
-            print('Time per step:', (time.time() - step_start))
+            if self._verbose>0:
+                print('Time per step:', (time.time() - step_start))
+
         self.writer.close()
 
     def evaluate_policy_continuously(self):
