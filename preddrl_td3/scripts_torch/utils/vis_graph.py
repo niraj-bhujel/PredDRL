@@ -12,8 +12,9 @@ import numpy as np
 from matplotlib.lines import Line2D
 import shutil
 import torch
-def network_draw(g, show_node_label=True, show_edge_labels=False, node_label='nid', edge_label='id', pos_attr='pos', edge_attr='dist',
-                 node_size=300, font_size=6, rad=0.04, show_legend=False, save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
+def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=False, edge_label='id', 
+                 show_legend=False, pos_attr='pos', edge_attr='dist', node_size=300, font_size=6, 
+                 rad=0.04,  save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
                  pad=(0, 0, 0, 0), extent=None, **kwargs):
     '''
     Parameters

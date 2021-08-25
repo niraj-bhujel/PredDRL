@@ -65,14 +65,13 @@ def create_graph(nodes, bidirectional=False):
         # src_node_states = np.concatenate(src_node.states_at(src_node.last_timestep), axis=-1)
 
         nodes_data['pos'].append(src_node._pos[src_node.last_timestep])
-        nodes_data['action'].append(src_node._action[src_node.last_timestep])
-
         nodes_data['vel'].append(src_node._vel[src_node.last_timestep])
         # nodes_data['acc'].append(src_node._acc[src_node.last_timestep])
         # nodes_data['rot'].append(src_node._rot[src_node.last_timestep])
         nodes_data['yaw'].append(src_node._yaw[src_node.last_timestep])
-
         nodes_data['hed'].append(src_node.heading(src_node.last_timestep))
+
+        nodes_data['action'].append(src_node._action)
         nodes_data['goal'].append(src_node._goal) # call this after heading
         nodes_data['gdist'].append(src_node.distance_to_goal(src_node.last_timestep))
         
