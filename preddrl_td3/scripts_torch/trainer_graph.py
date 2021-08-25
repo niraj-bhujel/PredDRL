@@ -59,7 +59,7 @@ class Trainer:
         self._verbose = args.verbose
         self.nstep_buffer = [] 
 
-        self.r = rospy.Rate(10)
+        self.r = rospy.Rate(1/0.5)
 
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
@@ -216,88 +216,86 @@ class Trainer:
                 episode_start_time = time.perf_counter() 
 
 
-            if total_steps < self._policy.n_warmup:
-                continue
+            if total_steps > self._policy.n_warmup:
+                # continue
+                # misc values, after warmup
+                if success:
+                    episode_success += 1
 
-            # misc values, after warmup
-            if success:
-                episode_success += 1
+                if done or success:
+                    n_episode += 1
 
-            if done or success:
-                n_episode += 1
+                success_rate = episode_success/n_episode
 
-            success_rate = episode_success/n_episode
-
-            self.writer.add_scalar("Common/training_return", episode_return, total_steps)
-            self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
-
-            if total_steps % self._policy.update_interval==0:
-                sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
-
-                # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
-                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
-                # print(np.array(act_batch))
-
-                samples = dict(obs=obs_batch, 
-                               act=act_batch, 
-                               rew=rew_batch, 
-                               next_obs=next_obs_batch, 
-                               done=done_batch, 
-                               weights=weights, 
-                               indexes=idxes)
-                # print({k:v.shape for k,v in samples.items()})
-
-                actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
-                                                                       samples["act"], 
-                                                                       samples["next_obs"],
-                                                                       samples["rew"], 
-                                                                       samples["done"],
-                                                                       samples["weights"] if self._use_prioritized_rb \
-                                                                       else np.ones(self._policy.batch_size)
-                                                                       )
-
-                # if actor_loss is not None:
-                    # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
-                    #                                                                                              self._max_steps, 
-                    #                                                                                              episode_steps, 
-                    #                                                                                              actor_loss,
-                    #                                                                                              critic_loss,
-                    #                                                                                              np.mean(td_errors)))
-
-                if self._use_prioritized_rb:
-                    td_error = self._policy.compute_td_error(samples["obs"], 
-                                                             samples["act"], 
-                                                             samples["next_obs"],
-                                                             samples["rew"], 
-                                                             samples["done"])
-                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
-
-                if self._verbose>0:
-                    print('{}/{}: Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(total_steps, self._max_steps, actor_loss, critic_loss))
-
-                self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
-                self.writer.add_scalar(self._policy.policy_name + "/vy", action[1], total_steps)
-                self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
-                self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
-
-            if total_steps % self._test_interval == 0:
-                
-                avg_test_return = self.evaluate_policy(total_steps)
-
-                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                    total_steps, avg_test_return, self._test_episodes))
-
-                self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
-                self.writer.add_scalar("Common/fps", fps, total_steps)
+                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
+                self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
 
-            if total_steps % self._save_model_interval == 0:
-                save_ckpt(self._policy, self._output_dir, total_steps)
+                if total_steps % self._policy.update_interval==0:
+                    sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
+
+                    # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
+                    obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
+                    # print(np.array(act_batch))
+
+                    samples = dict(obs=obs_batch, 
+                                   act=act_batch, 
+                                   rew=rew_batch, 
+                                   next_obs=next_obs_batch, 
+                                   done=done_batch, 
+                                   weights=weights, 
+                                   indexes=idxes)
+                    # print({k:v.shape for k,v in samples.items()})
+
+                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                                                                           samples["act"], 
+                                                                           samples["next_obs"],
+                                                                           samples["rew"], 
+                                                                           samples["done"],
+                                                                           samples["weights"] if self._use_prioritized_rb \
+                                                                           else np.ones(self._policy.batch_size)
+                                                                           )
+
+                    # if actor_loss is not None:
+                        # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
+                        #                                                                                              self._max_steps, 
+                        #                                                                                              episode_steps, 
+                        #                                                                                              actor_loss,
+                        #                                                                                              critic_loss,
+                        #                                                                                              np.mean(td_errors)))
+
+                    if self._use_prioritized_rb:
+                        td_error = self._policy.compute_td_error(samples["obs"], 
+                                                                 samples["act"], 
+                                                                 samples["next_obs"],
+                                                                 samples["rew"], 
+                                                                 samples["done"])
+                        self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
+
+                    if self._verbose>0:
+                        print('{}/{}: Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(total_steps, self._max_steps, actor_loss, critic_loss))
+
+                    self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
+                    self.writer.add_scalar(self._policy.policy_name + "/vy", action[1], total_steps)
+                    self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+                    self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
+
+                if total_steps % self._test_interval == 0:
+                    
+                    avg_test_return = self.evaluate_policy(total_steps)
+
+                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
+                        total_steps, avg_test_return, self._test_episodes))
+
+                    self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
+                    self.writer.add_scalar("Common/fps", fps, total_steps)
+
+
+                if total_steps % self._save_model_interval == 0:
+                    save_ckpt(self._policy, self._output_dir, total_steps)
 
             self.r.sleep()
-
             print('Time per step:', (time.time() - step_start))
-
         self.writer.close()
 
     def evaluate_policy_continuously(self):
