@@ -33,22 +33,18 @@ class Env:
         self.goal_x = 1.0
         self.goal_y = 0
         self.inflation_rad = 0.37  # 包含0.17的自身半径
-        # self.heading = 0
-        # self.pre_heading = 0
-
 
         self.maxLinearSpeed = 0.67
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
-        # self.vel_cmd = [0., 0.]
 
         self.position = Point()
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_type='vw'
+        self.action_type='xy'
 
         if self.action_type=='xy':
             self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
@@ -106,8 +102,7 @@ class Env:
 
     def getGoalDistace(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # goal_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        # self.past_distance = goal_distance
+
         return goal_distance
 
     def setOdometry(self, odom):
@@ -299,8 +294,8 @@ class Env:
         if success:
             self.init_goal(position_check=True, test=self.test)
 
-        # if done or success:
-        #     self.pub_cmd_vel.publish(Twist()) 
+        if done:
+            self.reset()
 
         # stop agent, while policy update
         # self.pub_cmd_vel.publish(Twist())

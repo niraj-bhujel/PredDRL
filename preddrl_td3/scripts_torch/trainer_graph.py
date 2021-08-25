@@ -168,7 +168,7 @@ class Trainer:
             
             step_start = time.time()
 
-            if self._verbose>0:
+            if self._verbose==0:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
@@ -177,12 +177,12 @@ class Trainer:
             else:
                 action = self._policy.get_action(obs)
 
-            if self._verbose>0:
+            if self._verbose==0:
                 print('Action: [{:.2f}, {:.2f}]'.format(round(action[0], 2), round(action[1], 2)))
 
             next_obs, reward, done, success = self._env.step(action)          
 
-            if self._verbose>0:
+            if self._verbose==0:
                 print("Position after action:", [self._env.position.x, self._env.position.y])
                 print('Rewards: {:.4f}'.format(reward))
 
@@ -201,9 +201,8 @@ class Trainer:
                 #     pickle.dump(obs, f)
 
             # ignore first step
-            if episode_steps==0:
-                # self.append_to_replay(obs, action, reward, next_obs, done)
-                self.replay_buffer.add([obs, action, reward, next_obs, done])
+            # self.append_to_replay(obs, action, reward, next_obs, done)
+            self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward
@@ -216,7 +215,7 @@ class Trainer:
             if done or episode_steps == self._episode_max_steps:
                 obs = self._env.reset()
 
-                if self._verbose>0:
+                if self._verbose==0:
                     print("Robot position after reset:", [self._env.position.x, self._env.position.z])
 
                 self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
@@ -224,9 +223,7 @@ class Trainer:
 
                 episode_steps = 0
                 episode_return = 0
-                episode_start_time = time.perf_counter() 
-
-    
+                episode_start_time = time.perf_counter()
 
             if total_steps > self._policy.n_warmup:
                 # continue
@@ -267,12 +264,14 @@ class Trainer:
                                                                            samples["weights"] if self._use_prioritized_rb \
                                                                            else np.ones(self._policy.batch_size)
                                                                            )
-                    if self._verbose>0:
-                        print('action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(action[0], 
-                                                                                                                    action[1],
-                                                                                                                   reward,
-                                                                                                                   actor_loss,
-                                                                                                                   critic_loss,))
+                    if self._verbose==1:
+                        print('{}/{} - action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, 
+                                                                                                                            self._max_steps,
+                                                                                                                            action[0], 
+                                                                                                                            action[1],
+                                                                                                                            reward,
+                                                                                                                           actor_loss,
+                                                                                                                           critic_loss,))
 
                     if self._use_prioritized_rb:
                         td_error = self._policy.compute_td_error(samples["obs"], 
@@ -305,7 +304,7 @@ class Trainer:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
             self.r.sleep()
-            if self._verbose>0:
+            if self._verbose==0:
                 print('Time per step:', (time.time() - step_start))
 
         self.writer.close()
