@@ -53,9 +53,8 @@ class Actor(nn.Module):
 
         h = self.out(h)
 
-        # h = torch.clamp(h, -self.max_action, self.max_action)
-        # h = torch.tanh(h)
-
+        h = self.max_action*torch.tanh(h)
+        
         return h
 
 class Critic(nn.Module):

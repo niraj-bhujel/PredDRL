@@ -25,7 +25,6 @@ class Node(object):
         self._id = int(node_id)
         self._type = node_type
         
-        self._goal = goal
         self._max_len = max_len 
         
         self._pos = deque([], max_len)
@@ -33,14 +32,23 @@ class Node(object):
         self._acc = deque([], max_len)
         self._quat = deque([], max_len)
         self._rot = deque([], max_len)
-        self._action = deque([], max_len)
+        
         self._yaw = deque([], max_len)
         self._time_stamp = deque([], max_len)
 
+        self._goal = None
+        self._action = None
+
     def __len__(self):
         return len(self._pos)
-        
-    def update_states(self, p, v, q, r, action=None):
+    
+    def update_action(self, action):
+        self._action = action
+
+    def update_goal(self, goal):
+        self._goal = goal
+
+    def update_states(self, p, q, r):
         '''
         p: position, could be (x, y) or (x, y, z)
         v: linear velocity, (vx, vy) or (vx, vy, vz)
@@ -52,20 +60,28 @@ class Node(object):
         curr_timestamp = time.time()
 
         if len(self)>0:
-            last_v = self._vel[-1]
+
             dt = self._time_stamp[-1] - curr_timestamp
+
+            last_p = self._pos[-1]
+            last_v = self._vel[-1]
+
+            v = (np.array(p) - np.array(last_p))/dt
             a = (np.array(v) - np.array(last_v))/dt
+
         else:
-            a = np.zeros_like(v)
+            v = np.zeros_like(p)
+            a = np.zeros_like(p)
 
         self._pos.append(p)
         self._vel.append(v)
         self._acc.append(a)
+
         self._quat.append(q)
         self._rot.append(r)
-        if action is not None:
-            self._action.append(action)
+        
         self._yaw.append(euler_from_quaternion(q)[-1])
+        
         self._time_stamp.append(curr_timestamp)
     
     def distance_to_goal(self, t):
@@ -135,10 +151,21 @@ class Node(object):
     def timestep_index(self, t):
         return t-self._first_timestep
 
+
+    def compute_position(self, action):
+
+        theta = self._rot[-1] + action[1]
+        px, py = self._pos[-1]
+        px = px + np.cos(theta) * action[0] * self.time_step
+        py = py + np.sin(theta) * action[0] * self.time_step
+
+        return px, py
+
+
     @property
     def time_step(self):
         if len(self)>1:
-            return np.mean(np.diff(self._time_stamp))
+            return np.mean(np.diff(self._time_stamp)[-4:])
         # elif len(self)==1:
         #     fps = 1
         else:

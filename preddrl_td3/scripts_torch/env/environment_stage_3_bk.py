@@ -33,10 +33,12 @@ class Env:
         self.goal_x = 1.0
         self.goal_y = 0
         self.inflation_rad = 0.37  # 包含0.17的自身半径
-        self.heading = 0
-        self.pre_heading = 0
-        self.max_v = 0.2
-        self.max_w = 1.5
+        # self.heading = 0
+        # self.pre_heading = 0
+
+        self.maxLinearSpeed = 0.67
+        self.maxAngularSpeed = 2.0
+
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
         # self.vel_cmd = [0., 0.]
@@ -45,8 +47,8 @@ class Env:
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_space = spaces.Box(low=np.array([-0.7, -0.7]), 
-                                       high=np.array([0.7, 0.7]), 
+        self.action_space = spaces.Box(low=np.array([0, -self.maxAngularSpeed]), 
+                                       high=np.array([self.maxLinearSpeed, self.maxAngularSpeed]), 
                                        dtype=np.float32)
         
         self.observation_space = spaces.Box(low=np.array([0.0]*self.num_beams + [0., -2., -2*pi, 0]), 
@@ -57,20 +59,26 @@ class Env:
         self.window_size = 3 
 
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-        self.sub_odom = rospy.Subscriber('odom', Odometry, self.getOdometry)
+        self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
 
         self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
-        self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
+        # self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
+        # self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
 
         self.respawn_goal = Respawn(stage=2) # stage argument added by niraj
-        self.past_distance = 0.
+
+        # self.past_distance = 0. # comment by niraj
         
 
         # keep track of nodes and their id, added by niraj
         self.nodes = dict()
         self.nid = 0
         self.max_goal_distance = 5
+
+        self.robot = Node(node_id=self.nid, node_type='robot')
+        self.nid+=1
+
+        self.static_obstacles = self.getStaticObstacles()
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -91,16 +99,16 @@ class Env:
     def getGoalDistace(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
         # goal_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        self.past_distance = goal_distance
+        # self.past_distance = goal_distance
         return goal_distance
 
-    def getOdometry(self, odom):
+    def setOdometry(self, odom):
 
         self.position = odom.pose.pose.position
         self.orientation = odom.pose.pose.orientation
 
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
-        _, _, self.yaw = self.euler_from_quaternion(orientation_list)
+        self.roll, self.pitch, self.yaw = self.euler_from_quaternion(orientation_list)
         
         inc_y = self.goal_y - self.position.y
         inc_x = self.goal_x - self.position.x
@@ -123,11 +131,7 @@ class Env:
         return v_pref
 
     def action_to_vel_cmd(self, action):
-
-        # desired speed
-        # 
-        # 
-
+        # adopted from https://github.com/dongfangliu/NH-ORCA-python/
         vx, vy = action[0], action[1]
         
         A = 0.5*cos(self.yaw)+SelfD*sin(self.yaw)/SelfL
@@ -143,94 +147,63 @@ class Env:
         vel_msg.angular.y = 0
         vel_msg.angular.z = (vr-vl)/SelfL
         # hand edition constraint
-        vel_msg.angular.z= np.clip(-1,vel_msg.angular.z,1)
+        vel_msg.angular.z = np.clip(-self.maxAngularSpeed, vel_msg.angular.z, self.maxAngularSpeed)
 
-        vel_msg.linear.x =0.5*(vl+vr)
+        vel_msg.linear.x = 0.5*(vl+vr)
         # hand edition constraint
-        vel_msg.linear.x = np.clip(0,vel_msg.linear.x,0.4)
+        vel_msg.linear.x = np.clip(-self.maxLinearSpeed, vel_msg.linear.x, self.maxLinearSpeed)
         vel_msg.linear.y = 0
-        vel_msg.linear.z=0
+        vel_msg.linear.z = 0
 
         return vel_msg
 
-    def getGraphState(self, action=[0.0, 0.0]):
+
+    def getStaticObstacles(self, ):
+        # call only once
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
         except rospy.ROSException:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        nodes = []
-        # keep track of model states
-        for i in range(len(model_states.name)):
-            m_name = model_states.name[i]
-            
-            if 'square' in m_name:
-                continue
+        static_obstacles = []
+        for i, m_name in enumerate(model_states.name):
+            if 'obstacle' in m_name:
+                # if m_name not in self.static_obstacles:
+                node = Node(node_id=self.nid, node_type='obstacle')
 
-            elif 'ground' in m_name:
-                continue
+                # preprare data to update
+                pose = model_states.pose[i]
+                twist = model_states.twist[i]
 
-            elif 'goal' in m_name:
-                continue
-                # node_type = 'goal'
+                m_pos = point_to_numpy(pose.position)
+                # m_vel = vector3_to_numpy(twist.linear)
 
-            elif 'obstacle' in m_name:
-                node_type = 'obstacle'
+                m_quat = quat_to_numpy(pose.orientation)
+                m_rot = vector3_to_numpy(twist.angular)
 
-            elif 'burger' in m_name:
-                node_type = 'robot'
+                node.update_states(m_pos[:2], q=m_quat, r=m_rot)
+                node.update_action(action=[0.0, 0.0])
+                node.update_goal(goal=m_pos[:2])
 
-            else:
-                node_type = 'pedestrian'
+                static_obstacles.append(node)
+                self.nid += 1
+        return static_obstacles
 
-            # get the corresponding node
-            if m_name in self.nodes.keys():
-                node = self.nodes[m_name]
-            else:
-                self.nid +=1 
-                node = Node(node_id=self.nid, node_type=node_type)
-                self.nodes[m_name] = node
 
-            # preprare data to update
-            pose = model_states.pose[i]
-            twist = model_states.twist[i]
+    def getGraphState(self, action=[0.0, 0.0]):
 
-            m_pos = point_to_numpy(pose.position)
-            m_vel = vector3_to_numpy(twist.linear)
-
-            m_quat = quat_to_numpy(pose.orientation)
-            m_rot = vector3_to_numpy(twist.angular)
-
-            if node_type =='robot':
-                m_pos = [0.0, 0.0]
-                # m_pos = point_to_numpy(self.position)
-                m_quat = quat_to_numpy(self.orientation)
-                m_action = action
-
-            elif node_type=='obstacle': # relative pos and vel
-                m_pos -= point_to_numpy(self.position) # measured from robot pos
-                m_action = [0.0, 0.0]
-
-            elif node_type=='pedestrian':
-                m_pos -= point_to_numpy(self.position)
-                # m_action = node.get_action()
-
-            node.update_states(m_pos[:2], m_vel[:2], m_quat, m_rot, action=m_action)
-
-            # udpate goal, only after updating states
-            if node_type=='robot':
-                node._goal = [self.goal_x, self.goal_y]
-                
-            elif node_type=='obstacle':
-                node._goal = m_pos[:2]
-
-            else:
-                node._goal = node.cv_prediction(node.last_timestep)[-1]
-
-            nodes.append(node)
+        # update 
+        print(self.position)
+        self.robot.update_states(p = point_to_numpy(self.position)[:2],
+                                 # p=[0.0, 0.0],
+                                 q=quat_to_numpy(self.orientation),
+                                 r = self.yaw,
+                                 )
+        self.robot.update_action(action) 
+        self.robot.update_goal([self.goal_x, self.goal_y]) 
         
-        g = create_graph(nodes)
+        g = create_graph([self.robot] + self.static_obstacles)
 
         done=False
         success = False
@@ -267,25 +240,10 @@ class Env:
             done = True
             reward = -1
 
-        # elif v>0.7:
-        #     reward =  -np.log(v**2)
-
-        # elif np.isclose(v, 0, atol=1e-4):
-        #     reward = -1
-
-        # elif abs(w)>np.pi:
-        #     reward = -np.log(w**2)
-
         else:
             # reward = -0.5
             reward = (self.goal_threshold-current_distance) * 0.1
             # reward = current_distance - self.goal_threshold # by niraj
-
-        # # 增加一层膨胀区域，越靠近障碍物负分越多
-        # obstacle_min_range = round(min(scan_range_collision), 2)
-        # if obstacle_min_range < self.inflation_rad:
-        #     # reward += 100.0*(obstacle_min_range - self.inflation_rad)/self.inflation_rad
-        #     reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
 
         return g, reward, done, success
 
@@ -357,15 +315,13 @@ class Env:
 
 
     def step(self, action):
-        # v, w = action[0], action[1]
 
-        # vel_cmd = Twist()
-        # vel_cmd.linear.x = v
-        # vel_cmd.angular.z = w
+        vel_cmd = Twist()
+        vel_cmd.linear.x = action[0]
+        vel_cmd.angular.z = action[1]
 
-        vel_cmd = self.action_to_vel_cmd(action)
+        # vel_cmd = self.action_to_vel_cmd(action)
         self.pub_cmd_vel.publish(vel_cmd)
-        # self.vel_cmd = [vel_cmd.linear.x, vel_cmd.angular.z]
 
         # state, reward, done, success = self.getState(v, w)
         state, reward, done, success = self.getGraphState(action)
@@ -391,24 +347,22 @@ class Env:
         self.respawn_goal.respawnModel()
 
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
-        self.goal_distance = self.getGoalDistace()
 
     def reset(self, initGoal=False):
 
         try:
             rospy.wait_for_service('gazebo/reset_simulation')
-            # print('Resetting environment ... ')
             self.reset_proxy()
-            # print('Environment is reset.')
-        except (rospy.ServiceException) as e:
-            print("gazebo/reset_simulation service call failed")
+            
+            rospy.loginfo('Env Reset')
 
+        except (rospy.ServiceException) as e:
+            rospy.loginfo("gazebo/reset_simulation service call failed")
+
+        
         if initGoal:
             self.init_goal()
 
-        # set initial velocity and goal distance
-        # self.vel_cmd = [0., 0.]
-        # self.goal_distance = self.getGoalDistace()
 
         # state, _, _, _ = self.getState()
         state, _, _, _ = self.getGraphState()

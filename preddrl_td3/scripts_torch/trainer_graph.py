@@ -8,6 +8,7 @@ from collections import deque
 import pickle
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import dgl
 
 from gym.spaces import Box
 
@@ -170,13 +171,13 @@ class Trainer:
 
             # only robot action
             # robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
+            if self._verbose>0:
+                print('{}/{}: Action: [{:.5f}, {:.5f}]'.format(total_steps, self._max_steps, action[0], action[1]))
 
             next_obs, reward, done, success = self._env.step(action)          
 
-            episode_steps += 1
-            episode_return += reward
-            total_steps += 1
-            fps = episode_steps / (time.perf_counter() - episode_start_time)
+            if self._verbose>0:
+                print('{}/{}: Rewards: {:.4f}'.format(total_steps, self._max_steps, reward))
 
             if total_steps%self._policy.update_interval==0:
                 self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
@@ -184,17 +185,10 @@ class Trainer:
                 self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
                 self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
 
-                if self._verbose>0:
-                    print('{}/{}: Robot Action: ({:.5f}, {:.5f}), Rewards: {:.4f}, ActorLoss:{:.4f}, CritcLoss:{:.4f}'.format(total_steps, 
-                                                                                                    self._max_steps, 
-                                                                                                    action[0],
-                                                                                                    action[1], 
-                                                                                                    reward,
-                                                                                                    actor_loss, 
-                                                                                                    critic_loss)) 
+
 
             if self._vis_graph and total_steps<100:
-                network_draw(obs,
+                network_draw(dgl.batch([obs,next_obs]),
                              show_node_label=True, node_label='action',
                              show_edge_labels=True, edge_label='dist',
                              show_legend=True,
@@ -202,12 +196,17 @@ class Trainer:
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
                              )
-                with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
-                    pickle.dump(obs, f)
+                # with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
+                #     pickle.dump(obs, f)
+
+            episode_steps += 1
+            episode_return += reward
+            total_steps += 1
+            fps = episode_steps / (time.perf_counter() - episode_start_time)
             
-            # update states
             # self.append_to_replay(obs, action, reward, next_obs, done)
             self.replay_buffer.add([obs, action, reward, next_obs, done])
+
             obs = next_obs
 
             #for success rate
@@ -224,7 +223,7 @@ class Trainer:
                 if done or episode_steps == self._episode_max_steps:
                     obs = self._env.reset()
 
-                self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
+                self.logger.info("Episode:{}, Total Steps:{} - Episode Steps:{} Return:{:.4f} SucessRate:{:.4f} FPS:{:.2f}".format(
                     n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
@@ -233,7 +232,6 @@ class Trainer:
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter() 
-
 
             if total_steps < self._policy.n_warmup:
                 continue
@@ -279,7 +277,8 @@ class Trainer:
                                                              samples["done"])
                     self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
-
+                if self._verbose>0:
+                    print('{}/{}: Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(total_steps, self._max_steps, actor_loss, critic_loss))
 
             if total_steps % self._test_interval == 0:
                 
@@ -294,6 +293,8 @@ class Trainer:
 
             if total_steps % self._save_model_interval == 0:
                 save_ckpt(self._policy, self._output_dir, total_steps)
+
+
 
         self.writer.close()
 
@@ -464,7 +465,7 @@ if __name__ == '__main__':
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)
 
-    # trainer.set_seed(args.seed)
+    trainer.set_seed(args.seed)
 
     
     try:

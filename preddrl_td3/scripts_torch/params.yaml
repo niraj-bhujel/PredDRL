@@ -1,6 +1,6 @@
 net:
-    hidden_dim: 32
-    num_layers: 2
+    hidden_dim: 64
+    num_layers: 4
     in_dim_node: 2
     in_dim_edge: 1
     embed: True  #if embed False, hidden_dim=in_dim
