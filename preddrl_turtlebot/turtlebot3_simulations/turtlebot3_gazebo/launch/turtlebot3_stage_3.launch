@@ -5,7 +5,7 @@
   <arg name="z_pos" default="0.0"/>
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-   <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/turtlebot3_stage_2.world"/>
+   <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/turtlebot3_stage_3.world"/>
    <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/maze1.world"/> -->
     <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/train_env_2.world"/> -->
     <!-- <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/6.5_env_2.world"/> -->

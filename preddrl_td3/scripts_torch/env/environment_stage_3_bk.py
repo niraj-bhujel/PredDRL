@@ -295,6 +295,7 @@ class Env:
             self.init_goal(position_check=True, test=self.test)
 
         if done:
+            # self.pub_cmd_vel.publish(Twist())
             self.reset()
 
         # stop agent, while policy update
@@ -313,6 +314,7 @@ class Env:
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
 
     def reset(self, initGoal=False):
+        self.pub_cmd_vel.publish(Twist())
 
         try:
             rospy.wait_for_service('gazebo/reset_simulation')
@@ -323,8 +325,6 @@ class Env:
 
         except (rospy.ServiceException) as e:
             rospy.loginfo("gazebo/reset_simulation service call failed")
-        
-        self.pub_cmd_vel.publish(Twist())
 
         if initGoal:
             self.init_goal()
