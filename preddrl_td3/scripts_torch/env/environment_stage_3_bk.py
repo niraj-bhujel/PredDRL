@@ -33,23 +33,27 @@ class Env:
         self.goal_x = 1.0
         self.goal_y = 0
         self.inflation_rad = 0.37  # 包含0.17的自身半径
-        # self.heading = 0
-        # self.pre_heading = 0
 
         self.maxLinearSpeed = 0.67
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
-        # self.vel_cmd = [0., 0.]
 
         self.position = Point()
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_space = spaces.Box(low=np.array([0, -self.maxAngularSpeed]), 
-                                       high=np.array([self.maxLinearSpeed, self.maxAngularSpeed]), 
-                                       dtype=np.float32)
+        self.action_type='xy'
+
+        if self.action_type=='xy':
+            self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
+                                           high=np.array([self.maxLinearSpeed, self.maxLinearSpeed]), 
+                                           dtype=np.float32)
+        elif self.action_type=='vw':
+             self.action_space = spaces.Box(low=np.array([0.0, -self.maxAngularSpeed]), 
+                                           high=np.array([self.maxLinearSpeed, self.maxAngularSpeed]), 
+                                           dtype=np.float32)           
         
         self.observation_space = spaces.Box(low=np.array([0.0]*self.num_beams + [0., -2., -2*pi, 0]), 
                                             high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
@@ -61,7 +65,7 @@ class Env:
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
 
-        self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+        # self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
         # self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
         # self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
 
@@ -98,8 +102,7 @@ class Env:
 
     def getGoalDistace(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # goal_distance = round(math.hypot(self.goal_x - self.position.position.x, self.goal_y - self.position.position.y), 2)
-        # self.past_distance = goal_distance
+
         return goal_distance
 
     def setOdometry(self, odom):
@@ -130,30 +133,40 @@ class Env:
 
         return v_pref
 
-    def action_to_vel_cmd(self, action):
+    def action_to_vel_cmd(self, action, action_type='xy'):
         # adopted from https://github.com/dongfangliu/NH-ORCA-python/
-        vx, vy = action[0], action[1]
-        
-        A = 0.5*cos(self.yaw)+SelfD*sin(self.yaw)/SelfL
-        B = 0.5*cos(self.yaw)-SelfD*sin(self.yaw)/SelfL
-        C = 0.5*sin(self.yaw)-SelfD*cos(self.yaw)/SelfL
-        D = 0.5*sin(self.yaw)+SelfD*cos(self.yaw)/SelfL
-        
-        vr = (vy-C/A*vx)/(D-B*C/A)
-        vl = (vx-B*vr)/A
-
         vel_msg = Twist()
-        vel_msg.angular.x = 0 
-        vel_msg.angular.y = 0
-        vel_msg.angular.z = (vr-vl)/SelfL
-        # hand edition constraint
-        vel_msg.angular.z = np.clip(-self.maxAngularSpeed, vel_msg.angular.z, self.maxAngularSpeed)
 
-        vel_msg.linear.x = 0.5*(vl+vr)
-        # hand edition constraint
-        vel_msg.linear.x = np.clip(-self.maxLinearSpeed, vel_msg.linear.x, self.maxLinearSpeed)
         vel_msg.linear.y = 0
         vel_msg.linear.z = 0
+
+        vel_msg.angular.x = 0 
+        vel_msg.angular.y = 0
+
+        if action_type=='xy':
+            vx, vy = action[0], action[1]
+
+            A = 0.5*cos(self.yaw)+SelfD*sin(self.yaw)/SelfL
+            B = 0.5*cos(self.yaw)-SelfD*sin(self.yaw)/SelfL
+            C = 0.5*sin(self.yaw)-SelfD*cos(self.yaw)/SelfL
+            D = 0.5*sin(self.yaw)+SelfD*cos(self.yaw)/SelfL
+            
+            vr = (vy-C/A*vx)/(D-B*C/A)
+            vl = (vx-B*vr)/A
+
+            vel_msg.linear.x = 0.5*(vl+vr)
+            # hand edition constraint
+            # vel_msg.linear.x = np.clip(-self.maxLinearSpeed, vel_msg.linear.x, self.maxLinearSpeed)
+            vel_msg.linear.x = np.clip(0.0, vel_msg.linear.x, self.maxLinearSpeed)
+
+            vel_msg.angular.z = (vr-vl)/SelfL
+            # hand edition constraint
+            vel_msg.angular.z = np.clip(-self.maxAngularSpeed, vel_msg.angular.z, self.maxAngularSpeed)
+
+        else:
+            v, w = action[0], action[1]  
+            vel_msg.linear.x = v
+            vel_msg.angular.z = w
 
         return vel_msg
 
@@ -194,7 +207,7 @@ class Env:
     def getGraphState(self, action=[0.0, 0.0]):
 
         # update 
-        print(self.position)
+        
         self.robot.update_states(p = point_to_numpy(self.position)[:2],
                                  # p=[0.0, 0.0],
                                  q=quat_to_numpy(self.orientation),
@@ -234,16 +247,11 @@ class Env:
 
     def step(self, action):
 
-        vel_cmd = Twist()
-        vel_cmd.linear.x = action[0]
-        vel_cmd.angular.z = action[1]
-
-        # vel_cmd = self.action_to_vel_cmd(action)
+        vel_cmd = self.action_to_vel_cmd(action, self.action_type)
         self.pub_cmd_vel.publish(vel_cmd)
 
         # state = self.getState(v, w)
         state = self.getGraphState(action)
-
 
         done=False
         success = False
@@ -286,8 +294,9 @@ class Env:
         if success:
             self.init_goal(position_check=True, test=self.test)
 
-        # if done or success:
-        #     self.pub_cmd_vel.publish(Twist()) 
+        if done:
+            # self.pub_cmd_vel.publish(Twist())
+            self.reset()
 
         # stop agent, while policy update
         # self.pub_cmd_vel.publish(Twist())
@@ -305,17 +314,18 @@ class Env:
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
 
     def reset(self, initGoal=False):
+        self.pub_cmd_vel.publish(Twist())
 
         try:
             rospy.wait_for_service('gazebo/reset_simulation')
-            self.reset_proxy()
+            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+            reset_proxy()
             
             rospy.loginfo('Env Reset')
 
         except (rospy.ServiceException) as e:
             rospy.loginfo("gazebo/reset_simulation service call failed")
 
-        
         if initGoal:
             self.init_goal()
 
