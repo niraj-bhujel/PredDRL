@@ -44,7 +44,7 @@ class Env:
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_type='xy'
+        self.action_type='vw'
 
         if self.action_type=='xy':
             self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
@@ -273,22 +273,21 @@ class Env:
         # if self.collision_threshold > min(scan_range_collision) + 1e-6:
             rospy.loginfo("Collision!!")
             done = True
-            reward = -1
+            reward = -100
 
         elif reaching_goal:
             rospy.loginfo("Success!!")
             success = True
-            reward = 1
+            reward = 100
             
         elif too_far: # added by niraj
             rospy.loginfo("Robot too far away from goal!!")
             done = True
-            reward = -1
+            reward = -100
 
         else:
             # reward = -0.5
-            reward = (self.goal_threshold-current_distance) * 0.1
-            # reward = current_distance - self.goal_threshold # by niraj
+            reward = (self.goal_threshold-current_distance)*0.1
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
