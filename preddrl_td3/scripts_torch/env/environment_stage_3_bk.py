@@ -205,22 +205,59 @@ class Env:
         
         g = create_graph([self.robot] + self.static_obstacles)
 
+        return g
+
+    def getState(self, action):
+        scan_range_collision = []
+
+        try:
+            scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
+
+        except rospy.ROSException:
+            rospy.logerr('LaserScan timeout during env step')
+            raise ValueError
+
+        for i in range(len(scan.ranges)):
+            if scan.ranges[i] == float('Inf'):
+                scan_range_collision.append(3.5)
+            elif np.isnan(scan.ranges[i]):
+                scan_range_collision.append(0)
+            else:
+                scan_range_collision.append(scan.ranges[i])
+
+        state = scan_range_collision + [action, self.heading, self.getGoalDistace] # by niraj
+        # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
+        # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
+        
+        return state
+
+
+    def step(self, action):
+
+        vel_cmd = Twist()
+        vel_cmd.linear.x = action[0]
+        vel_cmd.angular.z = action[1]
+
+        # vel_cmd = self.action_to_vel_cmd(action)
+        self.pub_cmd_vel.publish(vel_cmd)
+
+        # state = self.getState(v, w)
+        state = self.getGraphState(action)
+
+
         done=False
         success = False
+        collision = False
 
-
-        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-
-        # current_distance = g.ndata['gdist'][g.ndata['cid']==node_type_list.index('robot')]
+        current_distance = self.getGoalDistace()
         reaching_goal = current_distance < self.goal_threshold
         too_far = current_distance > self.max_goal_distance
         
-        robot_node = g.nodes()[g.ndata['cid']==node_type_list.index('robot')]
-        robot_neighbor_eids = neighbor_eids(g, robot_node)
-        robot_neighbor_dist = g.edata['dist'][robot_neighbor_eids]
-
-        collision = False
-        if len(robot_neighbor_dist)>0: 
+        robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
+        robot_neighbor_eids = neighbor_eids(state, robot_node)
+        robot_neighbor_dist = state.edata['dist'][robot_neighbor_eids]
+        
+        if robot_neighbor_dist.size(0)>0: 
             if self.collision_threshold > robot_neighbor_dist.min().item()-0.2:
                 collision=True
 
@@ -245,93 +282,12 @@ class Env:
             reward = (self.goal_threshold-current_distance) * 0.1
             # reward = current_distance - self.goal_threshold # by niraj
 
-        return g, reward, done, success
-
-    def getState(self, v=0, w=0):
-        # scan_range = [] # commented by niraj
-        scan_range_collision = []
-        heading = self.heading
-
-        done = False
-        success = False # added by niraj
-
-        # moved from step to getState - niraj
-        try:
-            scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
-            # if data is not None: break
-        except rospy.ROSException:
-            rospy.logerr('LaserScan timeout during env step')
-            raise ValueError
-
-        for i in range(len(scan.ranges)):
-            if scan.ranges[i] == float('Inf'):
-                scan_range_collision.append(3.5)
-            elif np.isnan(scan.ranges[i]):
-                scan_range_collision.append(0)
-            else:
-                scan_range_collision.append(scan.ranges[i])
-
-        current_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
-        # obstacle_min_range = round(min(scan_range), 2)
-        # obstacle_angle = np.argmin(scan_range)
-        if self.collision_threshold > min(scan_range_collision) + 1e-6:
-            rospy.loginfo("Collision!!")
-            done = True
-            reward = -150
-
-        elif current_distance < self.goal_threshold:
-            rospy.loginfo("Success!!, Goal (%.2f, %.2f) reached.", self.goal_x, self.goal_y)
-            success = True
-            reward = 200
-            
-
-        elif current_distance > self.max_goal_distance: # added by niraj
-            rospy.loginfo("Robot too far away from goal!!")
-            done = True
-            reward = -150
-
-        # elif abs(v)>3:
-        #     reward =  -np.log(v**2)
-
-        # elif abs(w)>np.pi:
-        #     reward = -np.log(w**2)
-
-        else:
-            # reward = (self.goal_threshold-current_distance) * 0.1
-            reward = (current_distance - self.goal_threshold) * 0.1
-
-        # # 增加一层膨胀区域，越靠近障碍物负分越多
-        # obstacle_min_range = round(min(scan_range_collision), 2)
-        # if obstacle_min_range < self.inflation_rad:
-        #     # reward += 100.0*(obstacle_min_range - self.inflation_rad)/self.inflation_rad
-        #     reward -= 5.0*(1 - obstacle_min_range/self.inflation_rad)
-
-        # print(scan_range_collision)
-        state = scan_range_collision + [v, w] + [heading, current_distance] # by niraj
-        # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
-        # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
-        
-        return state, reward, done, success
-
-
-    def step(self, action):
-
-        vel_cmd = Twist()
-        vel_cmd.linear.x = action[0]
-        vel_cmd.angular.z = action[1]
-
-        # vel_cmd = self.action_to_vel_cmd(action)
-        self.pub_cmd_vel.publish(vel_cmd)
-
-        # state, reward, done, success = self.getState(v, w)
-        state, reward, done, success = self.getGraphState(action)
-
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)
 
-        if done or success:
-            self.pub_cmd_vel.publish(Twist()) 
+        # if done or success:
+        #     self.pub_cmd_vel.publish(Twist()) 
 
         # stop agent, while policy update
         # self.pub_cmd_vel.publish(Twist())
@@ -363,8 +319,7 @@ class Env:
         if initGoal:
             self.init_goal()
 
-
-        # state, _, _, _ = self.getState()
-        state, _, _, _ = self.getGraphState()
+        # state = self.getState()
+        state = self.getGraphState()
 
         return state
