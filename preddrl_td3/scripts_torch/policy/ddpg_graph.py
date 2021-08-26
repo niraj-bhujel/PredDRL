@@ -39,6 +39,8 @@ class Actor(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
+        self.relu = nn.ReLU()
+
     def forward(self, g):
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
@@ -48,13 +50,13 @@ class Actor(nn.Module):
         g, h, e = self.net(g, h, e)
 
         # sum over batch nodes
-        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
         # print(h)
 
         h = self.out(h)
 
-        h = self.max_action*torch.tanh(h)
-        
+        # h[:, 1] = self.max_action*torch.tanh(h[:, 1])
+
         return h
 
 class Critic(nn.Module):
@@ -154,7 +156,7 @@ class GraphDDPG(OffPolicyAgent):
         self.actor.eval()
         with torch.no_grad():
             action = self.actor(state)
-            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
+            action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.actor.train()
 
         return action

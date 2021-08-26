@@ -109,6 +109,6 @@ def get_argument(parser=None):
     parser.add_argument('--gpu', type=int, default=0,
                         help='GPU id')
     parser.add_argument('--verbose', type=int, default=0,
-                        help='One of [0, 1]')
+                        help='One of [0, 1, 2]')
 
     return parser

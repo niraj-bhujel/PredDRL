@@ -168,7 +168,7 @@ class Trainer:
             
             step_start = time.time()
 
-            if self._verbose==0:
+            if self._verbose>1:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
@@ -177,18 +177,18 @@ class Trainer:
             else:
                 action = self._policy.get_action(obs)
 
-            if self._verbose==0:
+            if self._verbose>1:
                 print('Action: [{:.2f}, {:.2f}]'.format(round(action[0], 2), round(action[1], 2)))
 
             next_obs, reward, done, success = self._env.step(action)          
 
-            if self._verbose==0:
+            if self._verbose>1:
                 print("Position after action:", [self._env.position.x, self._env.position.y])
                 print('Rewards: {:.4f}'.format(reward))
 
             # plot graph, 
-            if self._vis_graph and total_steps<100:
-                network_draw(dgl.batch([obs, next_obs]),
+            if self._vis_graph: #and total_steps<100:
+                network_draw(obs,
                              show_node_label=True, node_label='action',
                              show_edge_labels=True, edge_label='dist',
                              show_legend=True,
@@ -201,8 +201,9 @@ class Trainer:
                 #     pickle.dump(obs, f)
 
             # ignore first step
-            # self.append_to_replay(obs, action, reward, next_obs, done)
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            if done or success:
+                # self.append_to_replay(obs, action, reward, next_obs, done)
+                self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward
@@ -215,10 +216,10 @@ class Trainer:
             if done or episode_steps == self._episode_max_steps:
                 obs = self._env.reset()
 
-                if self._verbose==0:
+                if self._verbose>1:
                     print("Robot position after reset:", [self._env.position.x, self._env.position.z])
 
-                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
+                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f} FPS: {4:5.2f}".format(
                         n_episode, total_steps, episode_steps, episode_return, fps))
 
                 episode_steps = 0
@@ -240,7 +241,7 @@ class Trainer:
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
 
 
-                if total_steps % self._policy.update_interval==0:
+                if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
                     sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
 
                     # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
@@ -264,7 +265,7 @@ class Trainer:
                                                                            samples["weights"] if self._use_prioritized_rb \
                                                                            else np.ones(self._policy.batch_size)
                                                                            )
-                    if self._verbose==1:
+                    if self._verbose>0:
                         print('{}/{} - action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, 
                                                                                                                             self._max_steps,
                                                                                                                             action[0], 
@@ -281,7 +282,7 @@ class Trainer:
                                                                  samples["done"])
                         self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
 
-                    if self._verbose>0:
+                    if self._verbose>1:
                         print('Actor Loss: {:.4f}, Critic Loss: {:.4f}'.format(actor_loss, critic_loss))
 
                     self.writer.add_scalar(self._policy.policy_name + "/vx", action[0], total_steps)
@@ -304,7 +305,7 @@ class Trainer:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
             self.r.sleep()
-            if self._verbose==0:
+            if self._verbose>1:
                 print('Time per step:', (time.time() - step_start))
 
         self.writer.close()
@@ -422,7 +423,7 @@ if __name__ == '__main__':
 
     # parser = DDPG.get_argument(parser)
 
-    parser.set_defaults(batch_size=100)
+    parser.set_defaults(batch_size=64)
     parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(episode_max_steps=1000)
