@@ -14,7 +14,7 @@ interaction_direction = {
     ('robot', 'pedestrian'): 10.0,
     #('robot', 'goal'): 1e6,
 
-    #('pedestrian', 'pedestrian'): 5.0,
+    ('pedestrian', 'pedestrian'): 5.0,
     ('pedestrian', 'robot') : 10.0,
     #('pedestrian', 'goal'): 1e6,
 
