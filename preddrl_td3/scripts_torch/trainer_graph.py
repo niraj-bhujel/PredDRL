@@ -187,8 +187,8 @@ class Trainer:
                 print('Rewards: {:.4f}'.format(reward))
 
             # plot graph, 
-            if self._vis_graph and total_steps<100:
-                network_draw(dgl.batch([obs, next_obs]),
+            if self._vis_graph: #and total_steps<100:
+                network_draw(obs,
                              show_node_label=True, node_label='action',
                              show_edge_labels=True, edge_label='dist',
                              show_legend=True,
@@ -201,9 +201,9 @@ class Trainer:
                 #     pickle.dump(obs, f)
 
             # ignore first step
-            # if done or success:
-            # self.append_to_replay(obs, action, reward, next_obs, done)
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            if done or success:
+                # self.append_to_replay(obs, action, reward, next_obs, done)
+                self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward

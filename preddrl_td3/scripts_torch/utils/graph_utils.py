@@ -12,17 +12,17 @@ node_type_list = ['robot', 'pedestrian', 'obstacle', 'goal']
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
     ('robot', 'pedestrian'): 10.0,
-    ('robot', 'goal'): 1e6,
+    #('robot', 'goal'): 1e6,
 
-    ('pedestrian', 'pedestrian'): 5.0,
+    #('pedestrian', 'pedestrian'): 5.0,
     ('pedestrian', 'robot') : 10.0,
-    ('pedestrian', 'goal'): 1e6,
+    #('pedestrian', 'goal'): 1e6,
 
-    ('obstacle', 'pedestrian'): 20.0, # large distance to prevent graph creatiion error due to zero edges
-    ('obstacle', 'robot'): 20.0,
+    ('obstacle', 'pedestrian'): 5.0, # large distance to prevent graph creatiion error due to zero edges
+    ('obstacle', 'robot'): 5.0,
 
-    ('goal', 'robot'): 1e6,
-    ('goal', 'pedestrian'): 1e6,
+    #('goal', 'robot'): 1e6,
+    #('goal', 'pedestrian'): 1e6,
     
 }
 
@@ -61,19 +61,16 @@ def create_graph(nodes, bidirectional=False):
 
         src_node = nodes[i]
 
-        # print(node_type_list.index(src_node._type), src_node._type)
-        # src_node_states = np.concatenate(src_node.states_at(src_node.last_timestep), axis=-1)
-
-        nodes_data['pos'].append(src_node._pos[src_node.last_timestep])
-        nodes_data['vel'].append(src_node._vel[src_node.last_timestep])
-        # nodes_data['acc'].append(src_node._acc[src_node.last_timestep])
-        # nodes_data['rot'].append(src_node._rot[src_node.last_timestep])
-        nodes_data['yaw'].append(src_node._yaw[src_node.last_timestep])
-        nodes_data['hed'].append(src_node.heading(src_node.last_timestep))
+        nodes_data['pos'].append(src_node._pos)
+        nodes_data['vel'].append(src_node._vel)
+        # nodes_data['acc'].append(src_node._acc)
+        # nodes_data['rot'].append(src_node._rot[])
+        nodes_data['yaw'].append(src_node._yaw)
+        nodes_data['hed'].append(src_node.heading)
 
         nodes_data['action'].append(src_node._action)
-        nodes_data['goal'].append(src_node._goal) # call this after heading
-        nodes_data['gdist'].append(src_node.distance_to_goal(src_node.last_timestep))
+        nodes_data['goal'].append(src_node._goal)
+        nodes_data['gdist'].append(src_node.distance_to_goal)
         
         nodes_data['time_step'].append(src_node.time_step)
 
@@ -88,7 +85,7 @@ def create_graph(nodes, bidirectional=False):
             except:
                 continue
             
-            diff = np.array(src_node._pos[src_node.last_timestep]) - np.array(dst_node._pos[dst_node.last_timestep])
+            diff = np.array(src_node._pos) - np.array(dst_node._pos)
 
             dist = np.linalg.norm(diff, keepdims=True)
 

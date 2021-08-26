@@ -13,7 +13,7 @@ from std_srvs.srv import Empty
 from gazebo_msgs.msg import ModelStates
 
 from .respawnGoal import Respawn
-from utils.node import Node
+from utils.agent import Agent
 from utils.graph_utils import create_graph, neighbor_eids, node_type_list
 
 def vector3_to_numpy(msg):
@@ -79,10 +79,17 @@ class Env:
         self.nid = 0
         self.max_goal_distance = 5
 
-        self.robot = Node(node_id=self.nid, node_type='robot')
+        self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1
 
-        self.static_obstacles = self.getStaticObstacles()
+        try:
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        except rospy.ROSException:
+            rospy.logerr('ModelStates timeout')
+            raise ValueError 
+
+        self.static_obstacles = self.getStaticObstacles(model_states)
+        self.pedestirans = self.getPedestrians(model_states)
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -171,43 +178,86 @@ class Env:
         return vel_msg
 
 
-    def getStaticObstacles(self, ):
+    def getStaticObstacles(self, model_states, obstacle_dict=None):
         # call only once
+
+        if not obstacle_dict:
+            obstacle_dict = {}
+            
+        for i, m_name in enumerate(model_states.name):
+
+            if not 'obstacle' in m_name:
+                continue
+
+            # preprare data to update
+            pose = model_states.pose[i]
+            twist = model_states.twist[i]
+
+            m_pos = point_to_numpy(pose.position)
+            # m_vel = vector3_to_numpy(twist.linear)
+
+            m_quat = quat_to_numpy(pose.orientation)
+            m_rot = vector3_to_numpy(twist.angular)
+
+            if m_name in self.obstacle_dict:
+                node = self.obstacle_dict[node]
+            else:
+                node = Agent(node_id=self.nid, node_type='obstacle')
+                self.nid += 1
+
+            node.update_states(m_pos[:2], q=m_quat, r=m_rot)
+            node.update_action(action=[0.0, 0.0])
+            node.update_goal(goal=m_pos[:2])
+
+            obstacle_dict[m_name] = node
+
+        return obstacle_dict
+
+    def getPedestrians(self, model_states, ped_dict=None):
+
+        if not ped_dict:
+            ped_dict = {}
+
+        for i, m_name in enumerate(model_states.name):
+            if not 'pedestrian' in m_name:
+                continue
+
+            # preprare data to update
+            pose = model_states.pose[i]
+            twist = model_states.twist[i]
+
+            m_pos = point_to_numpy(pose.position)
+            # m_vel = vector3_to_numpy(twist.linear)
+
+            m_quat = quat_to_numpy(pose.orientation)
+            m_rot = vector3_to_numpy(twist.angular)
+
+            if m_name in ped_dict:
+                node = ped_dict[m_name]
+            else:
+                node = Agent(node_id=self.nid, node_type='pedestrian')
+                self.nid += 1
+
+            node.update_states(m_pos[:2], q=m_quat, r=m_rot)
+            node.update_action(action=[0.0, 0.0])
+
+            cv_pred = node.cv_prediction(time_step=node.time_step)
+
+            node.update_goal(goal=cv_pred[-1])
+
+            ped_dict[m_name] = node
+            
+        return ped_dict
+
+
+    def getGraphState(self, action=[0.0, 0.0]):
+
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
         except rospy.ROSException:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        static_obstacles = []
-        for i, m_name in enumerate(model_states.name):
-            if 'obstacle' in m_name:
-                # if m_name not in self.static_obstacles:
-                node = Node(node_id=self.nid, node_type='obstacle')
-
-                # preprare data to update
-                pose = model_states.pose[i]
-                twist = model_states.twist[i]
-
-                m_pos = point_to_numpy(pose.position)
-                # m_vel = vector3_to_numpy(twist.linear)
-
-                m_quat = quat_to_numpy(pose.orientation)
-                m_rot = vector3_to_numpy(twist.angular)
-
-                node.update_states(m_pos[:2], q=m_quat, r=m_rot)
-                node.update_action(action=[0.0, 0.0])
-                node.update_goal(goal=m_pos[:2])
-
-                static_obstacles.append(node)
-                self.nid += 1
-        return static_obstacles
-
-
-    def getGraphState(self, action=[0.0, 0.0]):
-
-        # update 
-        
         self.robot.update_states(p = point_to_numpy(self.position)[:2],
                                  # p=[0.0, 0.0],
                                  q=quat_to_numpy(self.orientation),
@@ -216,7 +266,12 @@ class Env:
         self.robot.update_action(action) 
         self.robot.update_goal([self.goal_x, self.goal_y]) 
         
-        g = create_graph([self.robot] + self.static_obstacles)
+        self.static_obstacles = self.getStaticObstacles(model_states, self.static_obstacles)
+        self.pedestirans = self.getPedestrians(model_states, self.pedestirans)
+
+        graph_nodes = [self.robot] + list(self.static_obstacles.values()) + list(self.pedestirans.values())
+
+        g = create_graph(graph_nodes)
 
         return g
 
