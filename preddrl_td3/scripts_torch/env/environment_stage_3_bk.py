@@ -77,7 +77,7 @@ class Env:
         # keep track of nodes and their id, added by niraj
         self.nodes = dict()
         self.nid = 0
-        self.max_goal_distance = 5
+        self.max_goal_distance = 7
 
         self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1

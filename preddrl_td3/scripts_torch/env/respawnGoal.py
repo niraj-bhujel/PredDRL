@@ -10,7 +10,7 @@ from geometry_msgs.msg import Pose
 class Respawn():
     def __init__(self, stage=2):
         # self.stage = 2
-        self.stage = stage # added by niraj
+        self.stage = 4 # added by niraj
         self.goal_position = Pose()
         self.init_goal_x = 0#1.5#0.5 1.5 0
         self.init_goal_y = 1#0.2#-1.5 0 -1
