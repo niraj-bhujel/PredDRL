@@ -29,7 +29,7 @@ SelfD=0.175
 SelfL=0.23
 
 class Env:
-    def __init__(self):
+    def __init__(self, test=False, stage=0):
         self.goal_x = 1.0
         self.goal_y = 0
         self.inflation_rad = 0.37  # 包含0.17的自身半径
@@ -59,23 +59,12 @@ class Env:
                                             high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
                                             dtype=np.float32)
 
-        self.input_shape = 20
-        self.window_size = 3 
-
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
 
-        # self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        # self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
-        # self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
-
-        self.respawn_goal = Respawn(stage=2) # stage argument added by niraj
-
-        # self.past_distance = 0. # comment by niraj
-        
+        self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
         # keep track of nodes and their id, added by niraj
-        self.nodes = dict()
         self.nid = 0
         self.max_goal_distance = 7
 
@@ -199,8 +188,8 @@ class Env:
             m_quat = quat_to_numpy(pose.orientation)
             m_rot = vector3_to_numpy(twist.angular)
 
-            if m_name in self.obstacle_dict:
-                node = self.obstacle_dict[node]
+            if m_name in obstacle_dict:
+                node = obstacle_dict[m_name]
             else:
                 node = Agent(node_id=self.nid, node_type='obstacle')
                 self.nid += 1
@@ -271,11 +260,24 @@ class Env:
 
         graph_nodes = [self.robot] + list(self.static_obstacles.values()) + list(self.pedestirans.values())
 
-        g = create_graph(graph_nodes)
+        state = create_graph(graph_nodes)
 
-        return g
+        current_distance = self.getGoalDistace()
+        reaching_goal = current_distance < self.goal_threshold
+        too_far = current_distance > self.max_goal_distance
+            
+        robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
+        robot_neighbor_eids = neighbor_eids(state, robot_node)
+        robot_neighbor_dist = state.edata['dist'][robot_neighbor_eids]
+        
+        collision = False
+        if robot_neighbor_dist.size(0)>0: 
+            if self.collision_threshold > robot_neighbor_dist.min().item()-0.2:
+                collision=True
 
-    def getState(self, action):
+        return state, collision, reaching_goal, too_far
+
+    def getState(self, action=[0., 0.]):
         scan_range_collision = []
 
         try:
@@ -289,15 +291,19 @@ class Env:
             if scan.ranges[i] == float('Inf'):
                 scan_range_collision.append(3.5)
             elif np.isnan(scan.ranges[i]):
-                scan_range_collision.append(0)
+                scan_range_collision.append(0.0)
             else:
                 scan_range_collision.append(scan.ranges[i])
 
-        state = scan_range_collision + [action, self.heading, self.getGoalDistace] # by niraj
-        # state = scan_range_collision + self.vel_cmd + [heading, current_distance] # 极坐标
-        # state = scan_range_collision + self.vel_cmd + [self.position.x, self.position.y, self.goal_x, self.goal_y] #笛卡尔坐标
-        
-        return state
+
+        goal_distance = self.getGoalDistace()
+        collision =  min(scan_range_collision) < self.collision_threshold
+        reaching_goal = goal_distance< self.goal_threshold
+        too_far = goal_distance > self.max_goal_distance
+
+        state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
+                
+        return state, collision, reaching_goal, too_far
 
 
     def step(self, action):
@@ -305,44 +311,28 @@ class Env:
         vel_cmd = self.action_to_vel_cmd(action, self.action_type)
         self.pub_cmd_vel.publish(vel_cmd)
 
-        # state = self.getState(v, w)
-        state = self.getGraphState(action)
+        state, collision, reaching_goal, too_far = self.getState(action)
+        # state, collision, reaching_goal, too_far = self.getGraphState(action)
 
         done=False
         success = False
-        collision = False
-
-        current_distance = self.getGoalDistace()
-        reaching_goal = current_distance < self.goal_threshold
-        too_far = current_distance > self.max_goal_distance
-        
-        robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
-        robot_neighbor_eids = neighbor_eids(state, robot_node)
-        robot_neighbor_dist = state.edata['dist'][robot_neighbor_eids]
-        
-        if robot_neighbor_dist.size(0)>0: 
-            if self.collision_threshold > robot_neighbor_dist.min().item()-0.2:
-                collision=True
 
         if collision:
-        # if self.collision_threshold > min(scan_range_collision) + 1e-6:
-            rospy.loginfo("Collision!!")
             done = True
             reward = -100
 
         elif reaching_goal:
-            rospy.loginfo("Success!!")
             success = True
             reward = 100
+            rospy.loginfo('Success!!')
             
-        elif too_far: # added by niraj
-            rospy.loginfo("Robot too far away from goal!!")
+        elif too_far:
             done = True
             reward = -100
+            rospy.loginfo('Too Far from Goal!!')
 
         else:
-            # reward = -0.5
-            reward = (self.goal_threshold-current_distance)*0.1
+            reward = (self.goal_threshold-self.getGoalDistace())
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
@@ -351,9 +341,6 @@ class Env:
         if done:
             # self.pub_cmd_vel.publish(Twist())
             self.reset()
-
-        # stop agent, while policy update
-        # self.pub_cmd_vel.publish(Twist())
 
         return state, reward, done, success
 
@@ -383,7 +370,7 @@ class Env:
         if initGoal:
             self.init_goal()
 
-        # state = self.getState()
-        state = self.getGraphState()
+        state, _, _, _ = self.getState()
+        # state, _, _, _ = self.getGraphState()
 
         return state

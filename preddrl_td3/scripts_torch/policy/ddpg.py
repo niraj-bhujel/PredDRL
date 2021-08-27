@@ -9,6 +9,8 @@ import torch.nn.functional as F
 from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
+from dgl.heterograph import DGLHeteroGraph
+
 # from exploration_strategies.OU_Noise_Exploration import OU_Noise_Exploration
 
 class Actor(torch.nn.Module):
@@ -64,16 +66,16 @@ class DDPG(OffPolicyAgent):
             tau=0.005,
             n_warmup=int(1e4),
             memory_capacity=int(1e6),
-            config=None,
+            net_params=None,
             args=None,
             **kwargs):
 
         super().__init__(name=name, memory_capacity=memory_capacity, n_warmup=n_warmup, **kwargs)
 
-
         # Set hyperparameters
         self.sigma = sigma
         self.tau = tau
+        self.action_dim = action_dim
 
         # Define and initialize Actor network
         self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
@@ -93,9 +95,12 @@ class DDPG(OffPolicyAgent):
         self.step=0
 
     def get_action(self, state, test=False, tensor=False):
-        state = np.array(state, dtype=np.float32)
-
-        action = self._get_action_body(torch.from_numpy(state).to(self.device), 
+        if isinstance(state, DGLHeteroGraph):
+            state = dgl.batch(state)
+        else:
+            state = torch.Tensor(state)
+        state = state.to(self.device)
+        action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
                                        self.actor.max_action)
         if tensor:
@@ -114,29 +119,26 @@ class DDPG(OffPolicyAgent):
 
         self.actor.train()
 
-        return torch.clamp(action, -max_action, max_action)
+        # return torch.clamp(action, -max_action, max_action)
+        return action.squeeze(0)
 
     def train(self, states, actions, next_states, rewards, dones, weights):
         self.step +=1 
-        states = torch.from_numpy(np.array(states, dtype=np.float32)).to(self.device)
-        actions = torch.from_numpy(np.array(actions, dtype=np.float32)).to(self.device)
-        next_states = torch.from_numpy(np.array(next_states, dtype=np.float32)).to(self.device)
-        rewards = torch.from_numpy(np.array(rewards, dtype=np.float32)).view(-1, 1).to(self.device)
-        dones = torch.from_numpy(np.array(dones, dtype=np.float32)).view(-1, 1).to(self.device)
-        weights = torch.from_numpy(np.array(weights)).to(self.device)
-
-        # print(states.shape, actions.shape, next_states.shape, rewards.shape, dones.shape, weights.shape)
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
-        return actor_loss.item(), critic_loss.item(), td_errors.detach().cpu().numpy()
+        actor_loss = actor_loss.item() if actor_loss is not None else actor_loss
+        critic_loss = critic_loss.item()
+        td_errors = td_errors.detach().cpu().numpy()
 
-    def optimization_step(self, optimizer, loss, clip_norm=None, retain_graph=False):
+        return actor_loss, critic_loss, td_errors
+
+    def optimization_step(self, optimizer, loss, clip_norm=None, model=None, retain_graph=False):
         optimizer.zero_grad()
         loss.backward(retain_graph=retain_graph)
 
         if clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(net.parameters(), clip_norm) #clip gradients to help stabilise training
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
 
         optimizer.step()
 
@@ -147,7 +149,7 @@ class DDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer,  critic_loss)
+        self.optimization_step(self.critic_optimizer, critic_loss)
 
         # Compute actor loss
         next_action = self.actor(states)
@@ -160,17 +162,9 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.actor, self.actor_target)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
-        self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.step)
-        self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.step)
-
         return actor_loss, critic_loss, td_errors
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        states = torch.from_numpy(np.array(states, dtype=np.float32)).to(self.device)
-        actions = torch.from_numpy(np.array(actions, dtype=np.float32)).to(self.device)
-        next_states = torch.from_numpy(np.array(next_states, dtype=np.float32)).to(self.device)
-        rewards = torch.from_numpy(np.array(rewards, dtype=np.float32)).view(-1, 1).to(self.device)
-        dones = torch.from_numpy(np.array(dones, dtype=np.float32)).view(-1, 1).to(self.device)
         
         with torch.no_grad():
             td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)

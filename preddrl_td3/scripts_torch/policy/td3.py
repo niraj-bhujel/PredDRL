@@ -63,9 +63,8 @@ class TD3(DDPG):
             critic_units=[400, 300],
             lr_critic=0.001,
             **kwargs):
-        super().__init__(name=name, state_shape=state_shape, action_dim=action_dim,
-                         actor_units=actor_units, critic_units=critic_units,
-                         lr_critic=lr_critic, **kwargs)
+
+        super().__init__(state_shape, action_dim, name=name, actor_units=actor_units, **kwargs)
 
         self.critic = Critic(state_shape, action_dim, critic_units)
         self.critic_target = Critic(state_shape, action_dim, critic_units)
@@ -108,11 +107,6 @@ class TD3(DDPG):
         return actor_loss, critic_loss, torch.abs(td_error1) + torch.abs(td_error2)
 
     def compute_td_error(self, states, actions, next_states, rewards, dones):
-        states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
         
         with torch.no_grad():
             td_errors1, td_errors2 = self._compute_td_error_body(states, actions, next_states, rewards, dones)

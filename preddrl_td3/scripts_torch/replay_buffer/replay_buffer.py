@@ -196,10 +196,36 @@ class ReplayBuffer:
 
         self._storage = []
         self._maxsize = size
-        if use_nstep:
-            self.n_step_buffer = NstepBuffer(size=n_step, gamma=gamma)
+        self._use_nstep = use_nstep
+        self._n_step = n_step
+
+        self._gamma = gamma
+        if self._use_nstep:
+            self.n_step_buffer = deque([], self._n_step)
+
+    def n_step_return(data):
+        # https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
+        self.n_step_buffer.append(data)
+
+        if len(self.n_step_buffer)<self._n_step:
+            return data
+        
+        l_reward, l_next_state, l_done = self.n_step_buffer[-1][-3:]
+
+        for transition in reversed(list(self.n_step_buffer)[:-1]):
+            r, n_s, d = transition[-3:]
+
+            l_reward = r + self._gamma * l_reward * (1 - d)
+            l_next_state, l_done = (n_s, d) if d else (l_next_state, l_done)
+        
+        l_state, l_action = self.n_step_buffer[0][:2]
+
+        return [l_state, l_action, l_reward, l_next_state, l_done]  
 
     def add(self, transition):
+        if self._use_nstep:
+            transition = self.n_step_return(transition)
+
         self._storage.append(transition)
         if len(self._storage) > self._maxsize:
             del self.memory[0]
@@ -230,7 +256,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         --------
         ReplayBuffer.__init__
         """
-        super(PrioritizedReplayBuffer, self).__init__(size=size)
+        super(PrioritizedReplayBuffer, self).__init__(size=size, use_nstep=use_nstep, n_step=n_step)
 
         self._next_idx = 0
 
@@ -250,14 +276,16 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         
         self._max_priority = 1.0
 
-        # if use_nstep:
-        #     self.n_step_buffer = NstepBuffer(size=n_step)
-
     def beta_by_frame(self, frame_idx):
-        return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
+        return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)    
+
 
     def add(self, data):
         """See ReplayBuffer.store_effect"""
+
+        if self._use_nstep:
+            data = self.n_step_return(data)
+
         idx = self._next_idx
 
         if self._next_idx >= len(self._storage):

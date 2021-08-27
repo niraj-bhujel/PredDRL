@@ -64,7 +64,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'action'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'action', 'goal', 'hed'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')
@@ -110,5 +110,9 @@ def get_argument(parser=None):
                         help='GPU id')
     parser.add_argument('--verbose', type=int, default=0,
                         help='One of [0, 1, 2]')
+
+    # simulation env
+    parser.add_argument('--stage', type=int, default=0,
+                        help='Value from 0-6')   
 
     return parser

@@ -1,7 +1,3 @@
-'''
-This verison uses custom replay buffer. 
-'''
-
 import os
 import time
 import logging
@@ -9,15 +5,20 @@ import shutil
 import random
 import numpy as np
 from collections import deque
-
+import pickle
 import torch
 from torch.utils.tensorboard import SummaryWriter
+
+import dgl
+from dgl.heterograph import DGLHeteroGraph
+
+import rospy
 
 from gym.spaces import Box
 
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
-
+# from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 from utils.graph_utils import node_type_list
@@ -56,10 +57,13 @@ class Trainer:
         self._restore_checkpoint = args.restore_checkpoint
 
         self._policy = policy
+        self._device = policy.device
         self._env = env
         self._test_env = self._env if test_env is None else test_env
-
+        self._verbose = args.verbose
         self.nstep_buffer = [] 
+
+        self.r = rospy.Rate(5)
 
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
@@ -69,7 +73,7 @@ class Trainer:
         suffix = '_'.join(['%s'%policy.policy_name,
                         'warmup_%d'%self._policy.n_warmup,
                         'bs%d'%policy.batch_size,
-                        'seed_%d'%args.seed,
+                        # 'seed_%d'%args.seed,
                         ])
 
         if self._use_prioritized_rb:
@@ -82,10 +86,12 @@ class Trainer:
 
         self._output_dir = prepare_output_dir(args=args, 
                                               user_specified_dir=self._logdir, 
-                                              time_format='%Y_%m_%d_%H-%M-%S',
-                                              # time_format='%Y_%m_%d',
+                                              # time_format='%Y_%m_%d_%H-%M-%S',
+                                              time_format='%Y_%m_%d',
                                               suffix=suffix
                                               )
+
+
         # backup scripts
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
@@ -97,51 +103,31 @@ class Trainer:
 
         # prepare TensorBoard output
         self.writer = SummaryWriter(self._output_dir)
-        self._policy.writer = self.writer
 
+        # prepare buffer
         if self._use_prioritized_rb:
             self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
-                                                    beta_frames=self._max_steps)
+                                                         use_nstep=self._use_nstep_rb,
+                                                         n_step = self._n_step,
+                                                         beta_frames=self._max_steps)
         else:
             self.replay_buffer = ReplayBuffer(size=self._buffer_size)
 
-        self.n_step_buffer = deque([], self._n_step)
         self.gamma = 0.995
-        # self.set_seed(args.seed)
+
+        # visualization
         self._vis_graph = args.vis_graph
-        self._plot_dir = self._output_dir + '/graphs/'
-        if os.path.exists(self._plot_dir):
-            shutil.rmtree(self._plot_dir)
-        os.makedirs(self._plot_dir)
+        self._vis_graph_dir = self._output_dir + '/graphs/'
+        # if os.path.exists(self._vis_graph_dir):
+        #     shutil.rmtree(self._vis_graph_dir)
+        if not os.path.exists(self._vis_graph_dir):
+            os.makedirs(self._vis_graph_dir)
 
     def set_seed(self, seed):
         #setup seeds
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-
-
-    def append_to_replay(self, s, a, r, s_, d):
-        # https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
-        self.n_step_buffer.append((s, a, r, s_, d))
-
-        if(len(self.n_step_buffer)<self._n_step):
-            return
-        
-        l_reward, l_next_state, l_done = self.n_step_buffer[-1][-3:]
-
-        for transition in reversed(list(self.n_step_buffer)[:-1]):
-            r, n_s, d = transition[-3:]
-
-            l_reward = r + self.gamma * l_reward * (1 - d)
-            l_next_state, l_done = (n_s, d) if d else (l_next_state, l_done)
-        
-        l_state, l_action = self.n_step_buffer[0][:2]
-
-        transition = (l_state, l_action, l_reward, l_next_state, l_done)
-        # transitions = tuple(map(lambda x:np.array(x, copy=False, ndmin=1), transition))
-
-        self.replay_buffer.add(transition)
 
     def __call__(self):
 
@@ -153,115 +139,146 @@ class Trainer:
         episode_success = 0
         success_rate = 0
 
+        actor_loss = 0
+        critic_loss = 0
+
         episode_start_time = time.perf_counter()
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         while total_steps < self._max_steps:
-            # print('Step - {}/{}'.format(total_steps, self._max_steps))
+            
+            step_start = time.time()
 
-            if total_steps < self._policy.n_warmup:
-                action = self._env.action_space.sample()
+            if self._verbose>1:
+                print('Step - {}/{}'.format(total_steps, self._max_steps))    
+
+            if total_steps < self._policy.n_warmup+1:
+                action = self._env.action_space.sample() #(2, )
+
             else:
+
                 action = self._policy.get_action(obs)
 
-            self.writer.add_histogram(self._policy.policy_name + "/actions", action, total_steps)
+            if self._verbose>1:
+                print('Action: {}'.format(action))
 
-            next_obs, reward, done, success = self._env.step(action)
+            next_obs, reward, done, success = self._env.step(action)          
+
+            if self._verbose>1:
+                print("Position after action:", [self._env.position.x, self._env.position.y])
+                print('Rewards: {:.4f}'.format(reward))
+
+            # plot graph, 
+            if self._vis_graph: #and total_steps<100:
+                network_draw(obs,
+                             show_node_label=True, node_label='action',
+                             show_edge_labels=True, edge_label='dist',
+                             show_legend=True,
+                             fsuffix = 'episode_step%d'%episode_steps,
+                             counter=total_steps,
+                             save_dir=self._vis_graph_dir, 
+                             show_dirction=True,
+                             )
+                # with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
+                #     pickle.dump(obs, f)
+
+            # ignore first step
+            # if done or success:
+            self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward
             total_steps += 1
-
             fps = episode_steps / (time.perf_counter() - episode_start_time)
-            
-            # update states
-            self.append_to_replay(obs, action, reward, next_obs, done)
 
+            # update
             obs = next_obs
 
-            #for success rate
-            if done or episode_steps == self._episode_max_steps or success:
+            if done or episode_steps == self._episode_max_steps:
+                obs = self._env.reset()
 
-                if success and total_steps > self._policy.n_warmup: 
+                if self._verbose>1:
+                    print("Robot position after reset:", [self._env.position.x, self._env.position.z])
+
+                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f} FPS: {4:5.2f}".format(
+                        n_episode, total_steps, episode_steps, episode_return, fps))
+
+                episode_steps = 0
+                episode_return = 0
+                episode_start_time = time.perf_counter()
+
+            if total_steps > self._policy.n_warmup-1:
+                # continue
+                # misc values, after warmup
+                if success:
                     episode_success += 1
 
-                if total_steps > self._policy.n_warmup:    
+                if done or success:
                     n_episode += 1
 
                 success_rate = episode_success/n_episode
 
-                if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()
-
-                self.logger.info("Total Epi:{:5} Steps:{:7} Episode Steps:{:5} Return:{:3.4f} SucessRate:{:2.4f} FPS:{:3.2f}".format(
-                    n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
-
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
-
-                episode_steps = 0
-                episode_return = 0
-                episode_start_time = time.perf_counter() 
-
-
-            if total_steps < self._policy.n_warmup:
-                continue
-
-            if total_steps % self._policy.update_interval==0:
-                sampled_data, idxes, weights = self.replay_buffer.sample(self._policy.batch_size)
-
-                # samples = tuple(map(lambda x: np.stack(x, axis=0).reshape(self._policy.batch_size, -1), zip(*sampled_data)))
-                obs_batch, act_batch, rew_batch, next_obs_batch, done_batch = zip(*sampled_data)
-
-                samples = dict(obs=obs_batch, 
-                               act=act_batch, 
-                               rew=rew_batch, 
-                               next_obs=next_obs_batch, 
-                               done=done_batch, 
-                               weights=weights, 
-                               indexes=idxes)
-                # print({k:v.shape for k,v in samples.items()})
-
-                actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
-                                                                       samples["act"], 
-                                                                       samples["next_obs"],
-                                                                       samples["rew"], 
-                                                                       samples["done"],
-                                                                       samples["weights"] if self._use_prioritized_rb \
-                                                                       else np.ones(self._policy.batch_size)
-                                                                       )
-
-                # if actor_loss is not None:
-                    # print('Step:{}/{}, Episode Step:{}, actor_loss:{:.5f}, critic_loss:{:.5f}, td_errors:{:.5f}'.format(total_steps, 
-                    #                                                                                              self._max_steps, 
-                    #                                                                                              episode_steps, 
-                    #                                                                                              actor_loss,
-                    #                                                                                              critic_loss,
-                    #                                                                                              np.mean(td_errors)))
-
-                if self._use_prioritized_rb:
-                    td_error = self._policy.compute_td_error(samples["obs"], 
-                                                             samples["act"], 
-                                                             samples["next_obs"],
-                                                             samples["rew"], 
-                                                             samples["done"])
-                    self.replay_buffer.update_priorities(samples["indexes"], np.abs(td_error))
-
-
-
-            if total_steps % self._test_interval == 0:
-                
-                avg_test_return = self.evaluate_policy(total_steps)
-
-                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                    total_steps, avg_test_return, self._test_episodes))
-
-                self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
                 self.writer.add_scalar("Common/fps", fps, total_steps)
 
+                if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
-            if total_steps % self._save_model_interval == 0:
-                save_ckpt(self._policy, self._output_dir, total_steps)
+                    samples = self.sample_data(batch_size=self._policy.batch_size,
+                                               device=self._policy.device)
+
+                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                                                                            samples["act"], 
+                                                                            samples["next_obs"],
+                                                                            samples["rew"], 
+                                                                            samples["done"],
+                                                                            samples["weights"])
+
+                    if self._use_prioritized_rb:
+                        priorities = self._policy.compute_td_error(samples["obs"], 
+                                                                   samples["act"], 
+                                                                   samples["next_obs"],
+                                                                   samples["rew"], 
+                                                                   samples["done"])
+
+                        self.replay_buffer.update_priorities(sample['idxes'], np.abs(priorities))
+
+
+
+                    if actor_loss is not None:
+
+                        self.writer.add_scalar(self._policy.policy_name + "/v", action[0], total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/w", action[1], total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+                        self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/actor_loss", actor_loss, total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/critic_loss", critic_loss, total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/td_error", np.mean(td_errors), total_steps)
+
+                        if self._verbose>0:
+                            print('{}/{} - action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, 
+                                                                                                                                self._max_steps,
+                                                                                                                                action[0], 
+                                                                                                                                action[1],
+                                                                                                                                reward,
+                                                                                                                                actor_loss,
+                                                                                                                                critic_loss,))
+
+                if total_steps % self._test_interval == 0:
+                    
+                    avg_test_return = self.evaluate_policy(total_steps)
+
+                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
+                        total_steps, avg_test_return, self._test_episodes))
+
+                    self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
+                    
+                if total_steps % self._save_model_interval == 0:
+                    save_ckpt(self._policy, self._output_dir, total_steps)
+
+            self.r.sleep()
+            if self._verbose>1:
+                print('Time per step:', (time.time() - step_start))
 
         self.writer.close()
 
@@ -351,39 +368,67 @@ class Trainer:
 
         return avg_test_return / self._test_episodes
 
+    def sample_data(self, batch_size, device):
+
+        sampled_data, idxes, weights = self.replay_buffer.sample(batch_size)
+
+        obs, act, rew, next_obs, done = zip(*sampled_data)
+
+        if isinstance(obs[0], DGLHeteroGraph):
+            obs = dgl.batch(obs).to(device)
+            next_obs = dgl.batch(next_obs).to(device)
+        else:
+            obs = torch.Tensor(np.stack(obs, 0)).to(device)
+            next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
+        
+        act = torch.Tensor(np.stack(act, 0)).to(device)
+        rew = torch.Tensor(np.stack(rew, 0)).view(-1, 1).to(device)
+        done = torch.Tensor(np.stack(done, 0)).view(-1, 1).to(device)
+        if self._use_prioritized_rb:
+            weights = torch.Tensor(np.stack(weights, 0)).to(device)
+        else:
+            weights = torch.Tensor(np.ones((batch_size,))).to(device)
+
+        return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
 
 if __name__ == '__main__':
     import sys
     sys.path.insert(0, './')
     sys.path.insert(0, './preddrl_td3/scripts_torch')
-    import json
+
     import rospy
     import args
-    from utils.utils import model_attributes
+    import yaml
+
+    from utils.utils import model_attributes, model_parameters
 
     from policy.td3 import TD3
     from policy.ddpg import DDPG
     from policy.ddpg_graph import GraphDDPG
+    from policy.td3_graph import GraphTD3
+    from policy.gcn import GatedGCN
 
-    from env.environment_stage_3_bk import Env
+    from env.environment import Env
+
+    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'gcn':GatedGCN}
 
     # from gym.utils import seeding as _s 
 
     parser = args.get_argument()
 
-
-    parser = DDPG.get_argument(parser)
+    # parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=64)
     parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
+    parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(prefix='custom_rb')
-    parser.set_defaults(use_prioritized_rb=True)
+    parser.set_defaults(use_prioritized_rb=False)
     parser.set_defaults(use_nstep_rb=True)
+    parser.set_defaults(policy='graph_ddpg')
 
     args = parser.parse_args()
-    print({val[0]:val[1] for val in sorted(vars(args).items())})
+    # print({val[0]:val[1] for val in sorted(vars(args).items())})
 
     # test param, modified by niraj
     if args.evaluate:
@@ -394,42 +439,40 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-    args.prefix = 'custom_buffer'
-
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
-    env = Env()
-    test_env = Env()
+    env = Env(test=False, stage=args.stage)
+    test_env = Env(test=True, stage=args.stage)
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
-    with open("./preddrl_td3/scripts_torch/config.json", 'r') as f:
-        config = json.load(f)
+    with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
+        net_params = yaml.load(f, Loader = yaml.FullLoader)
 
-    policy = DDPG(
+    policy = policies[args.policy](
         state_shape=env.observation_space.shape,
         action_dim=env.action_space.high.size,
+        max_action=env.action_space.high[1],
         gpu=args.gpu,
         memory_capacity=args.memory_capacity,
-        max_action=env.action_space.high[0],
         batch_size=args.batch_size,
-        actor_units=[400, 300],
         n_warmup=args.n_warmup,
-        config=config,
+        net_params=net_params,
         args=args)
 
     policy = policy.to(policy.device)
     print(repr(policy))
-    for m_name, module in policy.named_children():
-        print(m_name, model_attributes(module, verbose=0), '\n')
+    model_parameters(policy)
+    print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
+    # for m_name, module in policy.named_children():
+    #     print(m_name, model_attributes(module, verbose=0), '\n')
 
     # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)
 
     trainer.set_seed(args.seed)
 
-    
     try:
         if args.evaluate:
             print('-' * 89)

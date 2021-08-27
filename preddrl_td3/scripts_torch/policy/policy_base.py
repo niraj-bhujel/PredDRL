@@ -21,7 +21,7 @@ class Policy(nn.Module):
         self.n_epoch = n_epoch
         self.max_grad = max_grad
         self.memory_capacity = memory_capacity
-        self.device = "/gpu:{}".format(gpu) if gpu >= 0 else "/cpu:0"
+        # self.device = "/gpu:{}".format(gpu) if gpu >= 0 else "/cpu:0"
         self.device="cuda:{}".format(gpu) if gpu>=0 else "cpu"
 
     def get_action(self, observation, test=False):

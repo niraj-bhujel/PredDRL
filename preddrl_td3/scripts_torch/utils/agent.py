@@ -19,7 +19,7 @@ def euler_from_quaternion(orientation_list):
 
 
 class Agent(object):
-    def __init__(self, node_id=0, node_type='robot', time_step=0.5):
+    def __init__(self, node_id=0, node_type='robot', time_step=0.1):
         # self.data = data
 
         self._id = int(node_id)
@@ -29,7 +29,7 @@ class Agent(object):
         self._pos = None
         self._vel = None
         self._acc = None
-        
+
         self._quat = None
         self._rot = None
         

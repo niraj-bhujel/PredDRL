@@ -49,6 +49,26 @@ def neighbor_eids(g, node):
 
     return torch.cat([in_eids, out_eids]).unique()
 
+def n1_has_n2_in_sight(n1, n2, fov=57):
+    '''
+    Check if node2 is in the field of node
+    https://stackoverflow.com/questions/22542821/how-to-calculate-if-something-lies-in-someones-field-of-vision
+    '''
+    alpha = math.atan2(n1._pos[1], n1._pos[0])
+    
+    # angle betwen node
+    d = (n1._pos[0] - n2._pos[0], n1._pos[1] - n2._pos[1])
+    beta = math.atan2(d[1], d[0])
+    
+    angle = beta - alpha
+    
+    if angle > math.pi:
+        angle = angle - 2*math.pi
+    if angle < -np.pi:
+        angle = angle + 2*math.pi
+    
+    return abs(angle)<fov*math.pi/180
+
 def create_graph(nodes, bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
@@ -92,6 +112,7 @@ def create_graph(nodes, bidirectional=False):
             if dist > rad:
                 continue
 
+            # if n1_has_n2_in_sight(src_node, dst_node):
             # edges from source to dest
             edges_data['src'].extend([i])
             edges_data['des'].extend([j])
