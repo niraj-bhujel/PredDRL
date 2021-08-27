@@ -161,7 +161,7 @@ class Env:
 
         else:
             v, w = action[0], action[1]  
-            vel_msg.linear.x = v
+            vel_msg.linear.x = (v + 2.0)/10
             vel_msg.angular.z = w
 
         return vel_msg
@@ -280,12 +280,14 @@ class Env:
     def getState(self, action=[0., 0.]):
         scan_range_collision = []
 
-        try:
-            scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
+        scan = None
+        while scan is None:
+            try:
+                scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
-        except rospy.ROSException:
-            rospy.logerr('LaserScan timeout during env step')
-            raise ValueError
+            except rospy.ROSException:
+                rospy.logerr('LaserScan timeout during env step')
+                raise ValueError
 
         for i in range(len(scan.ranges)):
             if scan.ranges[i] == float('Inf'):
