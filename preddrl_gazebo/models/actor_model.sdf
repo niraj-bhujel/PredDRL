@@ -3,13 +3,13 @@
 
 
 <model name="actor_model">
-  <pose>0 0 0.75 0 0 0</pose>
+  <pose>0 0 0.0 0 0 0</pose>
   <static>false</static>
   <link name="link">
     <collision name="collision">
       <geometry>
         <box>
-          <size>.5 .5 1.5</size>
+          <size>.2 .2 0.8</size>
         </box>
       </geometry>
     </collision>
@@ -17,7 +17,7 @@
     <visual name="visual">
       <geometry>
         <box>
-          <size>.2 .2 1.5</size>
+          <size>.2 .2 0.8</size>
         </box>
       </geometry>
     </visual>

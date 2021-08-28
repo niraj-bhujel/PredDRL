@@ -44,7 +44,7 @@ class Env:
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_type='vw'
+        self.action_type='xy'
 
         if self.action_type=='xy':
             self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
@@ -66,7 +66,9 @@ class Env:
 
         # keep track of nodes and their id, added by niraj
         self.nid = 0
-        self.max_goal_distance = 7
+
+        self.max_goal_distance = 20.
+        self.goal_distance = 0. # init goal distance
 
         self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1
@@ -152,8 +154,7 @@ class Env:
 
             vel_msg.linear.x = 0.5*(vl+vr)
             # hand edition constraint
-            # vel_msg.linear.x = np.clip(-self.maxLinearSpeed, vel_msg.linear.x, self.maxLinearSpeed)
-            vel_msg.linear.x = np.clip(0.0, vel_msg.linear.x, self.maxLinearSpeed)
+            vel_msg.linear.x = np.clip(0, vel_msg.linear.x, self.maxLinearSpeed)
 
             vel_msg.angular.z = (vr-vl)/SelfL
             # hand edition constraint
@@ -161,7 +162,8 @@ class Env:
 
         else:
             v, w = action[0], action[1]  
-            vel_msg.linear.x = (v + 2.0)/10
+            # v = (v + 2.0)/10
+            vel_msg.linear.x = v
             vel_msg.angular.z = w
 
         return vel_msg
@@ -287,7 +289,7 @@ class Env:
 
             except rospy.ROSException:
                 rospy.logerr('LaserScan timeout during env step')
-                raise ValueError
+                # raise ValueError
 
         for i in range(len(scan.ranges)):
             if scan.ranges[i] == float('Inf'):
@@ -304,7 +306,7 @@ class Env:
         too_far = goal_distance > self.max_goal_distance
 
         state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
-                
+        
         return state, collision, reaching_goal, too_far
 
 
@@ -321,21 +323,29 @@ class Env:
 
         if collision:
             done = True
-            reward = -100
+            reward = -1
 
         elif reaching_goal:
             success = True
-            reward = 100
+            reward = 1
             rospy.loginfo('Success!!')
             
         elif too_far:
             done = True
-            reward = -100
+            reward = -1
             rospy.loginfo('Too Far from Goal!!')
 
         else:
-            reward = (self.goal_threshold-self.getGoalDistace())
+            reward = 0.
+            # reward = (self.goal_threshold-self.getGoalDistace())
 
+        goal_distance = self.getGoalDistace()
+        if goal_distance < self.goal_distance:
+            reward += 0.5
+        else:
+            reward -= 0.5
+
+        self.goal_distance = goal_distance
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)
@@ -344,6 +354,7 @@ class Env:
             # self.pub_cmd_vel.publish(Twist())
             self.reset()
 
+    
         return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal

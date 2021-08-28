@@ -221,15 +221,17 @@ if __name__ == '__main__':
 
     print("Waiting for gazebo spawn_sdf_model services...")
     rospy.wait_for_service("gazebo/spawn_sdf_model")
-    
     spawn_model = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel)
     print("service: spawn_sdf_model is available ....")
 
     print("Waiting for gazebo delete_model services...")
+    rospy.wait_for_service("gazebo/delete_model")
     delete_model = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
 
-    get_model_state = rospy.ServiceProxy("/gazebo/get_model_state", GetModelState)
+    print("Waiting for gazebo delete_model services...")
+    rospy.wait_for_service("/gazebo/set_model_state")
     set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+
     # print('Inititating pedestrain state publisher node ...')
     r = rospy.Rate(ros_rate, reset=True)
     state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=100)
@@ -239,7 +241,12 @@ if __name__ == '__main__':
     actors_id_list = []
 
     while True:
+
+
         try:
+
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+
             # get pids at current time
             curr_ped_ids = peds_per_frame[t]
             curr_ped_nodes = [node for node in ped_nodes if node.id in curr_ped_ids]
@@ -247,9 +254,7 @@ if __name__ == '__main__':
             # print(curr_ped_nodes[0].states_at(t))
             actors = create_actor_msg(curr_ped_nodes, t)
             state_pub.publish(actors)
-            
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=10)
-            # model_states = get_model_state()
+                
             # print(actors.agent_states[0])
             for actor in actors.agent_states:
                 
@@ -264,7 +269,7 @@ if __name__ == '__main__':
                                             actor_pose.orientation.w))
 
                 if actor_id not in actors_id_list:
-                    rospy.loginfo("[Frame-%d] Spawning model: actor_id = %s"%(t, actor_id))
+                    rospy.loginfo("[Frame-%d] Spawning %s"%(t, actor_id))
                     spawn_model(actor_id, xml_string, "", model_pose, "world")
                     actors_id_list.append(actor_id)
                     
@@ -278,13 +283,15 @@ if __name__ == '__main__':
                     set_model_state(tmp_state)
 
                 if actor.type==int(4) and actor_id in model_states.name:
-                    rospy.loginfo("[Frame-%d] Deleting model: actor_id = %s"%(t, actor_id))
-                    delete_model(actor_id)
+                    
+                    rospy.loginfo("[Frame-%d] Deleting %s"%(t, actor_id))
+                    resp = delete_model(actor_id)
                     actors_id_list.remove(actor_id)
 
             if t>=len(frames)-1:
             # if t>100:
                 rospy.loginfo('[Frame-%d] Resetting frame to 0. '%(t))
+
                 [delete_model(actor_id) for actor_id in actors_id_list]
                 t = 0
                 actors_id_list = []

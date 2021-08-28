@@ -153,10 +153,11 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup+1:
-                action = self._env.action_space.sample() #(2, )
+                # action = self._env.action_space.sample() #(2, )
+                action = self._env.preferred_vel()
+                action += np.random.normal(0, 0.1, size=(2,))
 
             else:
-
                 action = self._policy.get_action(obs)
 
             if self._verbose>1:
@@ -276,7 +277,7 @@ class Trainer:
                 if total_steps % self._save_model_interval == 0:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
-            self.r.sleep()
+            # self.r.sleep()
             if self._verbose>1:
                 print('Time per step:', (time.time() - step_start))
 
@@ -424,8 +425,7 @@ if __name__ == '__main__':
     parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)
     parser.set_defaults(use_prioritized_rb=False)
-    parser.set_defaults(use_nstep_rb=True)
-    parser.set_defaults(policy='graph_ddpg')
+    parser.set_defaults(use_nstep_rb=False)
 
     args = parser.parse_args()
     # print({val[0]:val[1] for val in sorted(vars(args).items())})
