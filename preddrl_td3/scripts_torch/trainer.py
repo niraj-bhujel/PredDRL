@@ -153,10 +153,8 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup+1:
-                # action = self._env.action_space.sample() #(2, )
-                action = self._env.preferred_vel()
-                action += np.random.normal(0, 0.1, size=(2,))
-
+                action = self._env.action_space.sample() #(2, )
+                # action = self._env.preferred_vel() + np.random.normal(0, 0.1, size=(2,))
             else:
                 action = self._policy.get_action(obs)
 
@@ -242,14 +240,14 @@ class Trainer:
                                                                    samples["rew"], 
                                                                    samples["done"])
 
-                        self.replay_buffer.update_priorities(sample['idxes'], np.abs(priorities))
+                        self.replay_buffer.update_priorities(samples['idxes'], np.abs(priorities))
 
 
 
                     if actor_loss is not None:
 
-                        self.writer.add_scalar(self._policy.policy_name + "/v", action[0], total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/w", action[1], total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/act_0", action[0], total_steps)
+                        self.writer.add_scalar(self._policy.policy_name + "/act_1", action[1], total_steps)
                         self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
                         self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
                         self.writer.add_scalar(self._policy.policy_name + "/actor_loss", actor_loss, total_steps)

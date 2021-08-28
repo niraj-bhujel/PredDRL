@@ -44,7 +44,7 @@ class Env:
         self.test = False
         self.num_beams = 20  # 激光数
 
-        self.action_type='xy'
+        self.action_type='vw'
 
         if self.action_type=='xy':
             self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
@@ -67,8 +67,8 @@ class Env:
         # keep track of nodes and their id, added by niraj
         self.nid = 0
 
-        self.max_goal_distance = 20.
-        self.goal_distance = 0. # init goal distance
+        self.max_goal_distance = 3.
+        self.last_goal_distance = 0.
 
         self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1
@@ -162,7 +162,7 @@ class Env:
 
         else:
             v, w = action[0], action[1]  
-            # v = (v + 2.0)/10
+            v = (v + 2.0)/10
             vel_msg.linear.x = v
             vel_msg.angular.z = w
 
@@ -322,17 +322,18 @@ class Env:
         success = False
 
         if collision:
+            rospy.loginfo("Collision!!")
             done = True
-            reward = -1
+            reward = -100
 
         elif reaching_goal:
             success = True
-            reward = 1
+            reward = 100
             rospy.loginfo('Success!!')
             
         elif too_far:
             done = True
-            reward = -1
+            reward = -100
             rospy.loginfo('Too Far from Goal!!')
 
         else:
@@ -340,12 +341,12 @@ class Env:
             # reward = (self.goal_threshold-self.getGoalDistace())
 
         goal_distance = self.getGoalDistace()
-        if goal_distance < self.goal_distance:
-            reward += 0.5
+        if goal_distance < self.last_goal_distance:
+            reward += 50
         else:
-            reward -= 0.5
+            reward -= 50
 
-        self.goal_distance = goal_distance
+        self.last_goal_distance = goal_distance
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)

@@ -35,28 +35,7 @@ class NstepBuffer:
         # self.buffer = defaultdict(lambda: deque([], maxlen=self.Nstep_size))
         self.buffer = defaultdict(list)
         
-    def add_(self, state, action, reward, next_state, done, td_error):
-        '''
-        https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
-        '''
-        # n-step queue for calculating return of n previous steps
-        self.n_step_buffer.append((state, action, reward, next_state, done))
-        
-        if len(self.n_step_buffer) < self.n_step:
-          return
 
-        l_reward, l_next_state, l_done = self.n_step_buffer[-1][-3:]
-
-        for transition in reversed(list(self.n_step_buffer)[:-1]):
-            r, n_s, d = transition[-3:]
-
-            l_reward = r + self.gamma * l_reward * (1 - d)
-            l_next_state, l_done = (n_s, d) if d else (l_next_state, l_done)
-        
-        l_state, l_action = self.n_step_buffer[0][:2]
-
-        t = (l_state, l_action, l_reward, l_next_state, l_done)
-        return t
 
     def add(self, state, action, reward, next_state, done, **kwargs):
         """Add envronment into local buffer.
@@ -203,7 +182,7 @@ class ReplayBuffer:
         if self._use_nstep:
             self.n_step_buffer = deque([], self._n_step)
 
-    def n_step_return(data):
+    def n_step_return(self, data):
         # https://github.com/cocolico14/N-step-Dueling-DDQN-PER-Pacman
         self.n_step_buffer.append(data)
 

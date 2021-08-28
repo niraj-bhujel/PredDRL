@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+import dgl
 
 from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
@@ -96,7 +97,7 @@ class DDPG(OffPolicyAgent):
 
     def get_action(self, state, test=False, tensor=False):
         if isinstance(state, DGLHeteroGraph):
-            state = dgl.batch(state)
+            state = dgl.batch([state])
         else:
             state = torch.Tensor(state)
         state = state.to(self.device)

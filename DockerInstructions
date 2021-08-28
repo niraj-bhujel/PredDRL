@@ -4,13 +4,13 @@
 PredDRL$ docker build --network=host -t preddrl/cuda:10.1-runtime-ubuntu16.04_ros .
 
 # Run docker image
-
-$ XAUTH=/tmp/.docker.xauth
 $ nvidia-docker run -it --shm-size 32G --network=host --name preddrl -v /home/iirav/Desktop/PredDRL/:/workspace/src/ preddrl/cuda:10.1-runtime-ubuntu16.04_ros bash
 
 
-NOTE! If the docker container name preddrl is already running, remove the preddrl using $ docker rm preddrl and rerun previous command. Another easy option is to start the existing 
-container $ nvidia-docker start -i preddrl
+NOTE! If the docker container name preddrl is already running, remove the preddrl using 
+$ docker rm preddrl. 
+Another easy option is to start the existing container 
+$ nvidia-docker start -i preddrl
 
 If GUI is required
 $ nvidia-docker run -it --rm --shm-size 32G --network=host --name preddrl -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix --ipc=host -v /home/iirav/Desktop/PredDRL/:/workspace/src/ preddrl/cuda:10.1-runtime-ubuntu16.04_ros bash
