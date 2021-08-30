@@ -17,10 +17,28 @@ class Respawn():
         self.goal_position.position.x = self.init_goal_x
         self.goal_position.position. y = self.init_goal_y
         self.modelName = 'goal'
-        self.obstacle_1 = 0.6, 0.6
-        self.obstacle_2 = 0.6, -0.6
-        self.obstacle_3 = -0.6, 0.6
-        self.obstacle_4 = -0.6, -0.6
+        self.obstacle_1 = -1, -1
+        self.obstacle_2 = -1, 1
+        self.obstacle_3 = 1, -1
+        self.obstacle_4 = 1, 1
+        self.obstacle_5 = -2.5, -2.5
+        self.obstacle_6 = -2.5, 2.5
+        self.obstacle_7 = 2.5, -2.5
+        self.obstacle_8 = 2.5, 2.5
+        self.obstacle_9 = -2.5, 0
+        self.obstacle_10 = 2.5, 0
+        self.obstacle_11 = 0, -2.5
+        self.obstacle_12 = 0, 2.5
+        self.obstacle_13 = -5, -5
+        self.obstacle_14 = -5, 5
+        self.obstacle_15 = 5, -5
+        self.obstacle_16 = 5, 5
+        self.obstacle_17 = 5, 0
+        self.obstacle_18 = -5, 0
+        self.obstacle_19 = 0, -5
+        self.obstacle_20 = 0, 5
+        
+
         self.test_index = 0
         self.last_goal_x = self.init_goal_x
         self.last_goal_y = self.init_goal_y
@@ -137,6 +155,108 @@ class Respawn():
                     position_check = True
                 elif abs(goal_x - self.obstacle_4[0]) <= 0.4 and abs(goal_y - self.obstacle_4[1]) <= 0.4:
                     position_check = True
+                elif abs(goal_x - 0.0) <= 0.4 and abs(goal_y - 0.0) <= 0.4:
+                    position_check = True
+                else:
+                    position_check = False
+
+                if abs(goal_x - self.last_goal_x) < 1 and abs(goal_y - self.last_goal_y) < 1:
+                    position_check = True
+
+                self.goal_position.position.x = goal_x
+                self.goal_position.position.y = goal_y
+
+        elif self.stage == 55:
+            while position_check:
+                goal_x = random.randrange(-70, 70) / 10.0
+                goal_y = random.randrange(-70, 70) / 10.0
+                if abs(goal_x - self.obstacle_1[0]) <= 0.4 and abs(goal_y - self.obstacle_1[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_2[0]) <= 0.4 and abs(goal_y - self.obstacle_2[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_3[0]) <= 0.4 and abs(goal_y - self.obstacle_3[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_4[0]) <= 0.4 and abs(goal_y - self.obstacle_4[1]) <= 0.4:
+                    position_check = True
+                
+                elif abs(goal_x - self.obstacle_5[0]) <= 0.4 and abs(goal_y - self.obstacle_5[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_6[0]) <= 0.4 and abs(goal_y - self.obstacle_6[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_7[0]) <= 0.4 and abs(goal_y - self.obstacle_7[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_8[0]) <= 0.4 and abs(goal_y - self.obstacle_8[1]) <= 0.4:
+                    position_check = True
+            
+                elif abs(goal_x - self.obstacle_9[0]) <= 0.4 and abs(goal_y - self.obstacle_9[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_10[0]) <= 0.4 and abs(goal_y - self.obstacle_10[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_11[0]) <= 0.4 and abs(goal_y - self.obstacle_11[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_12[0]) <= 0.4 and abs(goal_y - self.obstacle_12[1]) <= 0.4:
+                    position_check = True
+
+                elif abs(goal_x - 0.0) <= 0.4 and abs(goal_y - 0.0) <= 0.4:
+                    position_check = True
+                else:
+                    position_check = False
+
+                if abs(goal_x - self.last_goal_x) < 1 and abs(goal_y - self.last_goal_y) < 1:
+                    position_check = True
+
+                self.goal_position.position.x = goal_x
+                self.goal_position.position.y = goal_y
+
+        elif self.stage == 1010:
+            while position_check:
+                goal_x = random.randrange(-120, 120) / 10.0
+                goal_y = random.randrange(-120, 120) / 10.0
+                if abs(goal_x - self.obstacle_1[0]) <= 0.4 and abs(goal_y - self.obstacle_1[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_2[0]) <= 0.4 and abs(goal_y - self.obstacle_2[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_3[0]) <= 0.4 and abs(goal_y - self.obstacle_3[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_4[0]) <= 0.4 and abs(goal_y - self.obstacle_4[1]) <= 0.4:
+                    position_check = True
+                
+                elif abs(goal_x - self.obstacle_5[0]) <= 0.4 and abs(goal_y - self.obstacle_5[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_6[0]) <= 0.4 and abs(goal_y - self.obstacle_6[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_7[0]) <= 0.4 and abs(goal_y - self.obstacle_7[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_8[0]) <= 0.4 and abs(goal_y - self.obstacle_8[1]) <= 0.4:
+                    position_check = True
+            
+                elif abs(goal_x - self.obstacle_9[0]) <= 0.4 and abs(goal_y - self.obstacle_9[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_10[0]) <= 0.4 and abs(goal_y - self.obstacle_10[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_11[0]) <= 0.4 and abs(goal_y - self.obstacle_11[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_12[0]) <= 0.4 and abs(goal_y - self.obstacle_12[1]) <= 0.4:
+                    position_check = True
+
+                elif abs(goal_x - self.obstacle_13[0]) <= 0.4 and abs(goal_y - self.obstacle_13[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_14[0]) <= 0.4 and abs(goal_y - self.obstacle_14[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_15[0]) <= 0.4 and abs(goal_y - self.obstacle_15[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_16[0]) <= 0.4 and abs(goal_y - self.obstacle_16[1]) <= 0.4:
+                    position_check = True
+
+                elif abs(goal_x - self.obstacle_17[0]) <= 0.4 and abs(goal_y - self.obstacle_17[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_18[0]) <= 0.4 and abs(goal_y - self.obstacle_18[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_19[0]) <= 0.4 and abs(goal_y - self.obstacle_19[1]) <= 0.4:
+                    position_check = True
+                elif abs(goal_x - self.obstacle_20[0]) <= 0.4 and abs(goal_y - self.obstacle_20[1]) <= 0.4:
+                    position_check = True
+
                 elif abs(goal_x - 0.0) <= 0.4 and abs(goal_y - 0.0) <= 0.4:
                     position_check = True
                 else:
