@@ -1,0 +1,14 @@
+net:
+    hidden_dim: 32
+    num_layers: 1
+    in_dim_node: 2
+    in_dim_edge: 1
+    embed: True  #if embed False, hidden_dim=in_dim
+    mlp_readout_node: False
+    mlp_readout_edge: False
+    out_dim_node: 2 # this will not be used if mlp_readout_node=False
+    out_dim_edge: 1  # this will not be used if mlp_readout_edge=False
+mlp:
+    hidden_size:
+    - 400
+    - 300

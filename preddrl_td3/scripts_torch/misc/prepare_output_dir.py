@@ -36,7 +36,7 @@ import os
 import subprocess
 import sys
 import tempfile
-
+import shutil
 
 def is_return_code_zero(args):
     """
@@ -99,11 +99,17 @@ def prepare_output_dir(args, user_specified_dir=None, argv=None,
                     '{} is not a directory'.format(user_specified_dir))
         outdir = os.path.join(user_specified_dir, time_str)
         if os.path.exists(outdir):
-            raise RuntimeError('{} exists'.format(outdir))
+            if not args.overwrite:
+                raise RuntimeError('{} exists'.format(outdir))
+            else:
+                print('Overwritting existing directory')
+                shutil.rmtree(outdir)
+                os.makedirs(outdir)
         else:
             os.makedirs(outdir)
     else:
         outdir = tempfile.mkdtemp(prefix=time_str)
+        
 
     # Save all the arguments
     with open(os.path.join(outdir, 'args.txt'), 'w') as f:

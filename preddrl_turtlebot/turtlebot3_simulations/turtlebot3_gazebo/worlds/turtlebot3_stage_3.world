@@ -11,7 +11,7 @@
     </include>
 
     <physics type="ode">
-      <real_time_update_rate>5000.0</real_time_update_rate>
+      <real_time_update_rate>2000.0</real_time_update_rate>
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
       <ode>
@@ -32,6 +32,7 @@
     </physics>
 
     <!-- Load model -->
+    <!--
     <include>
       <uri>model://turtlebot3_square</uri>
     </include>
@@ -184,7 +185,101 @@
         </visual>
       </link>
     </model>
+    -->
+    
+    <!-- load new model-->
+    <model name="obstacle_1">
+      <pose>-0.6 -0.6 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </collision>
 
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </visual>
+      </link>
+    </model>        
+
+    <model name="obstacle_2">
+      <pose>-0.6 0.6 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </visual>
+      </link>
+    </model> 
+
+    <model name="obstacle_3">
+      <pose>0.6 -0.6 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </visual>
+      </link>
+    </model> 
+
+    <model name="obstacle_4">
+      <pose>0.6 0.6 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.12</radius>
+              <length>0.25</length>
+            </cylinder>
+          </geometry>
+        </visual>
+        </link>
+      <plugin name="obstacle_2" filename="libobstacle_2.so"/>
+    </model>  
 
 
     <scene>

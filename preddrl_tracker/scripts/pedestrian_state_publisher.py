@@ -1,5 +1,10 @@
 #!/usr/bin/env python3.6
 # -*- coding: utf-8 -*-
+
+'''
+This is equivalen to tracker that publish the current position of the agents only. 
+'''
+
 import os
 import sys
 sys.path.append('./')
@@ -8,17 +13,16 @@ import math
 import numpy as np
 
 from scipy.interpolate import interp1d
-from pyquaternion import Quaternion
 
 from node import Node
-from scene import Scene
 
 import rospy
 
 from std_msgs.msg import Header
 from geometry_msgs.msg import *
 
-from gazebo_msgs.srv import SpawnModel, DeleteModel
+from gazebo_msgs.srv import SpawnModel, DeleteModel, GetModelState, SetModelState
+from gazebo_msgs.msg import ModelStates, ModelState
 
 from rospkg import RosPack
 
@@ -46,7 +50,7 @@ def angleToQuaternion(theta, angles=True):
 
     return q
 
-def createMsgHeader(frame_id='odom'):
+def createMsgHeader(frame_id='world'):
 
     h = Header()
     h.stamp =  rospy.Time.now()
@@ -73,8 +77,6 @@ def create_actor_msg(nodes, t):
 
         if t>node.last_timestep-1:
             state.type = int(4)
-        else:
-            state.type = 0
 
         state.pose.position.x = p[0]
         state.pose.position.y = p[1]
@@ -118,7 +120,7 @@ def _gradient(x, dt=0.4, axis=0):
     
     return g
 
-def prepare_data(data_path, target_frame_rate=25):
+def prepare_data(data_path, target_frame_rate=25, max_peds=100):
     print('Preparing data .. ')
     target_frame_rate =  min(target_frame_rate, 25)
     
@@ -143,7 +145,7 @@ def prepare_data(data_path, target_frame_rate=25):
 
         ped_pos = data[data[:, 1]==pid, 2:4]
         
-        intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points)
+        intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points).round(2)
 
         intp_ped_vel = np.gradient(intp_ped_pos, 1.0/target_frame_rate, axis=0).round(2)
         # ped_acc = np.gradient(ped_vel, 1.0/target_frame_rate, axis=0).round(2)
@@ -151,7 +153,7 @@ def prepare_data(data_path, target_frame_rate=25):
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
         
-        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points, frame_rate=target_frame_rate)
+        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points)
         
         for i in range(len(intp_ped_pos)):
             
@@ -164,14 +166,14 @@ def prepare_data(data_path, target_frame_rate=25):
             r = [0., 0., 0.]
             
             node.update_states(p, v, q, r)
-            
-        # break
-            
+
         ped_nodes.append(node)
         
         ped_intp_frames.append(intp_data_frames[start_idx:start_idx+num_intp_points])
-
-        if num_ped_considered>50:
+        
+        num_ped_considered+=1
+        
+        if num_ped_considered>max_peds:
             break
     
     ped_frames = []
@@ -194,19 +196,22 @@ def prepare_data(data_path, target_frame_rate=25):
 #%%
 if __name__ == '__main__':
     
-    ros_rate = 10
-    data_root = rospy.myargv(argv=sys.argv)
-    data_path = '/crowds_zara01.txt'
-    # data_root = '/home/ros_admin/predDRL_ws/src'
-    # data_path = '/preddrl_tracker/data/crowds_zara01.txt'
-    
-    frames, peds_per_frame, ped_nodes = prepare_data(data_root[1] + data_path, target_frame_rate=ros_rate)
+    ros_rate = 25.
+    rospack = RosPack()
+    data_root = rospack.get_path('preddrl_tracker')
+    # data_root = rospy.myargv(argv=sys.argv)[0]
+    # data_path = data_root + '/crowds_zara01.txt'
+
+    # data_root = '/home/loc/peddrl_ws/src'
+    data_path = data_root + '/data/crowds_zara01.txt'
+    print('Preparing data from: ', data_path)
+    frames, peds_per_frame, ped_nodes = prepare_data(data_path, target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents", anonymous=True, disable_signals=True)
 
     rospack1 = RosPack()
-    pkg_path = rospack1.get_path('preddrl_gazebo_plugin')
+    pkg_path = rospack1.get_path('preddrl_gazebo')
     default_actor_model_file = pkg_path + "/models/actor_model.sdf"
 
     actor_model_file = rospy.get_param('~actor_model_file', default_actor_model_file)
@@ -215,32 +220,44 @@ if __name__ == '__main__':
 
     print("Waiting for gazebo spawn_sdf_model services...")
     rospy.wait_for_service("gazebo/spawn_sdf_model")
-    
     spawn_model = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel)
     print("service: spawn_sdf_model is available ....")
 
     print("Waiting for gazebo delete_model services...")
+    rospy.wait_for_service("gazebo/delete_model")
     delete_model = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
 
+    print("Waiting for gazebo delete_model services...")
+    rospy.wait_for_service("/gazebo/set_model_state")
+    set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+
     # print('Inititating pedestrain state publisher node ...')
-    # rospy.init_node('pedestrain_states_publisher', anonymous=True)
-    r = rospy.Rate(ros_rate)
-    print('Publishing pedestrian states ...')
-    state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=10)
-    t = 0
+    r = rospy.Rate(ros_rate, reset=True)
+    state_pub = rospy.Publisher('/preddrl_tracker/ped_states', AgentStates, queue_size=100)
+    print('Publishing pedestrian states for {} frames'.format(len(frames)))
     
+    t = 0
     actors_id_list = []
+
     while True:
+
+
         try:
+
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+
             # get pids at current time
             curr_ped_ids = peds_per_frame[t]
             curr_ped_nodes = [node for node in ped_nodes if node.id in curr_ped_ids]
-
+            
+            # print(curr_ped_nodes[0].states_at(t))
             actors = create_actor_msg(curr_ped_nodes, t)
             state_pub.publish(actors)
-
+                
+            # print(actors.agent_states[0])
             for actor in actors.agent_states:
-                actor_id = str( actor.id)
+                
+                actor_id = 'pedestrian_' + str(actor.id)
                 actor_pose = actor.pose
                 model_pose = Pose(Point(x= actor_pose.position.x,
                                        y= actor_pose.position.y,
@@ -248,20 +265,32 @@ if __name__ == '__main__':
                                  Quaternion(actor_pose.orientation.x,
                                             actor_pose.orientation.y,
                                             actor_pose.orientation.z,
-                                            actor_pose.orientation.w) )
+                                            actor_pose.orientation.w))
 
                 if actor_id not in actors_id_list:
-                    rospy.loginfo("[Frame-%d] Spawning model: actor_id = %s"%(t, actor_id))
+                    rospy.loginfo("[Frame-%d] Spawning %s"%(t, actor_id))
                     spawn_model(actor_id, xml_string, "", model_pose, "world")
                     actors_id_list.append(actor_id)
+                    
+                elif actor_id in model_states.name:
+                    
+                    tmp_state = ModelState()
+                    tmp_state.model_name = actor_id
+                    tmp_state.pose = model_pose
+                    tmp_state.reference_frame ="world"
+                    
+                    set_model_state(tmp_state)
 
-                if actor.type==int(4):
+                if actor.type==int(4) and actor_id in model_states.name:
+                    
+                    rospy.loginfo("[Frame-%d] Deleting %s"%(t, actor_id))
+                    resp = delete_model(actor_id)
                     actors_id_list.remove(actor_id)
-                    delete_model(actor_id)
 
-            # if t>=len(frames)-1:
-            if t>100:
+            if t>=len(frames)-1:
+            # if t>100:
                 rospy.loginfo('[Frame-%d] Resetting frame to 0. '%(t))
+
                 [delete_model(actor_id) for actor_id in actors_id_list]
                 t = 0
                 actors_id_list = []
@@ -275,13 +304,17 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print('Closing down .. ')
             # delete all model at exit
-            # print('deleting existing actor models')
-            # [delete_model(actor_id) for actor_id in actors_id_list]  
-            break         
+            
+            try:
+                model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+            except rospy.ROSException:
+                rospy.logerr('ModelStates timeout')
+                raise ValueError 
 
-
-
-
-
-
-
+            print('Deleting existing pedestrians models from', model_states.name)
+            [delete_model(actor_id) for actor_id in actors_id_list if actor_id in model_states.name]  
+            
+            break
+        
+        except Exception as e:
+            print(e)

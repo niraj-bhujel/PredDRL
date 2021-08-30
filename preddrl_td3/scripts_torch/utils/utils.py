@@ -8,6 +8,26 @@ from matplotlib import animation
 
 import torch
 
+def model_parameters(model, verbose=0):
+    if verbose>0:
+        print('{:<30} {:<10} {:}'.format('Parame Name', 'Total Param', 'Param Shape'))
+    total_params=0
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            if verbose>0:
+                print('{:<30} {:<10} {:}'.format(name, param.numel(), tuple(param.shape)))
+            total_params+=param.numel()
+    print('Total Trainable Parameters :{:<10}'.format(total_params))
+    return total_params
+    
+def model_attributes(model, verbose=0):
+    attributes = {k:v for k, v in model.__dict__.items() if not k.startswith('_')}
+    
+    if verbose>0:
+        print(sorted(attributes.items()))
+        
+    return attributes
+
 def save_path(samples, filename):
     joblib.dump(samples, filename, compress=3)
 

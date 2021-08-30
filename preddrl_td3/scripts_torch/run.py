@@ -1,35 +1,34 @@
-# import sys
-# sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import os
 import sys
 sys.path.insert(0, './')
-import gym
-import rospy
 
-from preddrl_td3.env.environment_stage_3_bk import Env
-
-from policy.td3 import TD3
-
-from trainer import Trainer
 print(os.getcwd())
 
-# from tf2rl.algos.policy_base import OffPolicyAgent
+import rospy
+from policy.td3_torch import TD3
+from policy.ddpg_torch import DDPG
+from trainer_torch import Trainer
+
+# from gym.utils import seeding as _s 
+from preddrl_td3.env.environment_stage_3_bk import Env
 
 if __name__ == '__main__':
 
     parser = Trainer.get_argument()
 
-    parser = TD3.get_argument(parser)
+    parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
     parser.set_defaults(n_warmup=3000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(restore_checkpoint=False)
-    parser.set_defaults(prefix='tf')
-    args = parser.parse_args()
-    print(vars(args))
+    parser.set_defaults(prefix='torch')
+    parser.set_defaults(use_prioritized_rb=True)
+    parser.set_defaults(use_nstep_rb=True)
 
-    print(args.evaluate)
+    args = parser.parse_args()
+    print({val[0]:val[1] for val in sorted(vars(args).items())})
+
     # test param, modified by niraj
     if args.evaluate:
         args.test_episodes=50
@@ -39,18 +38,14 @@ if __name__ == '__main__':
         args.save_model_interval = int(1e10)
         args.restore_checkpoint = True
 
-        # parser.set_defaults(test_episodes=50)
-        # parser.set_defaults(episode_max_steps=int(1e4))
-        # parser.set_defaults(model_dir='./preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1')
-        # parser.set_defaults(show_test_progress=False)
-        # parser.set_defaults(save_model_interval=int(1e10))
-
-
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
     env = Env()
     test_env = Env()
+
+    # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
 
     policy = TD3(
         state_shape=env.observation_space.shape,
@@ -62,20 +57,30 @@ if __name__ == '__main__':
         actor_units=[400, 300],
         n_warmup=args.n_warmup)
 
-    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
+    policy = policy.to(policy.device)
 
+    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
     trainer = Trainer(policy, env, args, test_env=test_env)
 
+    trainer.set_seed(args.seed)
+
+    
     try:
         if args.evaluate:
-            print('Evaluating policy ...')
+            print('-' * 89)
+            print('Evaluating %s'%trainer._output_dir)
             trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
 
         else:
-            print('Training policy ...')
+            print('-' * 89)
+            print('Training %s'%trainer._output_dir)
             trainer()
 
+    # except Exception as e:
+    #     print(e)
+        # continue
+
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
-        sys.exit()
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
+        sys.exit()
