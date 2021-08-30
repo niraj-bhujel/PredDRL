@@ -132,7 +132,6 @@ class TD3(DDPG):
             # Compute the target Q value
             target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
 
-            # target_Q = torch.min(torch.cat([target_Q1, target_Q2], dim=-1), dim=-1)[0].unsqueeze(-1)
             target_Q = torch.min(target_Q1, target_Q2)
 
             target_Q = rewards + not_dones * self.discount * target_Q
