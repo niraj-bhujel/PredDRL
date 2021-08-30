@@ -11,7 +11,10 @@ then
     chmod a+r $XAUTH
 fi
 
-docker run -it --rm \
+docker run -it \
+    --shm-size 32G \
+    --network=host \
+    --ipc=host \
     --name='preddrl'\
     --env="DISPLAY=$DISPLAY" \
     --env="QT_X11_NO_MITSHM=1" \
@@ -19,6 +22,6 @@ docker run -it --rm \
     --env="XAUTHORITY=$XAUTH" \
     --volume="$XAUTH:$XAUTH" \
     --runtime=nvidia \
-    --volume="/home/loc/peddrl_ws/src:/workspace/src" \
+    --volume="/home/iirav/Desktop/PredDRL/:/workspace/src/" \
     preddrl/cuda:10.1-runtime-ubuntu16.04_ros \
     bash

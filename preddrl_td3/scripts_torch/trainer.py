@@ -91,7 +91,6 @@ class Trainer:
                                               suffix=suffix
                                               )
 
-
         # backup scripts
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
@@ -112,8 +111,6 @@ class Trainer:
                                                          beta_frames=self._max_steps)
         else:
             self.replay_buffer = ReplayBuffer(size=self._buffer_size)
-
-        self.gamma = 0.995
 
         # visualization
         self._vis_graph = args.vis_graph
@@ -154,7 +151,7 @@ class Trainer:
 
             if total_steps < self._policy.n_warmup+1:
                 action = self._env.action_space.sample() #(2, )
-                # action = self._env.preferred_vel() + np.random.normal(0, 0.1, size=(2,))
+                action += np.random.normal(0, 0.1, size=(2,))
             else:
                 action = self._policy.get_action(obs)
 
@@ -417,8 +414,8 @@ if __name__ == '__main__':
 
     # parser = DDPG.get_argument(parser)
 
-    parser.set_defaults(batch_size=64)
-    parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
+    parser.set_defaults(batch_size=100)
+    parser.set_defaults(n_warmup=2000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)

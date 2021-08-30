@@ -28,6 +28,7 @@ interaction_direction = {
 
 state_dims = {
         "pos": 2,
+        "rel": 2,
         "vel": 2,
         "acc": 2,
         "rot": 1,
@@ -69,7 +70,7 @@ def n1_has_n2_in_sight(n1, n2, fov=57):
     
     return abs(angle)<fov*math.pi/180
 
-def create_graph(nodes, bidirectional=False):
+def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''
@@ -82,11 +83,12 @@ def create_graph(nodes, bidirectional=False):
         src_node = nodes[i]
 
         nodes_data['pos'].append(src_node._pos)
+        nodes_data['rel'].append(src_node._pos - ref_pos)
         nodes_data['vel'].append(src_node._vel)
         # nodes_data['acc'].append(src_node._acc)
         # nodes_data['rot'].append(src_node._rot[])
         nodes_data['yaw'].append(src_node._yaw)
-        nodes_data['hed'].append(src_node.heading)
+        nodes_data['hed'].append(src_node._heading)
 
         nodes_data['action'].append(src_node._action)
         nodes_data['goal'].append(src_node._goal)
@@ -136,6 +138,8 @@ def create_graph(nodes, bidirectional=False):
     
 
     g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
+    g.ndata['rel'] = torch.tensor(np.stack(nodes_data['rel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel'])
+
     g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
     # g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32).view(-1, state_dims['acc'])
 

@@ -13,7 +13,6 @@ import math
 import numpy as np
 
 from scipy.interpolate import interp1d
-from pyquaternion import Quaternion
 
 from node import Node
 

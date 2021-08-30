@@ -12,11 +12,13 @@ $ docker rm preddrl.
 Another easy option is to start the existing container 
 $ nvidia-docker start -i preddrl
 
+
 If GUI is required
-$ nvidia-docker run -it --rm --shm-size 32G --network=host --name preddrl -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix --ipc=host -v /home/iirav/Desktop/PredDRL/:/workspace/src/ preddrl/cuda:10.1-runtime-ubuntu16.04_ros bash
+$ nvidia-docker run -it --rm --shm-size 32G --network=host --ipc=host --name preddrl_1 -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $XAUTHORITY:/tmp/.XAuthority -e XAUTHORITY=/tmp/.XAuthority -v /home/iirav/Desktop/PredDRL/:/workspace/src/ preddrl/cuda:10.1-runtime-ubuntu16.04_ros bash
+
+Alternatively, execute the run_docker_image.bash from the PredDRL directory. 
 
 # Run multile docker containers at different terminal
-
 $ nvidia-docker exec -it preddrl bash
 
 

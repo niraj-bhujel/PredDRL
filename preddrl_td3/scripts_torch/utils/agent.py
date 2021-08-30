@@ -48,7 +48,9 @@ class Agent(object):
 
     def update_goal(self, goal):
         self._goal = goal
-
+    def update_heading(self, heading):
+        self._heading = heading
+        
     def update_states(self, p, q, r):
         '''
         p: position, could be (x, y) or (x, y, z)

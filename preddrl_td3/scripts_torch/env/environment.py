@@ -1,16 +1,20 @@
 import rospy
-import numpy as np
 import math
+import random
+
+import numpy as np
 from copy import deepcopy
 
 from gym import spaces
 from gym.utils import seeding
 from math import pi, cos, sin
-from geometry_msgs.msg import Twist, Point, Pose, PoseStamped
+from geometry_msgs.msg import Twist, Point, Pose, PoseStamped, Quaternion
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
-from gazebo_msgs.msg import ModelStates
+
+from gazebo_msgs.msg import ModelStates, ModelState
+from gazebo_msgs.srv import SetModelState
 
 from .respawnGoal import Respawn
 from utils.agent import Agent
@@ -97,6 +101,24 @@ class Env:
         y = math.atan2(2 * (w * z + x * y), 1 - 2 * (z * z + y * y))
 
         return r, p, y
+
+    def euler_to_quaternion(self, euler_angles):
+        roll, pitch, yaw  = euler_angles
+
+        cy = cos(yaw * 0.5)
+        sy = sin(yaw * 0.5)
+        cp = cos(pitch * 0.5)
+        sp = sin(pitch * 0.5)
+        cr = cos(roll * 0.5)
+        sr = sin(roll * 0.5)
+
+        q = Quaternion()
+        q.w = cr * cp * cy + sr * sp * sy
+        q.x = sr * cp * cy - cr * sp * sy
+        q.y = cr * sp * cy + sr * cp * sy
+        q.z = cr * cp * sy - sr * sp * cy
+
+        return q
 
     def getGoalDistace(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
@@ -197,8 +219,9 @@ class Env:
                 self.nid += 1
 
             node.update_states(m_pos[:2], q=m_quat, r=m_rot)
-            node.update_action(action=[0.0, 0.0])
-            node.update_goal(goal=m_pos[:2])
+            node.update_action(action=[0., 0.])
+            node.update_goal(goal=(self.goal_x, self.goal_y))
+            node.update_heading(node.heading)
 
             obstacle_dict[m_name] = node
 
@@ -231,6 +254,7 @@ class Env:
 
             node.update_states(m_pos[:2], q=m_quat, r=m_rot)
             node.update_action(action=[0.0, 0.0])
+            node.update_heading(0.)
 
             cv_pred = node.cv_prediction(time_step=node.time_step)
 
@@ -256,13 +280,15 @@ class Env:
                                  )
         self.robot.update_action(action) 
         self.robot.update_goal([self.goal_x, self.goal_y]) 
-        
+        self.robot.update_heading(self.heading)
+
         self.static_obstacles = self.getStaticObstacles(model_states, self.static_obstacles)
         self.pedestirans = self.getPedestrians(model_states, self.pedestirans)
 
         graph_nodes = [self.robot] + list(self.static_obstacles.values()) + list(self.pedestirans.values())
 
-        state = create_graph(graph_nodes)
+        state = create_graph(graph_nodes, self.robot._pos)
+        # print([state.ndata[s] for s in ['rel', 'action', 'goal', 'hed']])
 
         current_distance = self.getGoalDistace()
         reaching_goal = current_distance < self.goal_threshold
@@ -274,7 +300,7 @@ class Env:
         
         collision = False
         if robot_neighbor_dist.size(0)>0: 
-            if self.collision_threshold > robot_neighbor_dist.min().item()-0.2:
+            if self.collision_threshold+0.1 > robot_neighbor_dist.min().item():
                 collision=True
 
         return state, collision, reaching_goal, too_far
@@ -315,8 +341,8 @@ class Env:
         vel_cmd = self.action_to_vel_cmd(action, self.action_type)
         self.pub_cmd_vel.publish(vel_cmd)
 
-        state, collision, reaching_goal, too_far = self.getState(action)
-        # state, collision, reaching_goal, too_far = self.getGraphState(action)
+        # state, collision, reaching_goal, too_far = self.getState(action)
+        state, collision, reaching_goal, too_far = self.getGraphState(action)
 
         done=False
         success = False
@@ -355,7 +381,6 @@ class Env:
             # self.pub_cmd_vel.publish(Twist())
             self.reset()
 
-    
         return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
@@ -381,10 +406,21 @@ class Env:
         except (rospy.ServiceException) as e:
             rospy.loginfo("gazebo/reset_simulation service call failed")
 
+        # randomly set the orientation
+        tmp_state = ModelState()
+        tmp_state.model_name = "turtlebot3_burger"
+        tmp_state.pose = Pose(Point(0., 0., 0), 
+                              self.euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
+                              )
+        tmp_state.reference_frame = "base_footprint"
+        rospy.wait_for_service("/gazebo/set_model_state")
+        set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+        set_model_state(tmp_state)
+
         if initGoal:
             self.init_goal()
 
-        state, _, _, _ = self.getState()
-        # state, _, _, _ = self.getGraphState()
+        # state, _, _, _ = self.getState()
+        state, _, _, _ = self.getGraphState()
 
         return state
