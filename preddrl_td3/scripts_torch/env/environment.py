@@ -71,7 +71,7 @@ class Env:
         # keep track of nodes and their id, added by niraj
         self.nid = 0
 
-        self.max_goal_distance = 3.
+        self.max_goal_distance = 5.
         self.last_goal_distance = 0.
 
         self.robot = Agent(node_id=self.nid, node_type='robot')

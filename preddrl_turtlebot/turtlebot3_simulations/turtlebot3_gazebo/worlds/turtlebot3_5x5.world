@@ -219,6 +219,7 @@
       </link>
     </model>
 
+<!--
     <model name="obstacle_9">
       <pose>-2.5 0 0.25 0 0 0</pose>
       <link name="link">
@@ -311,7 +312,7 @@
       </link>
     </model>
     
-       
+-->       
 
     <scene>
       <ambient>0.4 0.4 0.4 1</ambient>

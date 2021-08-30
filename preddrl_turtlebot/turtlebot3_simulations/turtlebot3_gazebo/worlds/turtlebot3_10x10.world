@@ -219,7 +219,7 @@
       </link>
     </model>
 
-
+<!--
     <model name="obstacle_9">
       <pose>-2.5 0 0.25 0 0 0</pose>
       <link name="link">
@@ -311,7 +311,7 @@
         </visual>
       </link>
     </model>
-
+-->
     <model name="obstacle_13">
       <pose>-5 -5 0.25 0 0 0</pose>
       <link name="link">
