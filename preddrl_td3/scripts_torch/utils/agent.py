@@ -35,8 +35,8 @@ class Agent(object):
         
         self._yaw = None
 
-        self._goal = None
-        self._action = None
+        self._goal = [0., 0.]
+        self._action = [0., 0.]
 
         self._time_stamp = None
 
@@ -48,6 +48,7 @@ class Agent(object):
 
     def update_goal(self, goal):
         self._goal = goal
+
     def update_heading(self, heading):
         self._heading = heading
         
@@ -61,8 +62,15 @@ class Agent(object):
         '''
 
         if self._pos is not None:
-            v = (p - self._pos)/self._time_step
-            a = (v - self._vel)/self._time_step
+            vx = (p[0] - self._pos[0])/self._time_step
+            vy = (p[1] - self._pos[1])/self._time_step
+
+            ax = (vx - self._vel[0])/self._time_step
+            ay = (vy - self._vel[1])/self._time_step
+
+            v = np.array([vx, vy])
+            a = np.array([ax, ay])
+
         else:
             v = np.zeros_like(p)
             a = np.zeros_like(v)
@@ -108,7 +116,6 @@ class Agent(object):
     def distance_to_goal(self,):
         return round(math.hypot(self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]), 2)
 
-    @property
     def heading(self, ):
         
         inc_y = self._goal[1] - self._pos[1]

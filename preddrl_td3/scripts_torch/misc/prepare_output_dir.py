@@ -103,8 +103,8 @@ def prepare_output_dir(args, user_specified_dir=None, argv=None,
                 raise RuntimeError('{} exists'.format(outdir))
             else:
                 print('Overwritting existing directory')
-                shutil.rmtree(outdir)
-                os.makedirs(outdir)
+                # shutil.rmtree(outdir)
+                # os.makedirs(outdir)
         else:
             os.makedirs(outdir)
     else:

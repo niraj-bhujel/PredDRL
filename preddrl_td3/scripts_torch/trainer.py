@@ -23,6 +23,7 @@ from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
 from utils.graph_utils import node_type_list
 from utils.vis_graph import network_draw
+from utils.timer import Timer
 
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
@@ -58,12 +59,13 @@ class Trainer:
 
         self._policy = policy
         self._device = policy.device
+
         self._env = env
         self._test_env = self._env if test_env is None else test_env
-        self._verbose = args.verbose
-        self.nstep_buffer = [] 
+        self._verbose = args.verbose 
 
-        self.r = rospy.Rate(5)
+        # self.timer = Timer()
+        self.r = rospy.Rate(self._env.time_step)
 
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
@@ -74,6 +76,8 @@ class Trainer:
                         'warmup_%d'%self._policy.n_warmup,
                         'bs%d'%policy.batch_size,
                         # 'seed_%d'%args.seed,
+                        'stage_%d'%args.stage,
+                        'episode_step%d'%args.episode_max_steps,
                         ])
 
         if self._use_prioritized_rb:
@@ -115,8 +119,8 @@ class Trainer:
         # visualization
         self._vis_graph = args.vis_graph
         self._vis_graph_dir = self._output_dir + '/graphs/'
-        # if os.path.exists(self._vis_graph_dir):
-        #     shutil.rmtree(self._vis_graph_dir)
+        if os.path.exists(self._vis_graph_dir):
+            shutil.rmtree(self._vis_graph_dir)
         if not os.path.exists(self._vis_graph_dir):
             os.makedirs(self._vis_graph_dir)
 
@@ -140,36 +144,35 @@ class Trainer:
         critic_loss = 0
 
         episode_start_time = time.perf_counter()
+        
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
-
         while total_steps < self._max_steps:
+            self._env.timer.tic()
             
-            step_start = time.time()
-
             if self._verbose>1:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
-            if total_steps < self._policy.n_warmup+1:
+            if total_steps < self._policy.n_warmup:
                 action = self._env.action_space.sample() #(2, )
-                action += np.random.normal(0, 0.1, size=(2,))
             else:
                 action = self._policy.get_action(obs)
 
             if self._verbose>1:
                 print('Action: {}'.format(action))
+            
 
             next_obs, reward, done, success = self._env.step(action)          
-
+            
             if self._verbose>1:
                 print("Position after action:", [self._env.position.x, self._env.position.y])
                 print('Rewards: {:.4f}'.format(reward))
 
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
-                network_draw(obs,
+                network_draw(obs[1],
                              show_node_label=True, node_label='action',
                              show_edge_labels=True, edge_label='dist',
-                             show_legend=True,
+                             show_legend=False,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
@@ -216,7 +219,7 @@ class Trainer:
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
-                self.writer.add_scalar("Common/fps", fps, total_steps)
+                self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
@@ -252,10 +255,9 @@ class Trainer:
                         self.writer.add_scalar(self._policy.policy_name + "/td_error", np.mean(td_errors), total_steps)
 
                         if self._verbose>0:
-                            print('{}/{} - action:[{:.4f}, {:.4f}, reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, 
-                                                                                                                                self._max_steps,
-                                                                                                                                action[0], 
-                                                                                                                                action[1],
+                            print('{}/{}:{:.3}s - action:[{:.4f}, {:.4f}], reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, self._max_steps,
+                                                                                                                                fps,
+                                                                                                                                action[0], action[1],
                                                                                                                                 reward,
                                                                                                                                 actor_loss,
                                                                                                                                 critic_loss,))
@@ -273,8 +275,9 @@ class Trainer:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
             # self.r.sleep()
+            self._env.timer.toc()
             if self._verbose>1:
-                print('Time per step:', (time.time() - step_start))
+                print('Avergae time per step:', self._env.timer.average_time)
 
         self.writer.close()
 
@@ -370,33 +373,50 @@ class Trainer:
 
         obs, act, rew, next_obs, done = zip(*sampled_data)
 
-        if isinstance(obs[0], DGLHeteroGraph):
+
+        if isinstance(obs, tuple):
+            obs_l, obs_g = zip(*obs)
+
+            obs_l = torch.Tensor(np.stack(obs_l, 0)).to(device)
+            obs_g = dgl.batch(obs_g).to(device)
+            obs = (obs_l, obs_g)
+
+            next_l, next_g = zip(*next_obs)
+            next_l = torch.Tensor(np.stack(next_l, 0)).to(device)
+            next_g = dgl.batch(next_g).to(device)
+            next_obs = (next_l, next_g)
+
+        elif isinstance(obs[0], DGLHeteroGraph):
             obs = dgl.batch(obs).to(device)
             next_obs = dgl.batch(next_obs).to(device)
-        else:
+
+        elif isinstance(obs[0], np.ndarray):
             obs = torch.Tensor(np.stack(obs, 0)).to(device)
             next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
         
+        else:
+            raise Exception("Data type not knows!")
+
         act = torch.Tensor(np.stack(act, 0)).to(device)
         rew = torch.Tensor(np.stack(rew, 0)).view(-1, 1).to(device)
         done = torch.Tensor(np.stack(done, 0)).view(-1, 1).to(device)
+
         if self._use_prioritized_rb:
             weights = torch.Tensor(np.stack(weights, 0)).to(device)
         else:
             weights = torch.Tensor(np.ones((batch_size,))).to(device)
 
         return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
-
+#%%
 if __name__ == '__main__':
     import sys
     sys.path.insert(0, './')
     sys.path.insert(0, './preddrl_td3/scripts_torch')
 
-    import rospy
     import args
     import yaml
 
-    from utils.utils import model_attributes, model_parameters
+    from utils.utils import *
 
     from policy.td3 import TD3
     from policy.ddpg import DDPG
@@ -415,7 +435,7 @@ if __name__ == '__main__':
     # parser = DDPG.get_argument(parser)
 
     parser.set_defaults(batch_size=100)
-    parser.set_defaults(n_warmup=2000) # 重新训练的话要改回 10000
+    parser.set_defaults(n_warmup=4000) # 重新训练的话要改回 10000
     parser.set_defaults(max_steps=100000)
     parser.set_defaults(episode_max_steps=1000)
     parser.set_defaults(restore_checkpoint=False)
@@ -460,10 +480,9 @@ if __name__ == '__main__':
     print(repr(policy))
     model_parameters(policy)
     print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
-    # for m_name, module in policy.named_children():
-    #     print(m_name, model_attributes(module, verbose=0), '\n')
 
-    # print('offpolicy:', issubclass(type(policy), OffPolicyAgent))
+    policy.apply(init_weights_kaiming)
+
     trainer = Trainer(policy, env, args, test_env=test_env)
 
     trainer.set_seed(args.seed)

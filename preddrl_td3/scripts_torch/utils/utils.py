@@ -139,3 +139,14 @@ def copy_src(root_src_dir, root_dst_dir, overwrite=True):
                     shutil.copy(src_file, dst_file)
             else:
                 shutil.copy(src_file, dst_file)
+
+
+def init_weights_kaiming(m):
+    if isinstance(m, torch.nn.Linear):
+        torch.nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+        torch.nn.init.zeros_(m.bias.data)
+
+def init_weights_xavier(m):
+    if isinstance(m, torch.nn.Linear):
+        torch.nn.init.xavier_normal_(m.weight.data, gain=1.4142135623730951) # gain for relu
+        torch.nn.init.zeros_(m.bias.data)

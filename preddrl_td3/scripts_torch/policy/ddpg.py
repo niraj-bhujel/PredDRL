@@ -77,6 +77,7 @@ class DDPG(OffPolicyAgent):
         self.sigma = sigma
         self.tau = tau
         self.action_dim = action_dim
+        self.state_shape = state_shape
 
         # Define and initialize Actor network
         self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
@@ -90,8 +91,8 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
-        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
-        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
+        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor, weight_decay=1e-5)
+        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, weight_decay=1e-5, eps=1e-4)
 
         self.step=0
 

@@ -22,6 +22,6 @@ docker run -it \
     --env="XAUTHORITY=$XAUTH" \
     --volume="$XAUTH:$XAUTH" \
     --runtime=nvidia \
-    --volume="/home/iirav/Desktop/PredDRL/:/workspace/src/" \
+    --volume="/home/dl-asoro/PredDRL/:/workspace/src/" \
     preddrl/cuda:10.1-runtime-ubuntu16.04_ros \
     bash
