@@ -10,6 +10,7 @@ import dgl
 from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
+from dgl.heterograph import DGLHeteroGraph
 
 # from exploration_strategies.OU_Noise_Exploration import OU_Noise_Exploration
 
@@ -76,7 +77,6 @@ class DDPG(OffPolicyAgent):
         self.sigma = sigma
         self.tau = tau
         self.action_dim = action_dim
-        self.state_shape = state_shape
 
         # Define and initialize Actor network
         self.actor = Actor(state_shape, action_dim, max_action, actor_units).to(self.device)
@@ -90,17 +90,17 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
-        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor, weight_decay=1e-5)
-        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, weight_decay=1e-5, eps=1e-4)
+        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
+        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
 
-        self.iteration=n_warmup
+        self.iteration = n_warmup
+        self.step=0
 
     def get_action(self, state, test=False, tensor=False):
-        if isinstance(state, tuple):
-            state = torch.Tensor(state[0])
+        if isinstance(state, DGLHeteroGraph):
+            state = dgl.batch([state])
         else:
             state = torch.Tensor(state)
-
         state = state.to(self.device)
         action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
@@ -125,41 +125,13 @@ class DDPG(OffPolicyAgent):
         return action.squeeze(0)
 
     def train(self, states, actions, next_states, rewards, dones, weights):
-        self.iteration +=1 
+        self.step +=1 
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
         actor_loss = actor_loss.item() if actor_loss is not None else actor_loss
         critic_loss = critic_loss.item()
         td_errors = td_errors.detach().cpu().numpy()
-
-        if actor_loss is not None:
-
-            self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.iteration)
-            self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
-            self.writer.add_scalar(self.policy_name + "/td_error", np.mean(td_errors), self.iteration)
-
-            self.writer.add_histogram(self.policy_name + "/avg_actions", actions.cpu().numpy(), self.iteration)
-            self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
-
-            # log the model weights
-            for name, param in self.actor.named_parameters():
-                if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
-            for name, param in self.critic.named_parameters():
-                if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
-
-
-            if self._verbose>0:
-                print('Step:{} - batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
-                                                                                                    rewards.mean().item(),
-                                                                                                    actor_loss,
-                                                                                                    critic_loss,))
 
         return actor_loss, critic_loss, td_errors
 
@@ -179,14 +151,14 @@ class DDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer, critic_loss, clip_norm=1., model=self.critic)
+        self.optimization_step(self.critic_optimizer, critic_loss)
 
         # Compute actor loss
         next_action = self.actor(states)
         actor_loss = -self.critic(states, next_action).mean()
 
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss, clip_norm=1., model=self.actor)
+        self.optimization_step(self.actor_optimizer, actor_loss)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)
