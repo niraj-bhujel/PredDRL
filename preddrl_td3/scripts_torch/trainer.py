@@ -103,10 +103,6 @@ class Trainer:
         if self._evaluate or self._restore_checkpoint:
             load_ckpt(self._policy, self._output_dir, last_step=1e4)
 
-
-        # prepare TensorBoard output
-        self.writer = SummaryWriter(self._output_dir)
-
         # prepare buffer
         if self._use_prioritized_rb:
             self.replay_buffer = PrioritizedReplayBuffer(size=self._buffer_size,
@@ -123,6 +119,14 @@ class Trainer:
             shutil.rmtree(self._vis_graph_dir)
         if not os.path.exists(self._vis_graph_dir):
             os.makedirs(self._vis_graph_dir)
+
+
+        # prepare TensorBoard output
+        summary_dir = self._output_dir + '/summary'
+        if os.path.exists(summary_dir):
+            shutil.rmtree(summary_dir)
+        os.mkdir(summary_dir)
+        self.writer = SummaryWriter(summary_dir)
 
     def set_seed(self, seed):
         #setup seeds
@@ -153,26 +157,34 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                action = self._env.action_space.sample() #(2, )
+                # action = self._env.action_space.sample() #(2, )
+                action = self._env.xy_to_vw(self._env.preferred_vel())
+                action = np.array(action) + np.random.normal(0, 0.2, size=(2,))
+                
             else:
                 action = self._policy.get_action(obs)
-
-            if self._verbose>1:
-                print('Action: {}'.format(action))
             
-
+            if self._verbose>0:
+                print('Action: [{:6.3f}, {:6.3f}]'.format(action[0], action[1]))
+                
             next_obs, reward, done, success = self._env.step(action)          
             
+            if self._verbose>0:
+                print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+
             if self._verbose>1:
-                print("Position after action:", [self._env.position.x, self._env.position.y])
-                print('Rewards: {:.4f}'.format(reward))
+                print('Reward:{:3.3f}'.format(reward))
+                print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
+                                                                                                          self._env.goal_x, self._env.goal_y,
+                                                                                                          self._env.getGoalDistance()))
+                
 
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
                 network_draw(obs[1],
-                             show_node_label=True, node_label='action',
+                             show_node_label=True, node_label='pos',
                              show_edge_labels=True, edge_label='dist',
-                             show_legend=False,
+                             show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
@@ -183,7 +195,8 @@ class Trainer:
 
             # ignore first step
             # if done or success:
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            if not episode_steps==0:
+                self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             episode_steps += 1
             episode_return += reward
@@ -254,11 +267,23 @@ class Trainer:
                         self.writer.add_scalar(self._policy.policy_name + "/critic_loss", critic_loss, total_steps)
                         self.writer.add_scalar(self._policy.policy_name + "/td_error", np.mean(td_errors), total_steps)
 
+                        # log the model weights
+                        for name, param in self._policy.actor.named_parameters():
+                            if 'weight' in name and param.requires_grad:
+                                self.writer.add_histogram(self._policy.policy_name + '/actor/data/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
+                                self.writer.add_histogram(self._policy.policy_name + '/actor/grad/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
+
+                        for name, param in self._policy.critic.named_parameters():
+                            if 'weight' in name and param.requires_grad:
+                                self.writer.add_histogram(self._policy.policy_name + '/critic/data/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
+                                self.writer.add_histogram(self._policy.policy_name + '/critic/grad/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
+
+
+
                         if self._verbose>0:
-                            print('{}/{}:{:.3}s - action:[{:.4f}, {:.4f}], reward:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, self._max_steps,
+                            print('{}/{}:{:.3}s - avg_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, self._max_steps,
                                                                                                                                 fps,
-                                                                                                                                action[0], action[1],
-                                                                                                                                reward,
+                                                                                                                                samples['rew'].mean().item(),
                                                                                                                                 actor_loss,
                                                                                                                                 critic_loss,))
 
@@ -277,7 +302,7 @@ class Trainer:
             # self.r.sleep()
             self._env.timer.toc()
             if self._verbose>1:
-                print('Avergae time per step:', self._env.timer.average_time)
+                print('Time per step:', self._env.timer.diff)
 
         self.writer.close()
 
@@ -478,10 +503,13 @@ if __name__ == '__main__':
 
     policy = policy.to(policy.device)
     print(repr(policy))
-    model_parameters(policy)
+    print('Total Paramaters:', model_parameters(policy))
+    print('Actor Paramaters:', model_parameters(policy.actor))
+    print('Critic Paramaters:', model_parameters(policy.critic))
     print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
-    policy.apply(init_weights_kaiming)
+    # policy.apply(init_weights_xavier)
+    # policy.apply(init_weights_kaiming)
 
     trainer = Trainer(policy, env, args, test_env=test_env)
 
