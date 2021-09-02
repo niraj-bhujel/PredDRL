@@ -44,7 +44,7 @@ class Env:
 
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
-        self.maxLinearSpeed = 0.4
+        self.maxLinearSpeed = 0.67
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
@@ -74,7 +74,7 @@ class Env:
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.max_goal_distance = 15.
+        self.max_goal_distance = 3.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
@@ -197,7 +197,7 @@ class Env:
 
         else:
             v, w = action[0], action[1]
-            # v = (v+2)/10
+            v = (v+2)/10
             
         # v = v*self.time_step
         # w = w*self.time_step
@@ -428,15 +428,15 @@ class Env:
         self.pub_cmd_vel.publish(Twist())
         # reset scan as well
         self.scan = None
-        try:
-            rospy.wait_for_service('gazebo/reset_simulation')
-            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-            reset_proxy()
+        # try:
+        #     rospy.wait_for_service('gazebo/reset_simulation')
+        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+        #     reset_proxy()
             
-            rospy.loginfo('Env Reset')
+        #     rospy.loginfo('Env Reset')
 
-        except (rospy.ServiceException) as e:
-            rospy.loginfo("gazebo/reset_simulation service call failed")
+        # except (rospy.ServiceException) as e:
+        #     rospy.loginfo("gazebo/reset_simulation service call failed")
 
         # randomly set the orientation
         tmp_state = ModelState()
