@@ -100,7 +100,6 @@ class DDPG(OffPolicyAgent):
             state = torch.Tensor(state[0])
         else:
             state = torch.Tensor(state)
-
         state = state.to(self.device)
         action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
@@ -179,14 +178,14 @@ class DDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer, critic_loss, model=self.critic, clip_norm=None)
+        self.optimization_step(self.critic_optimizer, critic_loss)
 
         # Compute actor loss
         next_action = self.actor(states)
         actor_loss = -self.critic(states, next_action).mean()
 
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss, model=self.actor, clip_norm=None)
+        self.optimization_step(self.actor_optimizer, actor_loss)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)
