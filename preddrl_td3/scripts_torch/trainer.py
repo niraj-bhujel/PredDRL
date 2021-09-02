@@ -458,8 +458,8 @@ if __name__ == '__main__':
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
-    env = Env(test=False, stage=args.stage)
-    test_env = Env(test=True, stage=args.stage)
+    env = Env(test=False, stage=args.stage, graph_state=True if 'graph' in args.policy else False)
+    test_env = Env(test=True, stage=args.stage, graph_state=True if 'graph' in args.policy else False)
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
@@ -486,7 +486,7 @@ if __name__ == '__main__':
     # policy.apply(init_weights_xavier)
     # policy.apply(init_weights_kaiming)
 
-    trainer = Trainer(policy, env, args, test_env=test_env)
+    trainer = Trainer(policy, env, args, test_env=test_env, )
 
     trainer.set_seed(args.seed)
 

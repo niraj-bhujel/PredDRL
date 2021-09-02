@@ -34,7 +34,11 @@ SelfD=0.175
 SelfL=0.23
 
 class Env:
-    def __init__(self, test=False, stage=0):
+    def __init__(self, test=False, stage=0, graph_state=False):
+
+        self.test = test
+        self.graph_state = graph_state
+
         self.goal_x = 1.0
         self.goal_y = 0
 
@@ -46,8 +50,8 @@ class Env:
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
 
-        self.position = Point()
-        self.test = False
+        # self.position = Point()
+        
         self.num_beams = 20  # 激光数
 
         self.action_type='vw'
@@ -70,12 +74,11 @@ class Env:
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        # keep track of nodes and their id, added by niraj
-        self.nid = 0
-
         self.max_goal_distance = 15.
         self.last_goal_distance = 0.
 
+        # keep track of nodes and their id, added by niraj
+        self.nid = 0
         self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1
 
@@ -362,8 +365,10 @@ class Env:
         self.pub_cmd_vel.publish(self.vel_cmd)
 
         state, collision, reaching_goal, too_far = self.getState(action)
-        # graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
-        # state = (self.getState(action)[0], graph_state)
+
+        if self.graph_state:
+            graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
+            state = (state, graph_state)
 
         done=False
         success = False
@@ -447,7 +452,9 @@ class Env:
             self.init_goal()
 
         state, _, _, _ = self.getState()
-        # graph_state, _, _, _ = self.getGraphState()
-        # state = (state, graph_state)
+        
+        if self.graph_state:
+            graph_state, _, _, _ = self.getGraphState()
+            state = (state, graph_state)
 
         return state
