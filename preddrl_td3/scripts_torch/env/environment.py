@@ -44,7 +44,7 @@ class Env:
 
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
-        self.maxLinearSpeed = 0.67
+        self.maxLinearSpeed = 0.4
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
@@ -197,6 +197,7 @@ class Env:
 
         else:
             v, w = action[0], action[1]
+            # v = (v+2)/10
             
         # v = v*self.time_step
         # w = w*self.time_step

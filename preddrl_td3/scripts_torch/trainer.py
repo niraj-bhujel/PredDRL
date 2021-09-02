@@ -115,17 +115,17 @@ class Trainer:
         # visualization
         self._vis_graph = args.vis_graph
         self._vis_graph_dir = self._output_dir + '/graphs/'
-        if os.path.exists(self._vis_graph_dir):
-            shutil.rmtree(self._vis_graph_dir)
+        shutil.rmtree(self._vis_graph_dir, ignore_errors=True)
         if not os.path.exists(self._vis_graph_dir):
-            os.makedirs(self._vis_graph_dir)
+            os.mkdir(self._vis_graph_dir)
 
 
         # prepare TensorBoard output
         summary_dir = self._output_dir + '/summary'
-        if os.path.exists(summary_dir):
-            shutil.rmtree(summary_dir)
-        os.mkdir(summary_dir)
+        shutil.rmtree(summary_dir, ignore_errors=True)
+        if not os.path.exists(summary_dir):
+            os.mkdir(summary_dir)
+
         self.writer = SummaryWriter(summary_dir)
 
         self._policy.writer = self.writer
