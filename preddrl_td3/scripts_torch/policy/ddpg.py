@@ -10,7 +10,6 @@ import dgl
 from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
-from dgl.heterograph import DGLHeteroGraph
 
 # from exploration_strategies.OU_Noise_Exploration import OU_Noise_Exploration
 
@@ -127,10 +126,6 @@ class DDPG(OffPolicyAgent):
 
     def train(self, states, actions, next_states, rewards, dones, weights):
         self.iteration +=1 
-
-        if isinstance(states, tuple):
-            states = states[0]
-            next_states = next_states[0]
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 

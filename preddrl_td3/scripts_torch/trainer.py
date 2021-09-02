@@ -373,7 +373,7 @@ class Trainer:
 
         obs, act, rew, next_obs, done = map(list, zip(*sampled_data))
 
-        if isinstance(obs, tuple):
+        if isinstance(obs[0], tuple):
             obs_l, obs_g = zip(*obs)
 
             obs_l = torch.Tensor(np.stack(obs_l, 0)).to(device)
