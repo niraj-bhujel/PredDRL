@@ -145,13 +145,13 @@ class DDPG(OffPolicyAgent):
             # log the model weights
             for name, param in self.actor.named_parameters():
                 if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
 
             for name, param in self.critic.named_parameters():
                 if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
 
 
 
