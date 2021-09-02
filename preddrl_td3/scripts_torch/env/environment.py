@@ -323,37 +323,37 @@ class Env:
     def getState(self, action=[0., 0.]):
         scan_range_collision = []
 
-        # scan = None
-        # while scan is None:
-        #     try:
-        #         scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
+        scan = None
+        while scan is None:
+            try:
+                scan = rospy.wait_for_message('scan', LaserScan, timeout=100)
 
-        #     except rospy.ROSException:
-        #         rospy.logerr('LaserScan timeout during env step')
-        #         # raise ValueError
-        while True:
-            scan = self.scan
-            if not scan:
-                # rospy.loginfo('scan is none!!')
-                continue
+            except rospy.ROSException:
+                rospy.logerr('LaserScan timeout during env step')
 
-            for i in range(len(scan.ranges)):
-                if scan.ranges[i] == float('Inf'):
-                    scan_range_collision.append(3.5)
-                elif np.isnan(scan.ranges[i]):
-                    scan_range_collision.append(0.0)
-                else:
-                    scan_range_collision.append(scan.ranges[i])
+        # while True:
+        #     scan = self.scan
+        #     if not scan:
+        #         # rospy.loginfo('scan is none!!')
+        #         continue
 
-            goal_distance = self.getGoalDistance()
-            collision =  min(scan_range_collision)+1e-6 < self.collision_threshold
-            reaching_goal = goal_distance< self.goal_threshold
-            too_far = goal_distance > self.max_goal_distance
+        for i in range(len(scan.ranges)):
+            if scan.ranges[i] == float('Inf'):
+                scan_range_collision.append(3.5)
+            elif np.isnan(scan.ranges[i]):
+                scan_range_collision.append(0.0)
+            else:
+                scan_range_collision.append(scan.ranges[i])
 
-            state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
-            # state = scan_range_collision
+        goal_distance = self.getGoalDistance()
+        collision =  min(scan_range_collision)+1e-6 < self.collision_threshold
+        reaching_goal = goal_distance< self.goal_threshold
+        too_far = goal_distance > self.max_goal_distance
 
-            return state, collision, reaching_goal, too_far
+        state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
+        # state = scan_range_collision
+
+        return state, collision, reaching_goal, too_far
 
 
     def step(self, action):
@@ -361,10 +361,9 @@ class Env:
         self.vel_cmd = self.action_to_vel_cmd(action, self.action_type)
         self.pub_cmd_vel.publish(self.vel_cmd)
 
-        # state, collision, reaching_goal, too_far = self.getState(action)
-        graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
-    
-        state = (self.getState(action)[0], graph_state)
+        state, collision, reaching_goal, too_far = self.getState(action)
+        # graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
+        # state = (self.getState(action)[0], graph_state)
 
         done=False
         success = False
@@ -419,7 +418,7 @@ class Env:
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
 
     def reset(self, initGoal=False):
-
+        # reset robot velocity
         self.pub_cmd_vel.publish(Twist())
         # reset scan as well
         self.scan = None
@@ -448,7 +447,7 @@ class Env:
             self.init_goal()
 
         state, _, _, _ = self.getState()
-        graph_state, _, _, _ = self.getGraphState()
-        state = (state, graph_state)
+        # graph_state, _, _, _ = self.getGraphState()
+        # state = (state, graph_state)
 
         return state

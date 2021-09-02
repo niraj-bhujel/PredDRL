@@ -94,13 +94,14 @@ class DDPG(OffPolicyAgent):
         self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor, weight_decay=1e-5)
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, weight_decay=1e-5, eps=1e-4)
 
-        self.step=0
+        self.iteration=n_warmup
 
     def get_action(self, state, test=False, tensor=False):
-        if isinstance(state, DGLHeteroGraph):
-            state = dgl.batch([state])
+        if isinstance(state, tuple):
+            state = torch.Tensor(state[0])
         else:
             state = torch.Tensor(state)
+
         state = state.to(self.device)
         action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
@@ -125,13 +126,45 @@ class DDPG(OffPolicyAgent):
         return action.squeeze(0)
 
     def train(self, states, actions, next_states, rewards, dones, weights):
-        self.step +=1 
+        self.iteration +=1 
+
+        if isinstance(states, tuple):
+            states = states[0]
+            next_states = next_states[0]
 
         actor_loss, critic_loss, td_errors = self._train_body(states, actions, next_states, rewards, dones, weights)
 
         actor_loss = actor_loss.item() if actor_loss is not None else actor_loss
         critic_loss = critic_loss.item()
         td_errors = td_errors.detach().cpu().numpy()
+
+        if actor_loss is not None:
+
+            self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.iteration)
+            self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
+            self.writer.add_scalar(self.policy_name + "/td_error", np.mean(td_errors), self.iteration)
+
+            self.writer.add_histogram(self.policy_name + "/avg_actions", actions.cpu().numpy(), self.iteration)
+            self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
+
+            # log the model weights
+            for name, param in self.actor.named_parameters():
+                if 'weight' in name and param.grad is not None:
+                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+
+            for name, param in self.critic.named_parameters():
+                if 'weight' in name and param.grad is not None:
+                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/data', param.data.cpu().numpy(), self.iteration)
+                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '/') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+
+
+
+            if self._verbose>0:
+                print('Step:{} - batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
+                                                                                                    rewards.mean().item(),
+                                                                                                    actor_loss,
+                                                                                                    critic_loss,))
 
         return actor_loss, critic_loss, td_errors
 

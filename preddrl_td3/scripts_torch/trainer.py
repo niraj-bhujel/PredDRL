@@ -128,6 +128,9 @@ class Trainer:
         os.mkdir(summary_dir)
         self.writer = SummaryWriter(summary_dir)
 
+        self._policy.writer = self.writer
+        self._policy._verbose = self._verbose
+
     def set_seed(self, seed):
         #setup seeds
         random.seed(seed)
@@ -153,13 +156,13 @@ class Trainer:
         while total_steps < self._max_steps:
             self._env.timer.tic()
             
-            if self._verbose>1:
+            if self._verbose>0:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                # action = self._env.action_space.sample() #(2, )
-                action = self._env.xy_to_vw(self._env.preferred_vel())
-                action = np.array(action) + np.random.normal(0, 0.2, size=(2,))
+                action = self._env.action_space.sample() #(2, )
+                # action = self._env.xy_to_vw(self._env.preferred_vel())
+                # action = np.array(action) + np.random.normal(0, 0.2, size=(2,))
                 
             else:
                 action = self._policy.get_action(obs)
@@ -178,7 +181,6 @@ class Trainer:
                                                                                                           self._env.goal_x, self._env.goal_y,
                                                                                                           self._env.getGoalDistance()))
                 
-
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
                 network_draw(obs[1],
@@ -202,6 +204,10 @@ class Trainer:
             episode_return += reward
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
+
+            self.writer.add_scalar(self._policy.policy_name + "/act_0", action[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_1", action[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
 
             # update
             obs = next_obs
@@ -239,7 +245,7 @@ class Trainer:
                     samples = self.sample_data(batch_size=self._policy.batch_size,
                                                device=self._policy.device)
 
-                    actor_loss, critic_loss, td_errors = self._policy.train(samples["obs"], 
+                    self._policy.train(samples["obs"], 
                                                                             samples["act"], 
                                                                             samples["next_obs"],
                                                                             samples["rew"], 
@@ -256,37 +262,6 @@ class Trainer:
                         self.replay_buffer.update_priorities(samples['idxes'], np.abs(priorities))
 
 
-
-                    if actor_loss is not None:
-
-                        self.writer.add_scalar(self._policy.policy_name + "/act_0", action[0], total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/act_1", action[1], total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
-                        self.writer.add_histogram(self._policy.policy_name + "/robot_actions", action, total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/actor_loss", actor_loss, total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/critic_loss", critic_loss, total_steps)
-                        self.writer.add_scalar(self._policy.policy_name + "/td_error", np.mean(td_errors), total_steps)
-
-                        # log the model weights
-                        for name, param in self._policy.actor.named_parameters():
-                            if 'weight' in name and param.requires_grad:
-                                self.writer.add_histogram(self._policy.policy_name + '/actor/data/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
-                                self.writer.add_histogram(self._policy.policy_name + '/actor/grad/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
-
-                        for name, param in self._policy.critic.named_parameters():
-                            if 'weight' in name and param.requires_grad:
-                                self.writer.add_histogram(self._policy.policy_name + '/critic/data/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
-                                self.writer.add_histogram(self._policy.policy_name + '/critic/grad/' + name.replace('.', '/'), param.data.cpu().numpy(), total_steps)
-
-
-
-                        if self._verbose>0:
-                            print('{}/{}:{:.3}s - avg_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(total_steps, self._max_steps,
-                                                                                                                                fps,
-                                                                                                                                samples['rew'].mean().item(),
-                                                                                                                                actor_loss,
-                                                                                                                                critic_loss,))
-
                 if total_steps % self._test_interval == 0:
                     
                     avg_test_return = self.evaluate_policy(total_steps)
@@ -301,7 +276,7 @@ class Trainer:
 
             # self.r.sleep()
             self._env.timer.toc()
-            if self._verbose>1:
+            if self._verbose>0:
                 print('Time per step:', self._env.timer.diff)
 
         self.writer.close()
@@ -396,8 +371,7 @@ class Trainer:
 
         sampled_data, idxes, weights = self.replay_buffer.sample(batch_size)
 
-        obs, act, rew, next_obs, done = zip(*sampled_data)
-
+        obs, act, rew, next_obs, done = map(list, zip(*sampled_data))
 
         if isinstance(obs, tuple):
             obs_l, obs_g = zip(*obs)
@@ -415,12 +389,13 @@ class Trainer:
             obs = dgl.batch(obs).to(device)
             next_obs = dgl.batch(next_obs).to(device)
 
-        elif isinstance(obs[0], np.ndarray):
+        # laser state
+        elif isinstance(obs[0], list):
             obs = torch.Tensor(np.stack(obs, 0)).to(device)
             next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
         
         else:
-            raise Exception("Data type not knows!")
+            raise Exception("Data type not known!")
 
         act = torch.Tensor(np.stack(act, 0)).to(device)
         rew = torch.Tensor(np.stack(rew, 0)).view(-1, 1).to(device)
