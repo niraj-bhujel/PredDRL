@@ -12,7 +12,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 import shutil
 import torch
-def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=False, edge_label='id', 
+def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=False, edge_labels=['id'], 
                  show_legend=False, pos_attr='pos', edge_attr='dist', node_size=300, font_size=6, 
                  rad=0.04,  save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
                  pad=(0, 0, 0, 0), extent=None, show_direction=False, **kwargs):
@@ -60,10 +60,9 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
     save_dir = kwargs.get('save_dir', save_dir)
     fig_name = kwargs.get('fig_name', '')
     
-    if edge_label=='id' or edge_label=='eid': # edge label 'id' is only available after converting to netwokx
-        G = g.cpu().to_networkx(node_attrs=[node_label, pos_attr, 'tid'], edge_attrs=[edge_attr, 'spatial_mask'])
-    else:
-        G = g.cpu().to_networkx(node_attrs=[node_label, pos_attr, 'tid'], edge_attrs=[edge_label, edge_attr, 'spatial_mask'])    
+
+    G = g.cpu().to_networkx(node_attrs=node_labels + [pos_attr, 'tid'], 
+                            edge_attrs=edge_labels + [edge_attr, 'spatial_mask'])    
 
 
     unique_tid = g.ndata['tid'].unique().cpu().numpy()
@@ -72,7 +71,7 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
     # node
     pos = {}
     node_colors = []
-    node_labels = {}
+    node_labels_dict = {}
     
     for u, u_data in G.nodes(data=True):
         
@@ -83,7 +82,8 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
         tid_idx = np.where(unique_tid==traj_id)[0][0]
         node_colors.append(ped_colors[:, tid_idx])        
         
-        node_labels[u] = u_data[node_label].numpy().round(2)
+        nlabel = [u_data[l].numpy().round(2) for l in node_labels]
+        node_labels_dict[u] = ' '.join([str(v) for elem in nlabel for v in elem])
         # node_labels[u]=traj_id
         # node_labels[u]=u_data['tid'].numpy()-unique_tid.min()+1
 
@@ -116,7 +116,7 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
 
     # draw node labels
     if show_node_label:
-        nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=font_size)
+        nx.draw_networkx_labels(G, pos, labels=node_labels_dict, font_size=font_size)
     
     # draw edges
     # Be sure to include node_size as a keyword argument; arrows are drawn considering the size of nodes.
@@ -127,16 +127,12 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
 
     # draw edge labels
     if show_edge_labels:
-        edge_labels = {}
+        # edge_labels_dict = {}
         for u, v, e in G.edges(data=True):
-            elabel = e[edge_label]
-            if isinstance(elabel, torch.Tensor):
-                if elabel.requires_grad:
-                    elabel = elabel.detach().numpy().round(2)
-                else:
-                    elabel = elabel.numpy().round(2)
+            elabel = [e[l].numpy().round(2) for l in edge_labels]
+            elabel = ' '.join([str(v) for elem in elabel for v in elem])
 
-            # edge_labels[(u, v)] = np.around(elabel, decimals=3)
+            # edge_labels_dict[(u, v)] = elabel
 
             # use this for curved edges
             x1, y1 = pos[u]
@@ -146,7 +142,7 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
             cx, cy = x12 + rad * dy, y12 - rad * dx
             ax.text(cx, cy, s='{}'.format(elabel), fontsize=8, zorder=1, clip_on=True)
             
-        # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.2, font_size=8)
+        # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels_dict, label_pos=0.2, font_size=8)
         
     if show_legend:
         # custom legends
@@ -161,24 +157,24 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
 
 
     if show_direction:
-        # current_pos = g.ndata['pos'].cpu().numpy()
+        current_pos = g.ndata['pos'].cpu().numpy()
         current_vel = g.ndata['vel'].cpu().numpy()
         # assert len(next_pos)==len(current_pos)
         for i in range(len(current_vel)):
             
-            # x, y = current_pos[i]
+            x, y = current_pos[i]
             # dx, dy = next_pos[i]-current_pos[i]
             dx, dy = current_vel[i]
             ax.quiver(x, y, dx, dy, color=ped_colors[:, i], zorder=3,
-                      units='xy', 
-                      scale=1, scale_units='xy', 
-                      width=0.005*(y_max-y_min),
+                      # units='xy', 
+                       scale=2, scale_units='xy', 
+                      # width=0.005*(y_max-y_min),
                       # width=0.01*(y-y_min)/(y_max-y_min),
-                      headwidth=3, headlength=5, headaxislength=3,
+                      # headwidth=3, headlength=5, headaxislength=3,
                       )
 
 
-    plt.tight_layout()
+    # plt.tight_layout()
     if save_dir is not None:
         if not os.path.exists(save_dir):
             # shutil.rmtree(save_dir)
@@ -193,27 +189,33 @@ def network_draw(g, show_node_label=True, node_label='nid', show_edge_labels=Fal
         else:
             file_name = 'step_{}'.format(counter)
         
-        plt.title(file_name)
+        plt.title(file_name + ', nodes:' + '_'.join(node_labels) + ',edges:' + '_'.join(edge_labels), fontsize=10)
 
-        fig.savefig(save_dir + '/' + file_name + '.png', bbox_inches='tight',dpi=100)
+        fig.savefig(save_dir + '/' + file_name + '.png', bbox_inches='tight', dpi=100)
     
 if __name__=='__main__':
     import torch
-    show_node_label=True
-    show_edge_labels=False
-    node_label='nid'
-    edge_label='id'
-    pos_attr='pos'
-    edge_attr='dist'
-    node_size=300
-    rad=0.04
-    show_legend=False
-    save_dir=None
+    import pickle
+    
+    show_node_label = True
+    show_edge_labels = True
+    node_labels = ['rel', 'action',  'hed', 'goal']
+    edge_labels = ['dist']
+    pos_attr = 'pos'
+    edge_attr = 'dist'
+    node_size = 300
+    rad = 0.04
+    show_legend = False
+    save_dir= None
     fprefix=None
     frame=None
     counter=0
     pad=(0, 0, 0, 0)
     extent=None
     
-    # g = raw_data['trgt_graphs']
-    # network_draw(g, show_node_label=True, show_edge_labels=False, edge_label='id', show_legend=False)
+    with open('/home/loc/peddrl_ws/src/preddrl_td3/results/2021_08_29_GraphDDPG_warmup_10_bs1/graphs/step4_episode_step4.pkl', 'rb') as f:
+        g = pickle.load(f)
+        
+
+    network_draw(g, show_node_label, node_labels, show_edge_labels, edge_labels, show_legend,
+                 show_direction=True)

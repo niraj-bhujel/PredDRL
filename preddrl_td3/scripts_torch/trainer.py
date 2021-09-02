@@ -182,8 +182,8 @@ class Trainer:
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
                 network_draw(obs[1],
-                             show_node_label=True, node_label='pos',
-                             show_edge_labels=True, edge_label='dist',
+                             show_node_label=True, node_labels=['pos'],
+                             show_edge_labels=True, edge_labels=['dist'],
                              show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
