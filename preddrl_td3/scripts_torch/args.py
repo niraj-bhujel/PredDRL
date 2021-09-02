@@ -76,13 +76,13 @@ def get_argument(parser=None):
                         help='Plot graph during training step. Plot in output_dir/graphs/')
 
     # gated gcn
-    parser.add_argument('--in_feat_dropout', default=0.2, type=float,
+    parser.add_argument('--in_feat_dropout', default=0., type=float,
                         help='Apply dropout to input features')
-    parser.add_argument('--dropout', default=0.2, type=float,
+    parser.add_argument('--dropout', default=0., type=float,
                         help='Apply dropout on hidden features')
-    parser.add_argument('--batch_norm', action='store_false', default=True,
+    parser.add_argument('--batch_norm', action='store_false', default=False,
                         help='Apply batch norm between layer')
-    parser.add_argument('--residual', action='store_false', default=True,
+    parser.add_argument('--residual', action='store_false', default=False,
                         help='Apply batch norm between layer')
     parser.add_argument('--activation', default='ReLU',
                         help='Activation function')

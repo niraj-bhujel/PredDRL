@@ -1,6 +1,6 @@
 import dgl
 import torch
-from copy import copy
+from copy import copy, deepcopy
 
 import numpy as np
 from collections import defaultdict
@@ -19,9 +19,8 @@ interaction_direction = {
     ('pedestrian', 'pedestrian'): 5.0,
     ('pedestrian', 'robot') : 5.0,
 
-
     ('obstacle', 'pedestrian'): 5.0, # large distance to prevent graph creatiion error due to zero edges
-    ('obstacle', 'robot'): 5.1,
+    ('obstacle', 'robot'): 15,
     # ('obstacle', 'obstacle'): 2.5,
 
 }
@@ -41,14 +40,23 @@ state_dims = {
         "goal": 2,
     }
 
-def neighbor_eids(g, node):
+def min_neighbor_distance(g, node, mask_nodes=[]):
+    if len(mask_nodes)>0:
+        g = dgl.remove_nodes(deepcopy(g), mask_nodes)
+
     in_nodes, nodes = g.in_edges(node)
     in_eids = g.edge_ids(in_nodes, nodes)
 
     nodes, out_nodes = g.out_edges(node)
     out_eids = g.edge_ids(nodes, out_nodes)
 
-    return torch.cat([in_eids, out_eids]).unique()
+    node_neibhbors_eids = torch.cat([in_eids, out_eids]).unique()
+
+    if node_neibhbors_eids.size()[0]>0:
+        return g.edata['dist'][node_neibhbors_eids].min()
+    else:
+        # no nodes nearby, thus infinite distance
+        return 1e-3
 
 def n1_has_n2_in_sight(n1, n2, fov=57):
     '''

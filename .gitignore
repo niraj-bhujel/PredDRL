@@ -7,6 +7,8 @@ results/*
 */graphs/*
 __pycache__/
 
+*.Trash-1000/*
+
 *.egg-info/*
 *.eggs/
 
