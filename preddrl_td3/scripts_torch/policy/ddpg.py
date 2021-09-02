@@ -90,8 +90,8 @@ class DDPG(OffPolicyAgent):
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
-        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor, weight_decay=1e-5)
-        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, weight_decay=1e-5, eps=1e-4)
+        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
+        self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
 
         self.iteration=n_warmup
 
@@ -179,14 +179,14 @@ class DDPG(OffPolicyAgent):
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
 
         # Optimize the critic
-        self.optimization_step(self.critic_optimizer, critic_loss, clip_norm=1., model=self.critic)
+        self.optimization_step(self.critic_optimizer, critic_loss, model=self.critic, clip_norm=None)
 
         # Compute actor loss
         next_action = self.actor(states)
         actor_loss = -self.critic(states, next_action).mean()
 
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss, clip_norm=1., model=self.actor)
+        self.optimization_step(self.actor_optimizer, actor_loss, model=self.actor, clip_norm=None)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)

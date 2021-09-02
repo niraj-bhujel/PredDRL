@@ -427,15 +427,15 @@ class Env:
         self.pub_cmd_vel.publish(Twist())
         # reset scan as well
         self.scan = None
-        # try:
-        #     rospy.wait_for_service('gazebo/reset_simulation')
-        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        #     reset_proxy()
+        try:
+            rospy.wait_for_service('gazebo/reset_simulation')
+            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+            reset_proxy()
             
-        #     rospy.loginfo('Env Reset')
+            rospy.loginfo('Env Reset')
 
-        # except (rospy.ServiceException) as e:
-        #     rospy.loginfo("gazebo/reset_simulation service call failed")
+        except (rospy.ServiceException) as e:
+            rospy.loginfo("gazebo/reset_simulation service call failed")
 
         # randomly set the orientation
         tmp_state = ModelState()

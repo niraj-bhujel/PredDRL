@@ -226,8 +226,7 @@ class Trainer:
                 episode_start_time = time.perf_counter()
 
             if total_steps > self._policy.n_warmup-1:
-                # continue
-                # misc values, after warmup
+                # count success rate only after warmup
                 if success:
                     episode_success += 1
 
@@ -246,11 +245,11 @@ class Trainer:
                                                device=self._policy.device)
 
                     self._policy.train(samples["obs"], 
-                                                                            samples["act"], 
-                                                                            samples["next_obs"],
-                                                                            samples["rew"], 
-                                                                            samples["done"],
-                                                                            samples["weights"])
+                                        samples["act"], 
+                                        samples["next_obs"],
+                                        samples["rew"], 
+                                        samples["done"],
+                                        samples["weights"])
 
                     if self._use_prioritized_rb:
                         priorities = self._policy.compute_td_error(samples["obs"], 
