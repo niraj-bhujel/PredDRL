@@ -63,10 +63,10 @@ class ORCA(object):
         self.safety_space = 0
         self.neighbor_dist = 10
         self.max_neighbors = 10
-        self.time_horizon = 2.5
-        self.time_horizon_obst = 2.5
-        self.radius = 0.3
-        self.max_speed = 0.4
+        self.time_horizon = 5
+        self.time_horizon_obst = 5
+        self.radius = 0.2
+        self.max_speed = 0.
         self.sim = None
         self.time_step = time_step
         
@@ -147,10 +147,7 @@ class ORCA(object):
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.
         velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
         speed = np.linalg.norm(velocity)
-        human_vmax = 0.6
-        # human_vmax = np.random.uniform(0, 1.5)
-        pref_vel = human_vmax * (velocity / speed) 
-
+        pref_vel = velocity / speed if speed > 1 else velocity
         # Perturb a little to avoid deadlocks due to perfect symmetry.
         # perturb_angle = np.random.random() * 2 * np.pi
         # perturb_dist = np.random.random() * 0.01
