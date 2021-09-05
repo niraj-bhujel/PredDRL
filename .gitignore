@@ -2,8 +2,7 @@
 *pycache*
 results/*
 */results/*
-*/*/results/*
-*/*/*/results/*
+*/results*
 */graphs/*
 __pycache__/
 
