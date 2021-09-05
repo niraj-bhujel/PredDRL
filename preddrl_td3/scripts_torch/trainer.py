@@ -65,7 +65,7 @@ class Trainer:
         self._verbose = args.verbose 
 
         # self.timer = Timer()
-        self.r = rospy.Rate(self._env.time_step)
+        self.r = rospy.Rate(1/self._env.time_step)
 
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
@@ -160,9 +160,7 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                action = self._env.action_space.sample() #(2, )
-                # action = self._env.xy_to_vw(self._env.preferred_vel())
-                # action = np.array(action) + np.random.normal(0, 0.2, size=(2,))
+                action  = self._env.sample_robot_action(policy='orca')
                 
             else:
                 action = self._policy.get_action(obs)

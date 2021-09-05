@@ -83,13 +83,6 @@ class Respawn():
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag
         # print(self.stage, position_check, delete, test)
-        # goal_xy_list = {
-        #         [1.5,2.5],[2.5,-0.5]
-        #     }
-
-        # removed by niraj
-        # if delete:
-        #     self.deleteModel()
 
         if test or self.stage == -1:
             #第一幅地图
@@ -105,8 +98,9 @@ class Respawn():
             # goal_x = [3.5, 0 ]#-5
             # goal_y = [4.5, 0]
 
-            goal_x = [3.5, 0  , 4, 0]#-5
+            goal_x = [3.5, 0  , 4, 0]
             goal_y = [4.5, 4.5, 0, 0]
+            
             # goal_x = [3, -3, 0, 3., -3., 0]
             # goal_y = [-3., -3., 0, 3., 3., 0]
             # goal_x = [3.5, 0  , 4, 0,  0, 4, 3.5,0]#-5
@@ -120,6 +114,7 @@ class Respawn():
             # goal_y = [-3., -3., 0, 3., 3., 0]
             # goal_x = [-5.523510, -6.815110, -4]
             # goal_y = [4.138770, 5.614350, 7]
+
             if self.test_index == len(goal_x):
                 print("end:", time.time())
             self.goal_position.position.x = goal_x[self.test_index]
@@ -138,6 +133,22 @@ class Respawn():
                 # goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
 
                 self.index = random.randrange(0, len(goal_x_list))
+                # print(self.index, self.last_index)
+                if self.last_index == self.index:
+                    position_check = True
+                else:
+                    self.last_index = self.index
+                    position_check = False
+
+                self.goal_position.position.x = goal_x_list[self.index]
+                self.goal_position.position.y = goal_y_list[self.index]
+
+        elif self.stage == 1:
+            while position_check:
+                goal_x_list = [1.5, 2.5, -1.5, -0.5, 3.7, 3.5, 1.5, 0., 0.5, 0.5, 3.5, 2.5, 3.5]
+                goal_y_list = [2.5, -0.5, -0.5, 2.5, 3, 1., 4., 4.5, 5., 2.5, -0.5, 1.3, 3.5]
+
+                self.index = random.randrange(0, 13)
                 # print(self.index, self.last_index)
                 if self.last_index == self.index:
                     position_check = True
@@ -171,7 +182,23 @@ class Respawn():
                 self.goal_position.position.x = goal_x
                 self.goal_position.position.y = goal_y
 
-        elif self.stage == 55:
+        elif self.stage == 4:
+             while position_check:
+                goal_x_list = [0.6, 1.9, 0.5, 0.2, -0.8, -1, -1.9, 0.5, 0.5, 0, -0.1, -2]
+                goal_y_list = [0, -0.5, -1.9, 1.5, -0.9, 1, 1.1, -1.5, 1.8, -1, 1.6, -0.8]
+
+                self.index = random.randrange(0, 12)
+                # print(self.index, self.last_index)
+                if self.last_index == self.index:
+                    position_check = True
+                else:
+                    self.last_index = self.index
+                    position_check = False
+
+                self.goal_position.position.x = goal_x_list[self.index]
+                self.goal_position.position.y = goal_y_list[self.index]
+
+        elif self.stage == 5:
             while position_check:
                 goal_x = random.randrange(-35, 35) / 10.0
                 goal_y = random.randrange(-35, 35) / 10.0
@@ -213,7 +240,57 @@ class Respawn():
                 self.goal_position.position.x = goal_x
                 self.goal_position.position.y = goal_y
 
-        elif self.stage == 1010:
+        # elif self.stage == 5:
+        #      while position_check:
+                
+        #         goal_xy_list = [
+        #         [-1.5, 0.5], [-1.5, 1.5], [-0.5, 0.5], [-0.5, 1.5],
+        #         [0.5, -0.5], [0.5, -1.5], [2.5, -0.5], [2.5, 0.5],
+        #         [5.5,-1.5], [5.5,-0.5], [5.5,0.5], [5.5,1.5]
+        #         ]
+        #         self.index = random.randrange(0, 12)
+        #         # print(self.index, self.last_index)
+        #         if self.last_index == self.index:
+        #             position_check = True
+        #         else:
+        #             self.last_index = self.index
+        #             position_check = False
+
+        #         self.goal_position.position.x = goal_xy_list[self.index][0]
+        #         self.goal_position.position.y = goal_xy_list[self.index][1]
+
+        elif self.stage==6:
+            while position_check:
+                # train_env_1
+                # goal_x_list = [0, 1, 1, -1, -1, -1, -2.5, 0., 2.5, 2.5, -1.5, 2., 0.5, 1.0, -1.0, 1.5, -1.5]
+                # goal_y_list = [2., 1, -1, -1, 1, 1, -1.5, 3.5, 3.5, -1.5, 2, 2., 0.5, 3.5,  3.5, 4.5, 4.5]
+
+                # train_env_2
+                # goal_x_list = [2., 1., 2.5, -2., -3., 2., -2., 0., 1., -1., -3.5, -1., 3.5]
+                # goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
+
+                # social_context, data
+                goal_x_list = [12.0, 5,0, 8.0, 10.0, 12.0, 14.0]
+                goal_y_list = [11.5, 8.3, 4.0, 13.1, 3.2, 8.6]
+                self.index = random.randrange(0, len(goal_x_list))
+                if self.last_index == self.index:
+                    position_check = True
+                else:
+                    self.last_index = self.index
+                    position_check = False
+
+                self.goal_position.position.x = goal_x_list[self.index]
+                self.goal_position.position.y = goal_y_list[self.index]
+
+        elif self.stage == 7:
+            # social context
+            data_stat = {'x_min': -0.358, 'x_max': 15.558, 'y_min': -0.274, 'y_max': 13.943}
+            x = random.uniform(data_stat['x_min'], data_stat['x_max'])
+            y = random.uniform(data_stat['y_min'], data_stat['y_max'])
+            self.goal_position.position.x = x
+            self.goal_position.position.y = y
+
+        elif self.stage == 10:
             while position_check:
                 goal_x = random.randrange(-60, 60) / 10.0
                 goal_y = random.randrange(-60, 60) / 10.0
@@ -273,104 +350,8 @@ class Respawn():
                 self.goal_position.position.x = goal_x
                 self.goal_position.position.y = goal_y
 
-        elif self.stage == 1:
-            while position_check:
-                goal_x_list = [1.5, 2.5, -1.5, -0.5, 3.7, 3.5, 1.5, 0., 0.5, 0.5, 3.5, 2.5, 3.5]
-                goal_y_list = [2.5, -0.5, -0.5, 2.5, 3, 1., 4., 4.5, 5., 2.5, -0.5, 1.3, 3.5]
-
-                self.index = random.randrange(0, 13)
-                # print(self.index, self.last_index)
-                if self.last_index == self.index:
-                    position_check = True
-                else:
-                    self.last_index = self.index
-                    position_check = False
-
-                self.goal_position.position.x = goal_x_list[self.index]
-                self.goal_position.position.y = goal_y_list[self.index]
-
-        elif self.stage == 4:
-             while position_check:
-                goal_x_list = [0.6, 1.9, 0.5, 0.2, -0.8, -1, -1.9, 0.5, 0.5, 0, -0.1, -2]
-                goal_y_list = [0, -0.5, -1.9, 1.5, -0.9, 1, 1.1, -1.5, 1.8, -1, 1.6, -0.8]
-
-                self.index = random.randrange(0, 12)
-                # print(self.index, self.last_index)
-                if self.last_index == self.index:
-                    position_check = True
-                else:
-                    self.last_index = self.index
-                    position_check = False
-
-                self.goal_position.position.x = goal_x_list[self.index]
-                self.goal_position.position.y = goal_y_list[self.index]
-        elif self.stage == 5:
-             while position_check:
-                
-                goal_xy_list = [
-                [-1.5, 0.5], [-1.5, 1.5], [-0.5, 0.5], [-0.5, 1.5],
-                [0.5, -0.5], [0.5, -1.5], [2.5, -0.5], [2.5, 0.5],
-                [5.5,-1.5], [5.5,-0.5], [5.5,0.5], [5.5,1.5]
-                ]
-                self.index = random.randrange(0, 12)
-                # print(self.index, self.last_index)
-                if self.last_index == self.index:
-                    position_check = True
-                else:
-                    self.last_index = self.index
-                    position_check = False
-
-                self.goal_position.position.x = goal_xy_list[self.index][0]
-                self.goal_position.position.y = goal_xy_list[self.index][1]
-        elif self.stage==6:
-            while position_check:
-                # train_env_1
-                # goal_x_list = [0, 1, 1, -1, -1, -1, -2.5, 0., 2.5, 2.5, -1.5, 2., 0.5, 1.0, -1.0, 1.5, -1.5]
-                # goal_y_list = [2., 1, -1, -1, 1, 1, -1.5, 3.5, 3.5, -1.5, 2, 2., 0.5, 3.5,  3.5, 4.5, 4.5]
-
-                # train_env_2
-                # goal_x_list = [2., 1., 2.5, -2., -3., 2., -2., 0., 1., -1., -3.5, -1., 3.5]
-                # goal_y_list = [0., -1., 2.5, 0., 2., -3.5, -2., -1., 1., 2.5, -3.5, 1.3, 1.5]
-
-                # social_context, data
-                goal_x_list = [12.0, 5,0, 8.0, 10.0, 12.0, 14.0]
-                goal_y_list = [11.5, 8.3, 4.0, 13.1, 3.2, 8.6]
-                self.index = random.randrange(0, len(goal_x_list))
-                if self.last_index == self.index:
-                    position_check = True
-                else:
-                    self.last_index = self.index
-                    position_check = False
-
-                self.goal_position.position.x = goal_x_list[self.index]
-                self.goal_position.position.y = goal_y_list[self.index]
-        elif self.stage == 7:
-            # social context
-            data_stat = {'x_min': -0.358, 'x_max': 15.558, 'y_min': -0.274, 'y_max': 13.943}
-            x = random.uniform(data_stat['x_min'], data_stat['x_max'])
-            y = random.uniform(data_stat['y_min'], data_stat['y_max'])
-            self.goal_position.position.x = x
-            self.goal_position.position.y = y
-
-        # time.sleep(0.5)
-        # rospy.loginfo('Respawnning model')
-        # if not self.check_model: # comment out by niraj
-        #     self.respawnModel()
 
         self.last_goal_x = self.goal_position.position.x
         self.last_goal_y = self.goal_position.position.y
 
         return self.goal_position.position.x, self.goal_position.position.y
-    # def getPosition(self, position_check=False, delete=False, test=False):
-    #     if delete:
-    #         self.deleteModel()
-    #
-    #
-    #
-    #     # time.sleep(0.5)
-    #     self.respawnModel()
-    #
-    #     self.goal_position.position.x = self.init_goal_x
-    #     self.goal_position.position.y = self.init_goal_y
-    #
-    #     return self.goal_position.position.x, self.goal_position.position.y

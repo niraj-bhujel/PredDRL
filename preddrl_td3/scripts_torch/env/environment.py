@@ -21,6 +21,8 @@ from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
 
+from policy.orca import ORCA
+
 def vector3_to_numpy(msg):
     return np.array([msg.x, msg.y, msg.z])
 
@@ -33,18 +35,19 @@ def point_to_numpy(msg):
 SelfD=0.175
 SelfL=0.23
 
+
 class Env:
     def __init__(self, test=False, stage=0, graph_state=False):
 
         self.test = test
         self.graph_state = graph_state
 
-        self.goal_x = 1.0
-        self.goal_y = 0
+        self.goal_x = 0
+        self.goal_y = 1
 
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
-        self.maxLinearSpeed = 0.67
+        self.maxLinearSpeed = 0.4#0.67
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
@@ -74,7 +77,10 @@ class Env:
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.max_goal_distance = 3.
+        self.time_step = 0.4
+        self.timer = Timer() # set by trainer
+
+        self.max_goal_distance = 8.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
@@ -82,14 +88,24 @@ class Env:
         self.robot = Agent(node_id=self.nid, node_type='robot')
         self.nid+=1
 
-        self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal')
+        self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal', time_step=self.time_step)
         self.nid += 1
 
-        self.static_obstacles = dict()
-        self.pedestrians = dict()
+        # robot policy
+        self.robot.update_states(p=(0., 0.),
+                                 q=(1., 0., 0., 0.),
+                                 r=0,
+                                 ) 
+        self.robot.update_goal([self.goal_x, self.goal_y]) 
+        self.robot_policy = ORCA(self.time_step)
 
-        self.time_step = 0.5
-        self.timer = Timer() # set by trainer
+        try:
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        except rospy.ROSException:
+            rospy.logerr('ModelStates timeout')
+
+        self.static_obstacles = self.getStaticObstacles(model_states)
+        self.pedestrians = self.getPedestrians(model_states)
 
     def setScan(self, scan):
         self.scan = scan
@@ -155,6 +171,24 @@ class Env:
 
         self.heading = round(heading, 2)
 
+    def sample_robot_action(self, policy='uniform'):
+        if policy =='uniform':
+            action = self.action_space.sample()
+
+        elif policy == 'vpref':
+            action = self.preferred_vel() + np.random.normal(0, 0.2, size=(2,))
+            if self.action_type=='vw':
+                action = self.xy_to_vw(action)
+        else:
+            obstacle_pos = [tuple(o._pos) for _, o in self.static_obstacles.items()]
+            action, _, _ = self.robot_policy.predict(self.robot, 
+                                                       obstacle_pos=obstacle_pos)
+            print('orca vel:', action)
+            if self.action_type=='vw':
+                action = self.xy_to_vw(action)
+
+        return action
+
     def preferred_vel(self, pref_speed=0.7):
         d = np.array((self.goal_x - self.position.x, self.goal_y - self.position.y))
         v_pref = pref_speed * d/np.linalg.norm(d)
@@ -198,9 +232,10 @@ class Env:
         else:
             v, w = action[0], action[1]
             v = (v+2)/10
-            
-        # v = v*self.time_step
-        # w = w*self.time_step
+            # v = np.clip(0, v, self.maxLinearSpeed)
+
+        # v = v*self.time_step/self.timer.diff
+        # w = w*self.time_step/self.timer.diff
 
         vel_msg.linear.x = v
         vel_msg.angular.z = w
@@ -227,19 +262,21 @@ class Env:
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
-            m_pos = point_to_numpy(pose.position)
+            # m_pos = point_to_numpy(pose.position)
             # m_vel = vector3_to_numpy(twist.linear)
 
-            m_quat = quat_to_numpy(pose.orientation)
-            m_rot = vector3_to_numpy(twist.angular)
+            # m_quat = quat_to_numpy(pose.orientation)
+            # m_rot = vector3_to_numpy(twist.angular)
 
             if m_name in obstacle_dict:
                 node = obstacle_dict[m_name]
             else:
-                node = Agent(node_id=self.nid, node_type='obstacle')
+                node = Agent(node_id=self.nid, node_type='obstacle', time_step=self.time_step)
                 self.nid += 1
 
-            node.update_states(m_pos[:2], q=m_quat, r=m_rot)
+            node.update_states(p=(pose.position.x, pose.position.y), 
+                               q=(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z), 
+                               r=(twist.angular.x, twist.angular.y, twist.angular.z))
             node.update_goal(goal=(self.goal_x, self.goal_y))
 
             obstacle_dict[m_name] = node
@@ -279,8 +316,7 @@ class Env:
             
         return ped_dict
 
-
-    def getGraphState(self, action=[0.0, 0.0]):
+    def update_states(self, action=(0.0, 0.0)):
 
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
@@ -288,21 +324,24 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        self.robot.update_states(p = point_to_numpy(self.position)[:2],
-                                 # p=[0.0, 0.0],
-                                 q=quat_to_numpy(self.orientation),
+        self.robot.update_states(p = (self.position.x, self.position.y),
+                                 q=(self.orientation.w, self.orientation.x, self.orientation.y, self.orientation.z),
                                  r = self.yaw,
                                  )
         self.robot.update_action(action) 
         self.robot.update_goal([self.goal_x, self.goal_y]) 
 
         self.robot_goal.update_states(p = (self.goal_x, self.goal_y),
-                                      q = (0.0, 0.0, 0.0, 1),
+                                      q = (1.0, 0.0, 0.0, 0.0),
                                       r = 0.0)
-        self.robot_goal.update_goal((self.goal_x, self.goal_y))
+        # self.robot_goal.update_goal((self.goal_x, self.goal_y))
 
+        # update obstacle and pedestrians
         self.static_obstacles = self.getStaticObstacles(model_states, self.static_obstacles)
         self.pedestrians = self.getPedestrians(model_states, self.pedestrians)
+
+    def getGraphState(self, action=[0.0, 0.0]):
+
 
         graph_nodes = [self.robot, self.robot_goal] + list(self.static_obstacles.values()) + list(self.pedestrians.values())
 
@@ -326,6 +365,11 @@ class Env:
 
     def getState(self, action=[0., 0.]):
         scan_range_collision = []
+        try:
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        except rospy.ROSException:
+            rospy.logerr('ModelStates timeout')
+            raise ValueError 
 
         scan = None
         while scan is None:
@@ -349,8 +393,24 @@ class Env:
             else:
                 scan_range_collision.append(scan.ranges[i])
 
-        goal_distance = self.getGoalDistance()
         collision =  min(scan_range_collision)+1e-6 < self.collision_threshold
+
+        # one step ahead collision detection
+        if self.action_type=='vw':
+            theta = self.yaw + action[1]
+            px = self.position.x + action[0] * np.cos(theta) * self.time_step
+            py = self.position.y + action[0] * np.sin(theta) * self.time_step
+        else:
+            px = self.position.x + action[0] * self.time_step
+            py = self.position.y + action[1] * self.time_step
+
+        for _, obstacle in self.static_obstacles.items():
+            if np.linalg.norm((obstacle._pos[0]-px, obstacle._pos[1]-py))<0.1:
+                collision=True
+                break
+
+
+        goal_distance = self.getGoalDistance()
         reaching_goal = goal_distance< self.goal_threshold
         too_far = goal_distance > self.max_goal_distance
 
@@ -360,10 +420,16 @@ class Env:
         return state, collision, reaching_goal, too_far
 
 
+
     def step(self, action):
 
         self.vel_cmd = self.action_to_vel_cmd(action, self.action_type)
         self.pub_cmd_vel.publish(self.vel_cmd)
+
+        rospy.sleep(self.time_step)
+        self.pub_cmd_vel.publish(Twist())
+
+        self.update_states(action)
 
         state, collision, reaching_goal, too_far = self.getState(action)
 
@@ -381,7 +447,7 @@ class Env:
 
         elif reaching_goal:
             success = True
-            reward = 100
+            reward = 150#100
             rospy.loginfo('Success!!')
             
         elif too_far:
@@ -395,12 +461,12 @@ class Env:
 
         goal_distance = self.getGoalDistance()
         if goal_distance < self.last_goal_distance:
-            reward += 50
+            reward += 1#50
         else:
-            reward -= 50
+            reward -= 1
 
         if abs(self.heading)>1.5:
-            reward -= 20
+            reward -= 1#20
         self.last_goal_distance = goal_distance
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
@@ -428,15 +494,16 @@ class Env:
         self.pub_cmd_vel.publish(Twist())
         # reset scan as well
         self.scan = None
-        # try:
-        #     rospy.wait_for_service('gazebo/reset_simulation')
-        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        #     reset_proxy()
-            
-        #     rospy.loginfo('Env Reset')
 
-        # except (rospy.ServiceException) as e:
-        #     rospy.loginfo("gazebo/reset_simulation service call failed")
+        try:
+            rospy.wait_for_service('gazebo/reset_simulation')
+            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+            reset_proxy()
+            
+            rospy.loginfo('Env Reset')
+
+        except (rospy.ServiceException) as e:
+            rospy.loginfo("gazebo/reset_simulation service call failed")
 
         # randomly set the orientation
         tmp_state = ModelState()

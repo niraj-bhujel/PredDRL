@@ -141,24 +141,25 @@ class DDPG(OffPolicyAgent):
             self.writer.add_histogram(self.policy_name + "/avg_actions", actions.cpu().numpy(), self.iteration)
             self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
 
-            # log the model weights
-            for name, param in self.actor.named_parameters():
-                if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
-            for name, param in self.critic.named_parameters():
-                if 'weight' in name and param.grad is not None:
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
-                    self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
-
 
             if self._verbose>0:
                 print('Step:{} - batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
                                                                                                     rewards.mean().item(),
                                                                                                     actor_loss,
                                                                                                     critic_loss,))
+
+            if self._verbose>1:
+                # log the model weights
+                for name, param in self.actor.named_parameters():
+                    if 'weight' in name and param.grad is not None:
+                        self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
+                        self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+
+                for name, param in self.critic.named_parameters():
+                    if 'weight' in name and param.grad is not None:
+                        self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
+                        self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
+
 
         return actor_loss, critic_loss, td_errors
 

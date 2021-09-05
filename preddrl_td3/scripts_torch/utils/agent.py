@@ -25,6 +25,9 @@ class Agent(object):
         self._id = int(node_id)
         self._type = node_type
         self._time_step = time_step
+        
+        self._radius = 0.4
+        self._vpref = 0.4
 
         self._pos = None
         self._vel = None
@@ -68,12 +71,12 @@ class Agent(object):
             ax = (vx - self._vel[0])/self._time_step
             ay = (vy - self._vel[1])/self._time_step
 
-            v = np.array([vx, vy])
-            a = np.array([ax, ay])
+            v = (vx, vy)
+            a = (ax, ay)
 
         else:
-            v = np.zeros_like(p)
-            a = np.zeros_like(v)
+            v = (0., 0.)
+            a = (0., 0.)
 
         self._pos = p
         self._vel = v
@@ -83,9 +86,6 @@ class Agent(object):
         self._rot = r
         
         self._yaw = euler_from_quaternion(q)[-1]
-
-        if self._time_stamp is not None:
-            self._time_step = self._time_stamp - time.time()
 
         self._time_stamp = time.time()
 

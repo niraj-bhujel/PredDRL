@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN apt-get update && apt-get -y install software-properties-common
 RUN add-apt-repository ppa:deadsnakes/ppa -y
-RUN apt-get update && apt-get -y install python3.6 
+RUN apt-get update && apt-get -y install python3.6 python3.6-dev 
 
 # since repo deadsnakes does not have pip we need to install default pip and upgrade it with python3.6
 RUN apt-get install python3-pip -y
