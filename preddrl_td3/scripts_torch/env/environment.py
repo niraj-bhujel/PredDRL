@@ -17,20 +17,11 @@ from gazebo_msgs.msg import ModelStates, ModelState
 from gazebo_msgs.srv import SetModelState
 
 from .respawnGoal import Respawn
+from .env_utils import euler_from_quaternion, euler_to_quaternion
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
-
 from policy.orca import ORCA
-
-def vector3_to_numpy(msg):
-    return np.array([msg.x, msg.y, msg.z])
-
-def quat_to_numpy(msg):
-    return np.array([msg.x, msg.y, msg.z, msg.w])
-
-def point_to_numpy(msg):
-    return np.array([msg.x, msg.y, msg.z])
 
 SelfD=0.175
 SelfL=0.23
@@ -80,7 +71,7 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 8.
+        self.max_goal_distance = 15.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
@@ -123,31 +114,6 @@ class Env:
     def render(self):
         pass
 
-    def euler_from_quaternion(self, orientation_list):
-        x, y, z, w = orientation_list
-        r = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
-        p = math.asin(2 * (w * y - z * x))
-        y = math.atan2(2 * (w * z + x * y), 1 - 2 * (z * z + y * y))
-
-        return r, p, y
-
-    def euler_to_quaternion(self, euler_angles):
-        roll, pitch, yaw  = euler_angles
-
-        cy = cos(yaw * 0.5)
-        sy = sin(yaw * 0.5)
-        cp = cos(pitch * 0.5)
-        sp = sin(pitch * 0.5)
-        cr = cos(roll * 0.5)
-        sr = sin(roll * 0.5)
-
-        q = Quaternion()
-        q.w = cr * cp * cy + sr * sp * sy
-        q.x = sr * cp * cy - cr * sp * sy
-        q.y = cr * sp * cy + sr * cp * sy
-        q.z = cr * cp * sy - sr * sp * cy
-
-        return q
 
     def getGoalDistance(self):
         goal_distance = round(math.hypot(self.goal_x - self.position.x, self.goal_y - self.position.y), 2)
@@ -160,7 +126,7 @@ class Env:
         self.orientation = odom.pose.pose.orientation
 
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
-        self.roll, self.pitch, self.yaw = self.euler_from_quaternion(orientation_list)
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_list)
         
         inc_y = self.goal_y - self.position.y
         inc_x = self.goal_x - self.position.x
@@ -514,7 +480,7 @@ class Env:
         tmp_state = ModelState()
         tmp_state.model_name = "turtlebot3_burger"
         tmp_state.pose = Pose(Point(0., 0., 0), 
-                              self.euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
+                              euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
                               )
         tmp_state.reference_frame = "world"
         rospy.wait_for_service("/gazebo/set_model_state")
