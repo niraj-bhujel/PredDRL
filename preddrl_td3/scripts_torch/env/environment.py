@@ -202,18 +202,10 @@ class Env:
 
         else:
             v, w = action[0], action[1]
-            v = (v+2)/10
-            # v = np.clip(0, v, self.maxLinearSpeed)
-
-        # v = v*self.time_step/self.timer.diff
-        # w = w*self.time_step/self.timer.diff
 
         vel_msg.linear.x = v
         vel_msg.angular.z = w
 
-        # hand edition constraint
-        # vel_msg.linear.x = np.clip(0, vel_msg.linear.x, self.maxLinearSpeed)
-        # vel_msg.angular.z = np.clip(-self.maxAngularSpeed, vel_msg.angular.z, self.maxAngularSpeed)
 
         return vel_msg
 
@@ -233,11 +225,6 @@ class Env:
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
-            # m_pos = point_to_numpy(pose.position)
-            # m_vel = vector3_to_numpy(twist.linear)
-
-            # m_quat = quat_to_numpy(pose.orientation)
-            # m_rot = vector3_to_numpy(twist.angular)
 
             if m_name in obstacle_dict:
                 node = obstacle_dict[m_name]
