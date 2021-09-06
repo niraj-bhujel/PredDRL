@@ -66,7 +66,7 @@ class ORCA(object):
         self.time_horizon = 5
         self.time_horizon_obst = 5
         self.radius = 0.2
-        self.max_speed = 0.
+        self.max_speed = 1.
         self.sim = None
         self.time_step = time_step
         

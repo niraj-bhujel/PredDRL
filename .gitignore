@@ -4,6 +4,7 @@ results/*
 */results/*
 */results*
 */graphs/*
+*/memory/*
 __pycache__/
 
 *.Trash-1000/*

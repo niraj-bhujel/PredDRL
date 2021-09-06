@@ -20,7 +20,7 @@ from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 # from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
-from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src
+from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src, create_new_dir
 from utils.graph_utils import node_type_list
 from utils.vis_graph import network_draw
 from utils.timer import Timer
@@ -58,6 +58,8 @@ class Trainer:
         self._restore_checkpoint = args.restore_checkpoint
 
         self._policy = policy
+        self._sampling_method = args.sampling_method
+
         self._device = policy.device
 
         self._env = env
@@ -73,11 +75,12 @@ class Trainer:
 
         # prepare log directory
         suffix = '_'.join(['%s'%policy.policy_name,
-                        'warmup_%d'%self._policy.n_warmup,
+                        'warmup_%d'%policy.n_warmup,
                         'bs%d'%policy.batch_size,
                         # 'seed_%d'%args.seed,
                         'stage_%d'%args.stage,
                         'episode_step%d'%args.episode_max_steps,
+                        '_sampling_%s'%args.sampling_method,
                         ])
 
         if self._use_prioritized_rb:
@@ -112,19 +115,24 @@ class Trainer:
         else:
             self.replay_buffer = ReplayBuffer(size=self._buffer_size)
 
-        # visualization
+        self._load_memory = args.load_memory
+        self._memory_path = create_new_dir('./preddrl_td3/memory')
+        self._memory_path += '/{}_stage{}_nwarmup{}_sampling_{}'.format(type(self.replay_buffer).__name__, 
+                                                                         args.stage, 
+                                                                         policy.n_warmup, 
+                                                                         args.sampling_method)
+
+        # graph visualization
         self._vis_graph = args.vis_graph
         self._vis_graph_dir = self._output_dir + '/graphs/'
         shutil.rmtree(self._vis_graph_dir, ignore_errors=True)
-        if not os.path.exists(self._vis_graph_dir):
-            os.mkdir(self._vis_graph_dir)
+        create_new_dir(self._vis_graph_dir)
 
 
         # prepare TensorBoard output
         summary_dir = self._output_dir + '/summary'
         shutil.rmtree(summary_dir, ignore_errors=True)
-        if not os.path.exists(summary_dir):
-            os.mkdir(summary_dir)
+        create_new_dir(summary_dir)
 
         self.writer = SummaryWriter(summary_dir)
 
@@ -153,6 +161,12 @@ class Trainer:
         episode_start_time = time.perf_counter()
         
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
+
+        if self._load_memory:
+            with open(self._memory_path + '.pkl', 'rb') as f:
+                self.replay_buffer = pickle.load(f)
+            total_steps=self._policy.n_warmup + 1 
+
         while total_steps < self._max_steps:
             self._env.timer.tic()
             
@@ -160,8 +174,7 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                action  = self._env.sample_robot_action(policy='orca')
-                
+                action  = self._env.sample_robot_action(self._sampling_method)
             else:
                 action = self._policy.get_action(obs)
             
@@ -193,10 +206,12 @@ class Trainer:
                 # with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
                 #     pickle.dump(obs, f)
 
-            # ignore first step
-            # if done or success:
             if not episode_steps==0:
                 self.replay_buffer.add([obs, action, reward, next_obs, done])
+
+            if total_steps==self._policy.n_warmup:                
+                with open(self._memory_path + '.pkl', 'wb') as f:
+                    pickle.dump(self.replay_buffer, f)
 
             episode_steps += 1
             episode_return += reward
@@ -235,7 +250,7 @@ class Trainer:
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
-                self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
+                
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
@@ -273,6 +288,7 @@ class Trainer:
 
             # self.r.sleep()
             self._env.timer.toc()
+            self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
             if self._verbose>0:
                 print('Time per step:', self._env.timer.diff)
 

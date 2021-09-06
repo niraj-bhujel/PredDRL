@@ -85,7 +85,11 @@ def load_trajectories(filenames, max_steps=None):
             acts = np.vstack((act, acts))
     return {'obses': obses, 'next_obses': next_obses, 'acts': acts}
 
-
+def create_new_dir(new_dir):
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    return new_dir
+    
 def frames_to_gif(frames, prefix, save_dir, interval=50, fps=30):
     """
     Convert frames to gif file

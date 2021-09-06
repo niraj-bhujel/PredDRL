@@ -77,10 +77,10 @@ class Env:
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.time_step = 0.25
+        self.time_step = 0.2
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 8.
+        self.max_goal_distance = 15.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj

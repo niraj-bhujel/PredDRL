@@ -7,6 +7,8 @@ def get_argument(parser=None):
     # policy setting
     parser.add_argument('--policy', type=str, default='ddpg_graph',
                         help="Model name one of [td3, ddpg, graph_ddpg, gcn]")
+    parser.add_argument('--sampling_method', type=str, default='orca',
+                        help="Action sampling method. One of [uniform, prefered_vel, orca]")
 
     parser.add_argument('--memory_capacity', type=int, default=int(1e6))
 
@@ -59,6 +61,8 @@ def get_argument(parser=None):
                         help='Flag to use nstep experience replay')
     parser.add_argument('--n_step', type=int, default=4,
                         help='Number of steps to look over')
+    parser.add_argument('--load_memory', action='store_true', default=False,
+                        help='If use previously saved memory to save sampling time')
     # others
     parser.add_argument('--logging_level', choices=['DEBUG', 'INFO', 'WARNING'],
                         default='INFO', help='Logging level')
