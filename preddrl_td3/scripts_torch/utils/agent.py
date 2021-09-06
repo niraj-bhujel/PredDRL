@@ -116,6 +116,13 @@ class Agent(object):
     def distance_to_goal(self,):
         return round(math.hypot(self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]), 2)
 
+    @property
+    def prefered_vel(self,):
+        velocity = (self._goal[0] - self._pos[0], self._goal[1] - self._pos[1])
+        speed = np.linalg.norm(velocity)
+        pref_vel = velocity / speed if speed > 1 else velocity
+        return pref_vel
+
     def heading(self, ):
         
         inc_y = self._goal[1] - self._pos[1]

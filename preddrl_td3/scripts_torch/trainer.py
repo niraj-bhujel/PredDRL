@@ -191,10 +191,16 @@ class Trainer:
 
             if self._verbose>1:
                 print('Reward:{:3.3f}'.format(reward))
-                print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
-                                                                                                          self._env.goal_x, self._env.goal_y,
-                                                                                                          self._env.getGoalDistance()))
-                
+                # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
+                #                                                                                           self._env.goal_x, self._env.goal_y,
+                #                                                                                           self._env.getGoalDistance()))
+
+                print("Pos:[{:2.2f}, {:2.2f}], Vel:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}],\
+                      Goal Distance:{:.2f}".format(self._env.robot._pos[0], self._env.robot._pos[1],
+                                                    self._env.robot._vel[0], self._env.robot._vel[1],
+                                                    self._env.robot._goal[0], self._env.robot._goal[1],
+                                                    self._env.robot.distance_to_goal))              
+            
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
                 network_draw(obs[1],

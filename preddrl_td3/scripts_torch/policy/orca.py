@@ -138,16 +138,16 @@ class ORCA(object):
         else:
             self.sim.setAgentPosition(0, self_state._pos)
             self.sim.setAgentVelocity(0, self_state._vel)
-            
+
             if len(humans)>0:
                 for i, human_state in enumerate(humans):
                     self.sim.setAgentPosition(i + 1, human_state._pos)
                     self.sim.setAgentVelocity(i + 1, human_state._vel)
 
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.
-        velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
-        speed = np.linalg.norm(velocity)
-        pref_vel = velocity / speed if speed > 1 else velocity
+        # velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
+        # speed = np.linalg.norm(velocity)
+        # pref_vel = velocity / speed if speed > 1 else velocity
         # Perturb a little to avoid deadlocks due to perfect symmetry.
         # perturb_angle = np.random.random() * 2 * np.pi
         # perturb_dist = np.random.random() * 0.01
@@ -155,7 +155,7 @@ class ORCA(object):
         # pref_vel += perturb_vel
 
         # self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
-        self.sim.setAgentPrefVelocity(0, tuple(pref_vel))
+        self.sim.setAgentPrefVelocity(0, tuple(self_state.prefered_vel))
         
         if len(humans)>0:
             for i, human_state in enumerate(humans):
@@ -171,5 +171,5 @@ class ORCA(object):
         # self_state._vel = action
         # self.last_state = state
 
-        return action, position, pref_vel
+        return action, position
     

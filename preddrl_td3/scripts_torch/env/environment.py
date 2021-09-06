@@ -76,7 +76,7 @@ class Env:
 
         # keep track of nodes and their id, added by niraj
         self.nid = 0
-        self.robot = Agent(node_id=self.nid, node_type='robot')
+        self.robot = Agent(node_id=self.nid, node_type='robot', time_step=self.time_step)
         self.robot.update_states(p=(0., 0.),
                                  q=(1., 0., 0., 0.),
                                  r=0,
@@ -147,12 +147,12 @@ class Env:
             action = self.action_space.sample()
 
         elif policy == 'vpref':
-            action = self.preferred_vel() + np.random.normal(0, 0.2, size=(2,))
+            action = self.robot.preferred_vel + np.random.normal(0, 0.2, size=(2,))
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
         else:
             obstacle_pos = [tuple(o._pos) for _, o in self.static_obstacles.items()]
-            action, _, _ = self.robot_policy.predict(self.robot, 
+            action, _ = self.robot_policy.predict(self.robot, 
                                                        obstacle_pos=obstacle_pos)
             print('orca vel:', action)
             if self.action_type=='vw':
@@ -160,11 +160,11 @@ class Env:
 
         return action
 
-    def preferred_vel(self, pref_speed=0.7):
-        d = np.array((self.goal_x - self.position.x, self.goal_y - self.position.y))
-        v_pref = pref_speed * d/np.linalg.norm(d)
-
-        return v_pref
+    def vw_to_xy(self, action):
+        theta = self.yaw + action[1]
+        vx = action[0] * np.cos(theta)
+        vy = action[0] * np.sin(theta)
+        return vx, vy
 
     def xy_to_vw(self, v):
         
@@ -263,7 +263,7 @@ class Env:
             if m_name in ped_dict:
                 node = ped_dict[m_name]
             else:
-                node = Agent(node_id=self.nid, node_type='pedestrian')
+                node = Agent(node_id=self.nid, node_type='pedestrian', time_step=self.time_step)
                 self.nid += 1
 
             node.update_states(m_pos[:2], q=m_quat, r=m_rot)
@@ -355,12 +355,12 @@ class Env:
 
         # one step ahead collision detection
         if self.action_type=='vw':
-            theta = self.yaw + action[1]
-            px = self.position.x + action[0] * np.cos(theta) * self.time_step
-            py = self.position.y + action[0] * np.sin(theta) * self.time_step
+            vx, vy = self.vw_to_xy(action)
         else:
-            px = self.position.x + action[0] * self.time_step
-            py = self.position.y + action[1] * self.time_step
+            vx, vy = action
+
+        px = self.position.x + vx * self.time_step
+        py = self.position.y + vy * self.time_step
 
         for _, obstacle in self.static_obstacles.items():
             if np.linalg.norm((obstacle._pos[0]-px, obstacle._pos[1]-py))<0.1:
