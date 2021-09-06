@@ -195,10 +195,10 @@ class Trainer:
                 #                                                                                           self._env.goal_x, self._env.goal_y,
                 #                                                                                           self._env.getGoalDistance()))
 
-                print("Pos:[{:2.2f}, {:2.2f}], Vel:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}],\
-                      Goal Distance:{:.2f}".format(self._env.robot._pos[0], self._env.robot._pos[1],
-                                                    self._env.robot._vel[0], self._env.robot._vel[1],
-                                                    self._env.robot._goal[0], self._env.robot._goal[1],
+                print("Pos:{}, Vel:{}, Vpref:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot._pos, 2).tolist(),
+                                                    np.round(self._env.robot._vel, 2).tolist(), 
+                                                    np.round(self._env.robot.preferred_vel, 2).tolist(),
+                                                    np.round(self._env.robot._goal, 2).tolist(),
                                                     self._env.robot.distance_to_goal))              
             
             # plot graph, 

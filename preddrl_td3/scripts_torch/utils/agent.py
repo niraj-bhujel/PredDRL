@@ -117,7 +117,7 @@ class Agent(object):
         return round(math.hypot(self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]), 2)
 
     @property
-    def prefered_vel(self,):
+    def preferred_vel(self,):
         velocity = (self._goal[0] - self._pos[0], self._goal[1] - self._pos[1])
         speed = np.linalg.norm(velocity)
         pref_vel = velocity / speed if speed > 1 else velocity

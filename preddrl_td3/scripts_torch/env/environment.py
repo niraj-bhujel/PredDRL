@@ -287,7 +287,7 @@ class Env:
                                  r = self.yaw,
                                  )
         self.robot.update_action(action) 
-        self.robot.update_goal([self.goal_x, self.goal_y]) 
+        # self.robot.update_goal([self.goal_x, self.goal_y]) 
 
         self.robot_goal.update_states(p = (self.goal_x, self.goal_y),
                                       q = (1.0, 0.0, 0.0, 0.0),
@@ -430,6 +430,7 @@ class Env:
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)
+            self.robot.update_goal((self.goal_x, self.goal_y))
 
         if done:
             # self.pub_cmd_vel.publish(Twist())
@@ -444,6 +445,7 @@ class Env:
         
         if self.respawn_goal.check_model: self.respawn_goal.deleteModel()
         self.respawn_goal.respawnModel()
+
 
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
 

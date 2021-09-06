@@ -155,7 +155,7 @@ class ORCA(object):
         # pref_vel += perturb_vel
 
         # self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
-        self.sim.setAgentPrefVelocity(0, tuple(self_state.prefered_vel))
+        self.sim.setAgentPrefVelocity(0, tuple(self_state.preferred_vel))
         
         if len(humans)>0:
             for i, human_state in enumerate(humans):
