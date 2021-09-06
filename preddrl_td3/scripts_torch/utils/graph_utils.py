@@ -128,7 +128,7 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         node = nodes[n]
 
         nodes_data['pos'].append(node._pos)
-        nodes_data['rel'].append(node._pos - ref_pos)
+        nodes_data['rel'].append([node._pos[0]-ref_pos[0], node._pos[1]-ref_pos[1]])
 
         # nodes_data['vel'].append(node._vel)
         # nodes_data['acc'].append(node._acc)

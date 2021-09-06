@@ -77,26 +77,31 @@ class Env:
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.time_step = 0.2
+        self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 15.
+        self.max_goal_distance = 8.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
         self.nid = 0
         self.robot = Agent(node_id=self.nid, node_type='robot')
-        self.nid+=1
-
-        self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal', time_step=self.time_step)
-        self.nid += 1
-
-        # robot policy
         self.robot.update_states(p=(0., 0.),
                                  q=(1., 0., 0., 0.),
                                  r=0,
                                  ) 
         self.robot.update_goal([self.goal_x, self.goal_y]) 
+        self.nid+=1
+
+        self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal', time_step=self.time_step)
+        self.robot_goal.update_states(p=(self.goal_x, self.goal_y),
+                                         q=(1., 0., 0., 0.),
+                                         r=0,
+                                         ) 
+        self.nid += 1
+
+        # robot policy
+
         self.robot_policy = ORCA(self.time_step)
 
         try:

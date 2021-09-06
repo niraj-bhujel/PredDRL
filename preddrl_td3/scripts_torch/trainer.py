@@ -231,8 +231,8 @@ class Trainer:
                 if self._verbose>1:
                     print("Robot position after reset:", [self._env.position.x, self._env.position.z])
 
-                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f} FPS: {4:5.2f}".format(
-                        n_episode, total_steps, episode_steps, episode_return, fps))
+                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f}, Sucess Rate:{:.2f}, FPS: {4:5.2f}".format(
+                        n_episode, total_steps, episode_steps, episode_return, success_rate, fps))
 
                 episode_steps = 0
                 episode_return = 0
