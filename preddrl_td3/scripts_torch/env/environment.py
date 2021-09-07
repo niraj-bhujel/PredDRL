@@ -44,7 +44,7 @@ class Env:
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
 
-        # self.position = Point()
+        self.inital_pos = Point(7.5, 6.5, 0.)
         
         self.num_beams = 20  # 激光数
 
@@ -71,7 +71,7 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 15.
+        self.max_goal_distance = 20.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
@@ -364,7 +364,7 @@ class Env:
         state, collision, reaching_goal, too_far = self.getState(action)
 
         if self.graph_state:
-            graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
+            graph_state, _, _, _ = self.getGraphState(action)
             state = (state, graph_state)
 
         done=False
@@ -427,20 +427,20 @@ class Env:
         # reset scan as well
         # self.scan = None
 
-        try:
-            rospy.wait_for_service('gazebo/reset_simulation')
-            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-            reset_proxy()
+        # try:
+        #     rospy.wait_for_service('gazebo/reset_simulation')
+        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+        #     reset_proxy()
             
-            rospy.loginfo('Env Reset')
+        #     rospy.loginfo('Env Reset')
 
-        except (rospy.ServiceException) as e:
-            rospy.loginfo("gazebo/reset_simulation service call failed")
+        # except (rospy.ServiceException) as e:
+        #     rospy.loginfo("gazebo/reset_simulation service call failed")
 
         # reset robot pose and randomly set the orientation
         tmp_state = ModelState()
         tmp_state.model_name = "turtlebot3_burger"
-        tmp_state.pose = Pose(Point(0., 0., 0), 
+        tmp_state.pose = Pose(self.inital_pos, 
                               euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
                               )
         tmp_state.reference_frame = "world"

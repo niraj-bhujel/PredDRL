@@ -241,7 +241,6 @@ if __name__ == '__main__':
 
     while True:
 
-
         try:
 
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
@@ -299,7 +298,7 @@ if __name__ == '__main__':
                 t += 1
 
             # rospy.sleep(1/ros_rate) # this doen't work well in python2
-            r.sleep() # turn of use_sim_time if r.sleep() doesn't work
+            # r.sleep() # turn of use_sim_time if r.sleep() doesn't work
             
         except KeyboardInterrupt:
             print('Closing down .. ')

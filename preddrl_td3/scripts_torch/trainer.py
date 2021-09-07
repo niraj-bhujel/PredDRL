@@ -301,6 +301,7 @@ class Trainer:
                 print('Time per step:', self._env.timer.diff)
 
         self.writer.close()
+        save_ckpt(self._policy, self._output_dir, total_steps)
 
     def evaluate_policy_continuously(self):
         """
