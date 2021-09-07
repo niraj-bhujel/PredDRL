@@ -205,7 +205,7 @@ class Trainer:
                 network_draw(obs[1],
                              show_node_label=True, node_labels=['pos'],
                              show_edge_labels=True, edge_labels=['dist'],
-                             show_legend=False,
+                             show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
@@ -301,6 +301,7 @@ class Trainer:
                 print('Time per step:', self._env.timer.diff)
 
         self.writer.close()
+        save_ckpt(self._policy, self._output_dir, total_steps)
 
     def evaluate_policy_continuously(self):
         """

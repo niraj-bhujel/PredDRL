@@ -298,8 +298,8 @@ if __name__ == '__main__':
             else:
                 t += 1
 
-            # rospy.sleep(1/ros_rate) # this doen't work well in python2
-            r.sleep() # turn of use_sim_time if r.sleep() doesn't work
+            rospy.sleep(0.5) # this doen't work well in python2
+            # r.sleep() # turn of use_sim_time if r.sleep() doesn't work
             
         except KeyboardInterrupt:
             print('Closing down .. ')

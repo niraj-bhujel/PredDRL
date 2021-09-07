@@ -18,10 +18,13 @@ from gazebo_msgs.srv import SetModelState
 
 from .respawnGoal import Respawn
 from .env_utils import *
+from .ped_data import prepare_data
+
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
 from policy.orca import ORCA
+
 
 SelfD=0.175
 SelfL=0.23
@@ -44,7 +47,7 @@ class Env:
         self.goal_threshold = 0.3
         self.collision_threshold = 0.15
 
-        # self.position = Point()
+        self.inital_pos = Point(7.5, 6.5, 0.)
         
         self.num_beams = 20  # 激光数
 
@@ -87,6 +90,8 @@ class Env:
 
         self.obstacles = dict()
         self.pedestrians = dict()
+        # if stage==7:
+        #     self.pedestrians = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', target_frame_rate=int(1/self.time_step))
 
     def setScan(self, scan):
         self.scan = scan
@@ -137,8 +142,8 @@ class Env:
                 action = self.xy_to_vw(action)
         else:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
-            action, _ = self.robot_policy.predict(self.robot, 
-                                                       obstacle_pos=obstacle_pos)
+            action, _ = self.robot_policy.predict(self.robot, humans=list(self.pedestrians.values()),
+                                                obstacle_pos=obstacle_pos)
             print('orca vel:', action)
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
@@ -259,6 +264,8 @@ class Env:
             
         return ped_dict
 
+
+
     def update_agents(self, action=(0.0, 0.0)):
 
         try:
@@ -340,7 +347,6 @@ class Env:
                 collision=True
                 break
 
-
         goal_distance = self.getGoalDistance()
         reaching_goal = goal_distance< self.goal_threshold
         too_far = goal_distance > self.max_goal_distance
@@ -364,7 +370,7 @@ class Env:
         state, collision, reaching_goal, too_far = self.getState(action)
 
         if self.graph_state:
-            graph_state, collision, reaching_goal, too_far = self.getGraphState(action)
+            graph_state, _, _, _ = self.getGraphState(action)
             state = (state, graph_state)
 
         done=False
@@ -427,20 +433,20 @@ class Env:
         # reset scan as well
         # self.scan = None
 
-        try:
-            rospy.wait_for_service('gazebo/reset_simulation')
-            reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-            reset_proxy()
+        # try:
+        #     rospy.wait_for_service('gazebo/reset_simulation')
+        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
+        #     reset_proxy()
             
-            rospy.loginfo('Env Reset')
+        #     rospy.loginfo('Env Reset')
 
-        except (rospy.ServiceException) as e:
-            rospy.loginfo("gazebo/reset_simulation service call failed")
+        # except (rospy.ServiceException) as e:
+        #     rospy.loginfo("gazebo/reset_simulation service call failed")
 
         # reset robot pose and randomly set the orientation
         tmp_state = ModelState()
         tmp_state.model_name = "turtlebot3_burger"
-        tmp_state.pose = Pose(Point(0., 0., 0), 
+        tmp_state.pose = Pose(self.inital_pos, 
                               euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
                               )
         tmp_state.reference_frame = "world"
