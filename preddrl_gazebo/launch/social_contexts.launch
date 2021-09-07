@@ -14,9 +14,8 @@
          </include>
          
          <!-- this node spawn preddrl actors to gazebo once, then updates their pose -->  
-         <!--
          <node pkg="preddrl_tracker" type="pedestrian_state_publisher.py" name="pedestrian_state_publisher"  output="screen" args="$(find preddrl_tracker)/data"/>
-         -->
+         
          <param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
          <node pkg="turtlebot3_dqn"  type="odomtopath" name="odomtopath" output="screen" />
          <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model turtlebot3_burger -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -param robot_description" />

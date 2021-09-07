@@ -80,7 +80,7 @@ class Trainer:
                         # 'seed_%d'%args.seed,
                         'stage_%d'%args.stage,
                         'episode_step%d'%args.episode_max_steps,
-                        '_sampling_%s'%args.sampling_method,
+                        'sampling_%s'%args.sampling_method,
                         ])
 
         if self._use_prioritized_rb:
@@ -205,7 +205,7 @@ class Trainer:
                 network_draw(obs[1],
                              show_node_label=True, node_labels=['pos'],
                              show_edge_labels=True, edge_labels=['dist'],
-                             show_legend=True,
+                             show_legend=False,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 

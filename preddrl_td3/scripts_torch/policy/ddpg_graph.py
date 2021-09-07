@@ -46,13 +46,11 @@ class Actor(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        # self.relu = nn.ReLU()
-
     def forward(self, state):
         state, g = state
 
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
-        e = torch.cat([1/g.edata[s] for s in self.input_edges], dim=-1)
+        e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
         g, h, e = self.net(g, h, e)
         h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
@@ -61,13 +59,8 @@ class Actor(nn.Module):
         h = F.relu(self.l1(h))
         h = F.relu(self.l2(h))
 
-        # h = self.l3(h)
         h = self.max_action*torch.tanh(self.l3(h))
 
-        # v = F.relu(self.l3(h))
-        # w = self.l4(h)
-        # w = self.max_action*torch.tanh(self.l4(h))
-        # h = torch.cat([v, w], -1)
         return h
 
 class Critic(nn.Module):
@@ -99,7 +92,7 @@ class Critic(nn.Module):
         state, g = state
 
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
-        e = torch.cat([1/g.edata[s] for s in self.input_edges], dim=-1)
+        e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         
         g, h, _ = self.net(g, h, e)
         h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)

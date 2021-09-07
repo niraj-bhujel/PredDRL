@@ -120,7 +120,7 @@ def _gradient(x, dt=0.4, axis=0):
     
     return g
 
-def prepare_data(data_path, target_frame_rate=25, max_peds=100):
+def prepare_data(data_path, target_frame_rate=25, max_peds=20):
     print('Preparing data .. ')
     target_frame_rate =  min(target_frame_rate, 25)
     

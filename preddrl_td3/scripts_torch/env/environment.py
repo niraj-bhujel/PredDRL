@@ -17,7 +17,7 @@ from gazebo_msgs.msg import ModelStates, ModelState
 from gazebo_msgs.srv import SetModelState
 
 from .respawnGoal import Respawn
-from .env_utils import euler_from_quaternion, euler_to_quaternion
+from .env_utils import *
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
@@ -250,8 +250,9 @@ class Env:
             else:
                 action = (math.hypot(twist.linear.x, twist.linear.y), twist.angular.z)
 
+            node.update_states(pose.position.x, pose.position.y, 0., 0., theta=yaw)
             gx, gy = node.cv_prediction(time_step=node.time_step)[-1]
-            node.update_states(pose.position.x, pose.position.y, gx, gy, theta=yaw)
+            node.update_goal(gx, gy)
             node.update_action(action)
 
             ped_dict[m_name] = node
@@ -401,7 +402,7 @@ class Env:
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)
-            self.robot.update_goal((self.goal_x, self.goal_y))
+            self.robot.update_goal(self.goal_x, self.goal_y)
 
         if done:
             # self.pub_cmd_vel.publish(Twist())
