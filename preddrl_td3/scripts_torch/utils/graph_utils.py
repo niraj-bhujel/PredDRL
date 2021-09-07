@@ -63,10 +63,10 @@ def n1_has_n2_in_sight(n1, n2, fov=57):
     Check if node2 is in the field of node
     https://stackoverflow.com/questions/22542821/how-to-calculate-if-something-lies-in-someones-field-of-vision
     '''
-    alpha = math.atan2(n1._pos[1], n1._pos[0])
+    alpha = math.atan2(n1.pos[1], n1.pos[0])
     
     # angle betwen node
-    d = (n1._pos[0] - n2._pos[0], n1._pos[1] - n2._pos[1])
+    d = (n1.pos[0] - n2.pos[0], n1.pos[1] - n2.pos[1])
     beta = math.atan2(d[1], d[0])
     
     angle = beta - alpha
@@ -94,11 +94,11 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         for j, dst_node in enumerate(nodes):
             
             try:
-                rad = interaction_direction[src_node._type, dst_node._type]
+                rad = interaction_direction[src_node.type, dst_node.type]
             except Exception:
                 continue
             
-            diff = np.array(src_node._pos) - np.array(dst_node._pos)
+            diff = np.array(src_node.pos) - np.array(dst_node.pos)
 
             dist = np.linalg.norm(diff, keepdims=True)
 
@@ -127,8 +127,8 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     for n in valid_nodes:
         node = nodes[n]
 
-        nodes_data['pos'].append(node._pos)
-        nodes_data['rel'].append([node._pos[0]-ref_pos[0], node._pos[1]-ref_pos[1]])
+        nodes_data['pos'].append(node.pos)
+        nodes_data['rel'].append([node.pos[0]-ref_pos[0], node.pos[1]-ref_pos[1]])
 
         # nodes_data['vel'].append(node._vel)
         # nodes_data['acc'].append(node._acc)
@@ -136,15 +136,15 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         # nodes_data['rot'].append(node._rot[])
         # nodes_data['yaw'].append(node._yaw)
 
-        nodes_data['hed'].append(node.heading())
-        nodes_data['action'].append(node._action)
-        nodes_data['goal'].append(node._goal)
+        nodes_data['hed'].append(node.heading)
+        nodes_data['action'].append(node.action)
+        nodes_data['goal'].append(node.goal)
         # nodes_data['gdist'].append(node.distance_to_goal)
         
         # nodes_data['time_step'].append(node.time_step)
 
-        nodes_data['tid'].append(node._id)
-        nodes_data['cid'].append(node_type_list.index(node._type))
+        nodes_data['tid'].append(node.id)
+        nodes_data['cid'].append(node_type_list.index(node.type))
 
 
     # Construct the DGL graph
@@ -225,15 +225,15 @@ def create_st_graph(nodes, seq_len=2, interaction_radius=5):
             nodes_data['states'] = np.concatenate(nodes[i].states_at(-1), axis=-1) # (13, )
             
             nodes_data['ntx'].append(t)
-            nodes_data['tid'].append(nodes[i]._id)
-            nodes_data['cid'].append(node_type_list.index(nodes[i]._type))
+            nodes_data['tid'].append(nodes[i].id)
+            nodes_data['cid'].append(node_type_list.index(nodes[i].type))
             
             # spatial edges
             for j in range(i+1, len(nodes)):
 
                 # use last pos
                 if t==0:
-                    diff = nodes[i]._pos[-1] - nodes[j]._pos[-1]
+                    diff = nodes[i].pos[-1] - nodes[j].pos[-1]
                 # use predicted pos
                 else:
                     diff = nodes[i]._preds[t-1] - nodes[j]._preds[t-1]

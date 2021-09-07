@@ -113,41 +113,41 @@ class ORCA(object):
                                            self.radius, 
                                            self.max_speed)
 
-            self.sim.addAgent(self_state._pos, 
+            self.sim.addAgent(self_state.pos, 
                               self.neighbor_dist, 
                               self.max_neighbors, 
                               self.time_horizon, 
                               self.time_horizon_obst,
-                              self_state._radius + 0.01 + self.safety_space,
-                              self_state._vpref, 
-                              self_state._vel)
+                              self_state.radius + 0.01 + self.safety_space,
+                              self_state.vpref, 
+                              self_state.vel)
             
             if len(humans)>0:
                 for human_state in humans:
-                    self.sim.addAgent(human_state._pos, 
+                    self.sim.addAgent(human_state.pos, 
                                       self.neighbor_dist, 
                                       self.max_neighbors, 
                                       self.time_horizon, 
                                       self.time_horizon_obst,
-                                      human_state._radius + 0.01 + self.safety_space,
+                                      human_state.radius + 0.01 + self.safety_space,
                                       self.max_speed, 
-                                      human_state._vel)
+                                      human_state.vel)
             if len(obstacle_pos)>0:
                 self.sim.addObstacle(obstacle_pos)
                 self.sim.processObstacles()
 
         else:
-            self.sim.setAgentPosition(0, self_state._pos)
-            self.sim.setAgentVelocity(0, self_state._vel)
+            self.sim.setAgentPosition(0, self_state.pos)
+            self.sim.setAgentVelocity(0, self_state.vel)
             # self.sim.setAgentVelocity(0, (0.4, 0.4))
 
             if len(humans)>0:
                 for i, human_state in enumerate(humans):
-                    self.sim.setAgentPosition(i + 1, human_state._pos)
-                    self.sim.setAgentVelocity(i + 1, human_state._vel)
+                    self.sim.setAgentPosition(i + 1, human_state.pos)
+                    self.sim.setAgentVelocity(i + 1, human_state.vel)
 
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.
-        velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
+        velocity = np.array((self_state.gx - self_state.px, self_state.gy - self_state.py))
         speed = np.linalg.norm(velocity)
         pref_vel = velocity / speed if speed > 1 else velocity
         # Perturb a little to avoid deadlocks due to perfect symmetry.
@@ -169,8 +169,8 @@ class ORCA(object):
         action = self.sim.getAgentVelocity(0)
         position = self.sim.getAgentPosition(0)
         
-        # self_state._pos = position
-        # self_state._vel = action
+        # self_state.pos = position
+        # self_state.vel = action
 
         return action, position
     

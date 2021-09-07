@@ -19,118 +19,113 @@ def euler_from_quaternion(orientation_list):
 
 
 class Agent(object):
-    def __init__(self, node_id=0, node_type='robot', time_step=0.1):
+    def __init__(self, node_id=0, node_type='robot', time_step=0.1, vpref=0.4, radius=0.2):
         # self.data = data
 
-        self._id = int(node_id)
-        self._type = node_type
-        self._time_step = time_step
-        
-        self._radius = 0.4
-        self._vpref = 0.4
+        self.id = node_id
+        self.type = node_type
+        self.time_step = time_step
+        self.radius = radius
+        self.vpref = vpref
 
-        self._pos = None
-        self._vel = None
-        self._acc = None
+        self.px = None
+        self.py = None
 
-        self._quat = None
-        self._rot = None
-        
-        self._yaw = None
+        self.gx = None
+        self.gy = None
 
-        self._goal = [0., 0.]
-        self._action = [0., 0.]
+        self.vx = None
+        self.vy = None
 
-        self._time_stamp = None
+        self.theta = None
+        self.action = (0., 0.)
 
     def __len__(self):
         return len(self._pos)
-    
+
     def update_action(self, action):
-        self._action = action
+        self.action = action
 
-    def update_goal(self, goal):
-        self._goal = goal
-
-    def update_heading(self, heading):
-        self._heading = heading
+    def update_goal(self, gx, gy):
+        self.gx = gx
+        self.gy = gy
         
-    def update_states(self, p, q, r):
-        '''
-        p: position, could be (x, y) or (x, y, z)
-        v: linear velocity, (vx, vy) or (vx, vy, vz)
-        q: quaternion (w, x, y, z)
-        r: angular z velocity
+    def update_states(self, px, py, gx, gy, theta):
 
-        '''
+        if self.px is not None:
+            vx = (px - self.px)/self.time_step
+            vy = (py - self.py)/self.time_step
 
-        if self._pos is not None:
-            vx = (p[0] - self._pos[0])/self._time_step
-            vy = (p[1] - self._pos[1])/self._time_step
-
-            ax = (vx - self._vel[0])/self._time_step
-            ay = (vy - self._vel[1])/self._time_step
-
-            v = (vx, vy)
-            a = (ax, ay)
+            ax = (vx - self.vx)/self.time_step
+            ay = (vy - self.vy)/self.time_step
 
         else:
-            v = (0., 0.)
-            a = (0., 0.)
+            vx, vy = 0., 0.
+            ax, ay = 0., 0.
 
-        self._pos = p
+        self.px = px
+        self.py = py
 
-        self._vel = v
-        self._acc = a
+        self.vx = vx
+        self.vy = vy
 
-        self._quat = q
-        self._rot = r
+        self.ax = ax
+        self.ay = ay
+
+        self.gx = gx
+        self.gy = gy
         
-        self._yaw = euler_from_quaternion(q)[-1]
+        self._theta = theta
 
         self._time_stamp = time.time()
 
     def cv_prediction(self, pred_steps=4, time_step=0.5):
 
         preds = []
-        x, y = self._pos
-        vx, vy = self._vel
-        ax, ay = self._acc
         sec_from_now = pred_steps * time_step
         for time in np.arange(time_step, sec_from_now + time_step, time_step):
             half_time_squared = 0.5 * time * time
-            preds.append([x + time * vx + half_time_squared * ax,
-                          y + time * vy + half_time_squared * ay])
+            preds.append([self.px + time * self.vx + half_time_squared * self.ax,
+                          self.py + time * self.vy + half_time_squared * self.ay])
         return preds
     
 
     def compute_position(self, action):
 
-        theta = self._rot + action[1]
+        theta = self._theta + action[1]
         px, py = self._pos
         px = px + np.cos(theta) * action[0] * self.time_step
         py = py + np.sin(theta) * action[0] * self.time_step
 
         return px, py
 
-    @property
-    def distance_to_goal(self,):
-        return round(math.hypot(self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]), 2)
 
-    @property
-    def preferred_vel(self,):
-        velocity = np.array((self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]))
-        pref_vel = self._vpref * velocity / np.linalg.norm(velocity)
+    def distance_to_goal(self,):
+        return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
+
+    def preferred_vel(self, v_pref=0.4):
+        velocity = np.array((self.gx - self.px, self.gy - self.py))
+        pref_vel = v_pref * velocity / np.linalg.norm(velocity)
         return pref_vel
 
+    @property
+    def pos(self, ):
+        return (self.px, self.py)
+
+    @property
+    def vel(self, ):
+        return (self.vx, self.vy)
+
+    @property
+    def goal(self, ):
+        return (self.gx, self.gy)
+
+    @property
     def heading(self, ):
         
-        inc_y = self._goal[1] - self._pos[1]
-        inc_x = self._goal[0] - self._pos[0]
-        goal_angle = math.atan2(inc_y, inc_x)
+        goal_angle = math.atan2(self.gy - self.py, self.gx-self.px)
 
-        # yaw = euler_from_quaternion(self._quat)
-        heading = goal_angle - self._yaw
+        heading = goal_angle - self._theta
 
         if heading > np.pi:
             heading -= 2 * np.pi
@@ -139,15 +134,3 @@ class Agent(object):
             heading += 2 * np.pi
 
         return round(heading, 2)
-
-    @property
-    def time_step(self):
-        return self._time_step
-
-    @property
-    def id(self):
-        return self._id
-
-    @property
-    def goal(self):
-        return self._goal

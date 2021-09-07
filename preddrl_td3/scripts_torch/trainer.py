@@ -195,10 +195,10 @@ class Trainer:
                 #                                                                                           self._env.goal_x, self._env.goal_y,
                 #                                                                                           self._env.getGoalDistance()))
 
-                print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot._pos, 2).tolist(),
-                                                    np.round(self._env.robot._vel, 2).tolist(), 
-                                                    np.round(self._env.robot._goal, 2).tolist(),
-                                                    self._env.robot.distance_to_goal))              
+                print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
+                                                    np.round(self._env.robot.vel, 2).tolist(), 
+                                                    np.round(self._env.robot.goal, 2).tolist(),
+                                                    self._env.robot.distance_to_goal()))              
             
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
