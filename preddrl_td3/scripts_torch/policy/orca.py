@@ -154,8 +154,8 @@ class ORCA(object):
         # perturb_vel = np.array((np.cos(perturb_angle), np.sin(perturb_angle))) * perturb_dist
         # pref_vel += perturb_vel
 
-        # self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
-        self.sim.setAgentPrefVelocity(0, tuple(self_state.preferred_vel))
+        self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
+        # self.sim.setAgentPrefVelocity(0, tuple(self_state.preferred_vel))
         
         if len(humans)>0:
             for i, human_state in enumerate(humans):

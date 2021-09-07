@@ -40,13 +40,17 @@ for step in range(20):
     sim.doStep()
 
     # positions = ['(%5.3f, %5.3f)' % sim.getAgentPosition(agent_no) for agent_no in (a0, a1, a2, a3)]
-    positions = ['(%5.3f, %5.3f)' % sim.getAgentPosition(a3)]
-    print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '  '.join(positions)))
+    
+    position = sim.getAgentPosition(a3)
+    # print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '(%5.3f, %5.3f)'%position))
 
-    # veolocity = ['(%5.3f, %5.3f)' % sim.getAgentVelocity(a3)]
-    # print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '  '.join(veolocity)))
+    velocity = sim.getAgentVelocity(a3)
+    print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '(%5.3f, %5.3f)'%velocity))
+    
+    # sim.setAgentPosition(a3, position)
+    # sim.setAgentVelocity(a3, velocity)
 
-#%%
+#%% compare with previous cell
 from preddrl_td3.scripts_torch.utils.agent import Agent
 from preddrl_td3.scripts_torch.policy.orca import ORCA
 
@@ -57,14 +61,19 @@ robot._radius = 0.4
 robot._vpref = 2.
 robot._vel = (0., 0.)
 
-robot.update_goal([0.5, 2.])
 robot_policy = ORCA()
-robot_policy.configure({'time_step':1/60, 'neighbor_dist':1.5, 'max_neighbors':5, 'time_horizon':1.5, 'time_horizon_obst':2, 'radius':0.4, 'max_speed':2})
+robot_policy.configure({'time_step':1/60, 
+                        'neighbor_dist':1.5, 
+                        'max_neighbors':5, 
+                        'time_horizon':1.5, 
+                        'time_horizon_obst':2, 
+                        'radius':0.4, 
+                        'max_speed':2})
 
 obstacle_pos = [(0.1, 0.1), (-0.1, 0.1), (-0.1, -0.1)]
 
 for step in range(20):
-    action, pos, pref_vel = robot_policy.predict(robot, obstacle_pos=obstacle_pos)
+    action, pos = robot_policy.predict(robot, obstacle_pos=obstacle_pos)
     
     robot._pos = pos
     robot._vel = action

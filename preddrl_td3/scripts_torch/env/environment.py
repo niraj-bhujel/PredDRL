@@ -300,7 +300,6 @@ class Env:
 
     def getGraphState(self, action=[0.0, 0.0]):
 
-
         graph_nodes = [self.robot, self.robot_goal] + list(self.static_obstacles.values()) + list(self.pedestrians.values())
 
         state = create_graph(graph_nodes, self.robot._pos)
@@ -322,12 +321,7 @@ class Env:
         return state, collision, reaching_goal, too_far
 
     def getState(self, action=[0., 0.]):
-        scan_range_collision = []
-        try:
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
-        except rospy.ROSException:
-            rospy.logerr('ModelStates timeout')
-            raise ValueError 
+        
 
         scan = None
         while scan is None:
@@ -342,7 +336,8 @@ class Env:
         #     if not scan:
         #         # rospy.loginfo('scan is none!!')
         #         continue
-
+        
+        scan_range_collision = []
         for i in range(len(scan.ranges)):
             if scan.ranges[i] == float('Inf'):
                 scan_range_collision.append(3.5)
@@ -373,7 +368,6 @@ class Env:
         too_far = goal_distance > self.max_goal_distance
 
         state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
-        # state = scan_range_collision
 
         return state, collision, reaching_goal, too_far
 
