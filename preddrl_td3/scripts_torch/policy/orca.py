@@ -97,8 +97,9 @@ class ORCA(object):
         """
         # self_state = state.self_state
         # params = self.neighbor_dist, self.max_neighbors, self.time_horizon, self.time_horizon_obst
-        
+        # print([tuple(np.round(pos, 2)) for pos in obstacle_pos])
         if self.sim is not None:
+            
             if self.sim.getNumAgents() != len(humans) + 1:
                 del self.sim
                 self.sim = None
@@ -138,6 +139,7 @@ class ORCA(object):
         else:
             self.sim.setAgentPosition(0, self_state._pos)
             self.sim.setAgentVelocity(0, self_state._vel)
+            # self.sim.setAgentVelocity(0, (0.4, 0.4))
 
             if len(humans)>0:
                 for i, human_state in enumerate(humans):
@@ -145,17 +147,17 @@ class ORCA(object):
                     self.sim.setAgentVelocity(i + 1, human_state._vel)
 
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.
-        # velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
-        # speed = np.linalg.norm(velocity)
-        # pref_vel = velocity / speed if speed > 1 else velocity
+        velocity = np.array((self_state._goal[0] - self_state._pos[0], self_state._goal[1] - self_state._pos[1]))
+        speed = np.linalg.norm(velocity)
+        pref_vel = velocity / speed if speed > 1 else velocity
         # Perturb a little to avoid deadlocks due to perfect symmetry.
         # perturb_angle = np.random.random() * 2 * np.pi
         # perturb_dist = np.random.random() * 0.01
         # perturb_vel = np.array((np.cos(perturb_angle), np.sin(perturb_angle))) * perturb_dist
         # pref_vel += perturb_vel
 
-        self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
-        # self.sim.setAgentPrefVelocity(0, tuple(self_state.preferred_vel))
+        # self.sim.setAgentPrefVelocity(0, (1, -1)) # use this during testing
+        self.sim.setAgentPrefVelocity(0, tuple(pref_vel))
         
         if len(humans)>0:
             for i, human_state in enumerate(humans):
@@ -169,7 +171,6 @@ class ORCA(object):
         
         # self_state._pos = position
         # self_state._vel = action
-        # self.last_state = state
 
         return action, position
     

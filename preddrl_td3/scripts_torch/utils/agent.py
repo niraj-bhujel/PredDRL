@@ -79,6 +79,7 @@ class Agent(object):
             a = (0., 0.)
 
         self._pos = p
+
         self._vel = v
         self._acc = a
 
@@ -118,9 +119,8 @@ class Agent(object):
 
     @property
     def preferred_vel(self,):
-        velocity = (self._goal[0] - self._pos[0], self._goal[1] - self._pos[1])
-        speed = np.linalg.norm(velocity)
-        pref_vel = velocity / speed if speed > 1 else velocity
+        velocity = np.array((self._goal[0] - self._pos[0], self._goal[1] - self._pos[1]))
+        pref_vel = self._vpref * velocity / np.linalg.norm(velocity)
         return pref_vel
 
     def heading(self, ):

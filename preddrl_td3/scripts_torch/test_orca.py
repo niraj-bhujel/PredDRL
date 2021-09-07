@@ -88,22 +88,18 @@ from preddrl_td3.scripts_torch.policy.orca import ORCA
 robot = Agent()
 
 robot._pos = (0., 0.)
-robot._radius = 0.4
-robot._vpref = 2.
 robot._vel = (0., 0.)
+robot.update_goal((0., 1.))
+robot_policy = ORCA(time_step=0.25)
 
-robot.update_goal([1.2, 1.2])
-robot_policy = ORCA()
-robot_policy.configure({'time_step':0.1, 'neighbor_dist':1.5, 'max_neighbors':5, 'time_horizon':1.5, 'time_horizon_obst':2, 'radius':0.4, 'max_speed':2})
-
-obstacle_pos = [(1, 1), (-1, 1), (-1, -1), (1, -1)]
+obstacle_pos = [(-1.0, -1.0), (-1.0, 1.0), (1.0, -1.0), (1.0, 1.0), (-2.5, -2.5), (-2.5, 2.5), (2.5, -2.5), (2.5, 2.5), (-5.0, -5.0), (-5.0, 5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 0.0), (5.0, 0.0), (-0.0, -5.0), (-0.0, 5.0)]
 
 for step in range(10):
-    action, pos, pref_vel = robot_policy.predict(robot, obstacle_pos=obstacle_pos)
+    action, pos = robot_policy.predict(robot, obstacle_pos=obstacle_pos)
     
-    robot._pos = pos
-    robot._vel = action
+    # robot._pos = pos
+    # robot._vel = action
     
     print('Act: (%5.3f, %5.3f)'%action)
-    print('Pos: (%5.3f, %5.3f)'%pos)
+    # print('Pos: (%5.3f, %5.3f)'%pos)
     
