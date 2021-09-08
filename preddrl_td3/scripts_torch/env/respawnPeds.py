@@ -42,10 +42,11 @@ class RespawnPedestrians:
         self.set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
 
         self.frames, self.peds_per_frame, self.pedestrians = prepare_data(ped_data_path, frame_rate, num_peds)
-
+        print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.frames)))
+        
         self.spawnned_ped_list = []
         
-    def respawn(self, t, model_states=None):
+    def respawn(self, t, model_states=None, verbose=0):
 
         if t>len(self.frames):
             t = t%len(self.frames)
@@ -53,7 +54,7 @@ class RespawnPedestrians:
         if model_states is None:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
 
-        print(model_states.name)
+        # print(model_states.name)
         # print(self.spawnned_ped_list)
         for ped in self.pedestrians:
             
@@ -66,13 +67,17 @@ class RespawnPedestrians:
                                   Quaternion(w=q[0], x=q[1], y=q[2], z=q[3]))
                     
                 if model_name not in model_states.name:
-                    rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
+                    if verbose>1:
+                        rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
+
                     self.spawn_model(model_name, self.xml_string, "", model_pose, "world")
                     
                     self.spawnned_ped_list.append(model_name)
                     
                 else:
-                    rospy.loginfo("[Frame-%d] Updating %s"%(t, model_name))
+                    if verbose>1:
+                        rospy.loginfo("[Frame-%d] Updating %s"%(t, model_name))
+                    
                     tmp_state = ModelState()
                     tmp_state.model_name = model_name
                     tmp_state.pose = model_pose
@@ -81,7 +86,8 @@ class RespawnPedestrians:
                     self.set_model_state(tmp_state)
 
             elif model_name in model_states.name:
-                rospy.loginfo("[Frame-%d] Deleting %s"%(t, model_name))
+                if verbose>1:
+                    rospy.loginfo("[Frame-%d] Deleting %s"%(t, model_name))
                 self.delete_model(model_name)
                 if model_name in self.spawnned_ped_list:
                     self.spawnned_ped_list.remove(model_name)

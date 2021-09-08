@@ -122,7 +122,7 @@ def _gradient(x, dt=0.4, axis=0):
     return g
 
 def prepare_data(data_path, target_frame_rate=25, max_peds=20):
-    print('Preparing data .. ')
+    
     target_frame_rate =  np.clip(2.5, target_frame_rate, 25)
     
     data = np.loadtxt(data_path).round(2)

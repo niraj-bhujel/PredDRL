@@ -95,7 +95,7 @@ class Env:
         self.global_step = 0
 
         if stage==7:
-            self.respawn_pedestrian = RespawnPedestrians('./preddrl_tracker/data/crowds_zara01.txt', 
+            self.respawn_pedestrian = RespawnPedestrians('./preddrl_tracker/data/students003.txt', 
                                                          frame_rate=int(1/self.time_step), 
                                                          num_peds=10)
 

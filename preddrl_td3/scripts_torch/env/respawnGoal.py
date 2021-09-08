@@ -284,7 +284,7 @@ class Respawn():
 
         elif self.stage == 7:
             # social context
-            data_stat = {'x_min': -0.358, 'x_max': 15.558, 'y_min': -0.274, 'y_max': 13.943}
+            data_stat = {'x_min': 5., 'x_max': 10, 'y_min': 5, 'y_max': 10}
             x = random.uniform(data_stat['x_min'], data_stat['x_max'])
             y = random.uniform(data_stat['y_min'], data_stat['y_max'])
             self.goal_position.position.x = x
