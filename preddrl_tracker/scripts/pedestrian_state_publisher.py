@@ -7,14 +7,13 @@ This is equivalen to tracker that publish the current position of the agents onl
 
 import os
 import sys
-sys.path.append('./')
+if not './' in sys.path:
+    sys.path.insert(0, './')
 
 import math
 import numpy as np
 
 from scipy.interpolate import interp1d
-
-from node import Node
 
 import rospy
 
@@ -27,6 +26,8 @@ from gazebo_msgs.msg import ModelStates, ModelState
 from rospkg import RosPack
 
 from preddrl_msgs.msg import AgentStates, AgentState
+
+from .node import Node
 
         
 def angleToQuaternion(theta, angles=True):
@@ -122,7 +123,7 @@ def _gradient(x, dt=0.4, axis=0):
 
 def prepare_data(data_path, target_frame_rate=25, max_peds=20):
     print('Preparing data .. ')
-    target_frame_rate =  min(target_frame_rate, 25)
+    target_frame_rate =  np.clip(2.5, target_frame_rate, 25)
     
     data = np.loadtxt(data_path).round(2)
 
@@ -193,6 +194,7 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         
     return ped_frames, peds_per_frame, ped_nodes
 
+
 #%%
 if __name__ == '__main__':
     
@@ -240,7 +242,6 @@ if __name__ == '__main__':
     actors_id_list = []
 
     while True:
-
 
         try:
 
@@ -299,6 +300,7 @@ if __name__ == '__main__':
                 t += 1
 
             rospy.sleep(0.5) # this doen't work well in python2
+            # rospy.sleep(1/ros_rate) # this doen't work well in python2
             # r.sleep() # turn of use_sim_time if r.sleep() doesn't work
             
         except KeyboardInterrupt:

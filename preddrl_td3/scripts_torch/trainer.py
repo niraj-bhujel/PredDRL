@@ -432,8 +432,8 @@ class Trainer:
 #%%
 if __name__ == '__main__':
     import sys
-    sys.path.insert(0, './')
-    sys.path.insert(0, './preddrl_td3/scripts_torch')
+    # sys.path.insert(0, './')
+    # sys.path.insert(0, './preddrl_td3/scripts_torch')
 
     import args
     import yaml

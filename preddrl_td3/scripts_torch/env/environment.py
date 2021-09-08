@@ -17,8 +17,8 @@ from gazebo_msgs.msg import ModelStates, ModelState
 from gazebo_msgs.srv import SetModelState
 
 from .respawnGoal import Respawn
+from .respawnPeds import RespawnPedestrians
 from .env_utils import *
-from .ped_data import prepare_data
 
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
@@ -69,12 +69,13 @@ class Env:
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
+
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 15.
+        self.max_goal_distance = 20.
         self.last_goal_distance = 0.
 
         # keep track of nodes and their id, added by niraj
@@ -90,8 +91,13 @@ class Env:
 
         self.obstacles = dict()
         self.pedestrians = dict()
-        # if stage==7:
-        #     self.pedestrians = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', target_frame_rate=int(1/self.time_step))
+
+        self.global_step = 0
+
+        if stage==7:
+            self.respawn_pedestrian = RespawnPedestrians('./preddrl_tracker/data/crowds_zara01.txt', 
+                                                         frame_rate=int(1/self.time_step), 
+                                                         num_peds=10)
 
     def setScan(self, scan):
         self.scan = scan
@@ -242,7 +248,7 @@ class Env:
             pose = model_states.pose[i]
             twist = model_states.twist[i]
 
-            if m_name in ped_dict:
+            if m_name in ped_dict.keys():
                 node = ped_dict[m_name]
             else:
                 node = Agent(node_id=self.nid, node_type='pedestrian', time_step=self.time_step)
@@ -281,6 +287,8 @@ class Env:
 
         # update obstacle and pedestrians
         self.obstacles = self.updateObstaclesStates(model_states, self.obstacles)
+
+        self.respawn_pedestrian.respawn(self.global_step, model_states)
         self.pedestrians = self.updatePedestriansStates(model_states, self.pedestrians)
 
     def getGraphState(self, action=[0.0, 0.0]):
@@ -414,6 +422,7 @@ class Env:
             # self.pub_cmd_vel.publish(Twist())
             self.reset()
 
+        self.global_step+=1
         return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
