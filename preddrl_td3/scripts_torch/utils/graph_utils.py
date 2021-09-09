@@ -38,6 +38,8 @@ state_dims = {
         "dist": 1,
         "action": 2,
         "goal": 2,
+        "current_states":7,
+        "future_states": 2*4, # 4 is future steps
     }
 
 def min_neighbor_distance(g, node, mask_nodes=[]):
@@ -56,7 +58,7 @@ def min_neighbor_distance(g, node, mask_nodes=[]):
         return g.edata['dist'][node_neibhbors_eids].min()
     else:
         # no nodes nearby, thus infinite distance
-        return 1e-3
+        return 1e3
 
 def n1_has_n2_in_sight(n1, n2, fov=57):
     '''
@@ -130,15 +132,13 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         nodes_data['pos'].append(node.pos)
         nodes_data['rel'].append([node.pos[0]-ref_pos[0], node.pos[1]-ref_pos[1]])
 
-        # nodes_data['vel'].append(node._vel)
-        # nodes_data['acc'].append(node._acc)
-
-        # nodes_data['rot'].append(node._rot[])
-        # nodes_data['yaw'].append(node._yaw)
-
         nodes_data['hed'].append(node.heading)
         nodes_data['action'].append(node.action)
         nodes_data['goal'].append(node.goal)
+        
+        nodes_data['current_states'].append(node.get_states())
+        nodes_data['future_states'].append([s for futures in node.get_futures() for s in futures])
+
         # nodes_data['gdist'].append(node.distance_to_goal)
         
         # nodes_data['time_step'].append(node.time_step)
@@ -158,20 +158,15 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
     g.ndata['rel'] = torch.tensor(np.stack(nodes_data['rel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel'])
 
-    # g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
-    # g.ndata['acc'] = torch.tensor(np.stack(nodes_data['acc'], axis=0), dtype=torch.float32).view(-1, state_dims['acc'])
-
-    # g.ndata['rot'] = torch.tensor(np.stack(nodes_data['rot'], axis=0), dtype=torch.float32).view(-1, state_dims['rot'])
-    # g.ndata['yaw'] = torch.tensor(np.stack(nodes_data['yaw'], axis=0), dtype=torch.float32).view(-1, state_dims['yaw'])
 
     g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
     
     g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
-    # g.ndata['gdist'] = torch.tensor(np.stack(nodes_data['gdist'], axis=0), dtype=torch.float32).view(-1, state_dims['gdist'])
 
-    # g.ndata['time_step'] = torch.tensor(np.stack(nodes_data['time_step'], axis=0), dtype=torch.float32).view(-1, 1)
-    
+    g.ndata["current_states"] = torch.tensor(np.stack(nodes_data['current_states'], axis=0), dtype=torch.float32).view(-1, state_dims['current_states'])
+    g.ndata["future_states"] = torch.tensor(np.stack(nodes_data['future_states'], axis=0), dtype=torch.float32).view(-1, state_dims['future_states'])
+
     g.edata['dist'] = torch.tensor(np.array(edges_data['dist']), dtype=torch.float32).view(-1, state_dims['dist'])
     g.edata['diff'] = torch.tensor(np.array(edges_data['diff']), dtype=torch.float32).view(-1, state_dims['diff'])
     g.edata['spatial_mask'] = torch.tensor(np.array(edges_data['spatial_mask']), dtype=torch.int32).view(-1, 1)

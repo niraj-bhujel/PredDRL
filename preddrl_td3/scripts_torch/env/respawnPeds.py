@@ -1,11 +1,6 @@
 #!/usr/bin/env python3.6
 # -*- coding: utf-8 -*-
 import os
-import sys
-if './' not in sys.path:
-    sys.path.insert(0, './')
-# if './preddrl_tracker/scripts' not in sys.path:
-#     sys.path.insert(0, '/preddrl_tracker/scripts')
 
 import rospy
 
@@ -15,14 +10,14 @@ import numpy as np
 from geometry_msgs.msg import Point, Pose, Quaternion
 from rospkg import RosPack
 
-from preddrl_tracker.scripts.pedestrian_state_publisher import prepare_data
 
 from gazebo_msgs.srv import SpawnModel, DeleteModel, SetModelState
 from gazebo_msgs.msg import ModelStates, ModelState
 
+from .env_utils import euler_to_quaternion
 
 class RespawnPedestrians:
-    def __init__(self, ped_data_path, frame_rate=25, num_peds=10):
+    def __init__(self, ):
 
         rospack1 = RosPack()
         pkg_path = rospack1.get_path('preddrl_gazebo')
@@ -40,71 +35,57 @@ class RespawnPedestrians:
 
         rospy.wait_for_service("/gazebo/set_model_state")
         self.set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
-
-        self.frames, self.peds_per_frame, self.pedestrians = prepare_data(ped_data_path, frame_rate, num_peds)
-        print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.frames)))
         
-        self.spawnned_ped_list = []
+        self.spawnned_models = []
         
-    def respawn(self, t, model_states=None, verbose=0):
+    def respawn(self, ped_states, model_states=None, verbose=0, t=0):
 
-        if t>len(self.frames):
-            t = t%len(self.frames)
 
         if model_states is None:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
 
         # print(model_states.name)
         # print(self.spawnned_ped_list)
-        for ped in self.pedestrians:
+        current_models = []
+        for pid, ped_state in ped_states.items():
             
-            model_name = 'pedestrian_' + str(ped.id)
-            
-            if t>=ped.first_timestep and t<=ped.last_timestep:            
-                p, v, q, r = ped.states_at(t)
-    
-                model_pose = Pose(Point(x=p[0], y=p[1], z=p[2]), 
-                                  Quaternion(w=q[0], x=q[1], y=q[2], z=q[3]))
-                    
-                if model_name not in model_states.name:
-                    if verbose>1:
-                        rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
+            model_name = 'pedestrian_' + str(pid)
 
-                    self.spawn_model(model_name, self.xml_string, "", model_pose, "world")
-                    
-                    self.spawnned_ped_list.append(model_name)
-                    
-                else:
-                    if verbose>1:
-                        rospy.loginfo("[Frame-%d] Updating %s"%(t, model_name))
-                    
-                    tmp_state = ModelState()
-                    tmp_state.model_name = model_name
-                    tmp_state.pose = model_pose
-                    tmp_state.reference_frame ="world"
-                    
-                    self.set_model_state(tmp_state)
+            px, py, vx, vy, _, _, theta = ped_state
 
-            elif model_name in model_states.name:
-                if verbose>1:
-                    rospy.loginfo("[Frame-%d] Deleting %s"%(t, model_name))
-                self.delete_model(model_name)
-                if model_name in self.spawnned_ped_list:
-                    self.spawnned_ped_list.remove(model_name)
+            p = Point(x=px, y=py, z=0.)
+            q = euler_to_quaternion([0., 0., theta])
 
-if __name__=='__main__':
+            model_pose = Pose(p, q)
+                
+            if model_name not in self.spawnned_models:
+                if verbose>0:
+                    rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
 
-    rospy.init_node('ped_spawnner', disable_signals=True)
-    ped_spawnner = RespawnPedestrians('./preddrl_tracker/data/crowds_zara01.txt')
-    try:
-        for step in range(20000):
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+                self.spawn_model(model_name, self.xml_string, "", model_pose, "world")
+                
+                self.spawnned_models.append(model_name)
+                
+            else:
+                if verbose>0:
+                    rospy.loginfo("[Frame-%d] Updating %s"%(t, model_name))
+                
+                tmp_state = ModelState()
+                tmp_state.model_name = model_name
+                tmp_state.pose = model_pose
+                tmp_state.reference_frame ="world"
+                
+                self.set_model_state(tmp_state)
 
-            ped_spawnner.respawn(step, model_states)
-            rospy.sleep(0.5)
+            current_models.append(model_name)
 
-    except KeyboardInterrupt:
-        print("Clearing models .. ")
-        for model_name in ped_spawnner.spawnned_ped_list:
-            if model_name in model_states.name:
-                ped_spawnner.delete_model(model_name)
+        # print("spawnned_models:", self.spawnned_models)
+        # remove model that are not in the current pedestrian list
+        models_to_remove = [model for model in self.spawnned_models if model not in current_models]
+        # print("models to remove:", models_to_remove)
+        for model_name in models_to_remove:
+            if verbose>0:
+                rospy.loginfo("[Frame-%d] Deleting %s"%(t, model_name))
+            self.delete_model(model_name)
+            self.spawnned_models.remove(model_name)
+

@@ -68,7 +68,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'action'],
+    parser.add_argument('--input_states', nargs='+', default=['current_states', 'future_states'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')
@@ -78,7 +78,8 @@ def get_argument(parser=None):
                         help='Inter node disances, dist (l2norm) or diff (l1norm)')
     parser.add_argument('--vis_graph', action='store_true', default=False,
                         help='Plot graph during training step. Plot in output_dir/graphs/')
-
+    parser.add_argument('--future_steps', default=4., type=float,
+                        help='Apply dropout to input features')
     # gated gcn
     parser.add_argument('--in_feat_dropout', default=0., type=float,
                         help='Apply dropout to input features')

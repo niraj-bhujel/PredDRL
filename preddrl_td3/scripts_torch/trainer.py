@@ -27,6 +27,7 @@ from utils.timer import Timer
 
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
+
 class Trainer:
     def __init__(self, policy, env, args, test_env=None):
 
@@ -160,6 +161,7 @@ class Trainer:
 
         episode_start_time = time.perf_counter()
         
+        self._env.initialize_agents() # initialize agents
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         if self._load_memory:
@@ -167,8 +169,8 @@ class Trainer:
                 with open(self._memory_path + '.pkl', 'rb') as f:
                     self.replay_buffer = pickle.load(f)
                 total_steps=self._policy.n_warmup + 1
-            except Exception:
-                print('Unable to load memory!')
+            except Exception as e:
+                print('Unable to load memory!', e)
 
         while total_steps < self._max_steps:
             self._env.timer.tic()
@@ -432,8 +434,8 @@ class Trainer:
 #%%
 if __name__ == '__main__':
     import sys
-    # sys.path.insert(0, './')
-    # sys.path.insert(0, './preddrl_td3/scripts_torch')
+    if './' not in sys.path: 
+        sys.path.insert(0, './')
 
     import args
     import yaml
@@ -447,6 +449,9 @@ if __name__ == '__main__':
     from policy.gcn import GatedGCN
 
     from env.environment import Env
+
+    from gazebo_msgs.srv import DeleteModel
+    from gazebo_msgs.msg import ModelStates
 
     policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'gcn':GatedGCN}
 
@@ -480,8 +485,9 @@ if __name__ == '__main__':
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
 
-    env = Env(test=False, stage=args.stage, graph_state=True if 'graph' in args.policy else False)
-    test_env = Env(test=True, stage=args.stage, graph_state=True if 'graph' in args.policy else False)
+    graph_state=True if 'graph' in args.policy else False
+    env = Env(test=False, stage=args.stage, graph_state=graph_state)
+    test_env = Env(test=True, stage=args.stage, graph_state=graph_state)
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
@@ -496,7 +502,7 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         n_warmup=args.n_warmup,
         net_params=net_params,
-        args=args)
+        args=args,)
 
     policy = policy.to(policy.device)
     print(repr(policy))
@@ -530,6 +536,13 @@ if __name__ == '__main__':
     except KeyboardInterrupt: # this is to prevent from accidental ctrl + c
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
+        model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        
+        print("Waiting for gazebo delete_model services...")
+        rospy.wait_for_service("gazebo/delete_model")
+        delete_model = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
+        print('Clearning existing pedestrians models from', model_states.name)
+        [delete_model(model_name) for model_name in model_states.name if 'pedestrian' in model_name]  
 
     if args.clean:
         print('Cleaning output dir ... ')

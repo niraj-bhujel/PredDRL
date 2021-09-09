@@ -23,7 +23,8 @@ class Actor(nn.Module):
     def __init__(self, net_params, args, state_shape, action_dim, max_action, **kwargs):
         # super(Actor, self).__init__()
         super(Actor, self).__init__()
-
+        pred_len = kwargs.get('pred_len')
+        
         net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
         net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
         # net_params['net']['out_dim_node'] = action_dim

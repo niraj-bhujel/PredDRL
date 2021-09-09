@@ -24,7 +24,7 @@ from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
 from policy.orca import ORCA
-
+from preddrl_tracker.scripts.pedestrian_state_publisher import prepare_data
 
 SelfD=0.175
 SelfL=0.23
@@ -35,6 +35,7 @@ class Env:
 
         self.test = test
         self.graph_state = graph_state
+        self.stage = stage
 
         self.goal_x = 0
         self.goal_y = 1
@@ -48,6 +49,7 @@ class Env:
         self.collision_threshold = 0.15
 
         self.inital_pos = Point(7.5, 6.5, 0.)
+        # self.inital_pos = Point(0., 0., 0.)
         
         self.num_beams = 20  # 激光数
 
@@ -78,6 +80,15 @@ class Env:
         self.max_goal_distance = 20.
         self.last_goal_distance = 0.
 
+        # robot policy
+        self.orca = ORCA(self.time_step)
+
+        self.global_step = 0
+
+        self.future_steps = 4
+
+    def initialize_agents(self, ):
+
         # keep track of nodes and their id, added by niraj
         self.nid = 0
         self.robot = Agent(node_id=self.nid, node_type='robot', time_step=self.time_step)
@@ -86,18 +97,17 @@ class Env:
         self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal', time_step=self.time_step)
         self.nid += 1
 
-        # robot policy
-        self.robot_policy = ORCA(self.time_step)
-
         self.obstacles = dict()
-        self.pedestrians = dict()
 
-        self.global_step = 0
+        if self.stage==7:
+            self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', 
+                                                            target_frame_rate=int(1/self.time_step), 
+                                                            max_peds=10)
+            self.ped_frames = self.ped_frames[:50]# use only first 50 frames
+            print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
+            self.respawn_pedestrian = RespawnPedestrians()
 
-        if stage==7:
-            self.respawn_pedestrian = RespawnPedestrians('./preddrl_tracker/data/students003.txt', 
-                                                         frame_rate=int(1/self.time_step), 
-                                                         num_peds=10)
+        self.update_agents()
 
     def setScan(self, scan):
         self.scan = scan
@@ -148,7 +158,7 @@ class Env:
                 action = self.xy_to_vw(action)
         else:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
-            action, _ = self.robot_policy.predict(self.robot, humans=list(self.pedestrians.values()),
+            action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list,
                                                 obstacle_pos=obstacle_pos)
             print('orca vel:', action)
             if self.action_type=='vw':
@@ -212,7 +222,7 @@ class Env:
 
         if not obstacle_dict:
             obstacle_dict = {}
-            
+        
         for i, m_name in enumerate(model_states.name):
 
             if not 'obstacle' in m_name:
@@ -235,41 +245,40 @@ class Env:
 
         return obstacle_dict
 
-    def updatePedestriansStates(self, model_states, ped_dict=None):
+    def getPedestrians(self, model_states=None):
+        '''
+        Get pedestrians at current step, update and return pedestrian states, 
+        Meanwhile spawn the current pedestrians to gazebo
+        '''
+        if self.global_step>len(self.ped_frames):
+            t = self.global_step%len(self.ped_frames)
+        else:
+            t = self.global_step
 
-        if not ped_dict:
-            ped_dict = {}
+        curr_peds = [ped for ped in self.pedestrians if t>=ped.first_timestep and t<ped.last_timestep]
 
-        for i, m_name in enumerate(model_states.name):
-            if not 'pedestrian' in m_name:
-                continue
-
-            # preprare data to update
-            pose = model_states.pose[i]
-            twist = model_states.twist[i]
-
-            if m_name in ped_dict.keys():
-                node = ped_dict[m_name]
-            else:
-                node = Agent(node_id=self.nid, node_type='pedestrian', time_step=self.time_step)
-                self.nid += 1
-
-            _, _, yaw = euler_from_quaternion(quat_to_numpy(pose.orientation))
+        ped_states = {}
+        # update action of the current peds
+        for ped in curr_peds:
 
             if self.action_type=='xy':
-                action = (twist.linear.x, twist.linear.y)
+                action = (ped.vx, ped.vy)
             else:
-                action = (math.hypot(twist.linear.x, twist.linear.y), twist.angular.z)
+                action = (math.hypot(ped.vx, ped.vy), ped.theta)
 
-            node.update_states(pose.position.x, pose.position.y, 0., 0., theta=yaw)
-            gx, gy = node.cv_prediction(time_step=node.time_step)[-1]
-            node.update_goal(gx, gy)
-            node.update_action(action)
+            ped.update_action(action)
 
-            ped_dict[m_name] = node
+            ped_futures = np.zeros((self.future_steps, 2))
+            for i, ts in enumerate(range(t, min(t+self.future_steps, ped.timesteps))):
+                ped_futures[i] = ped.get_states_at(ts)[:2]
+
+            ped.update_futures(ped_futures)
+
+            ped_states[ped.id] = ped.get_states_at(t)
+
+        self.respawn_pedestrian.respawn(ped_states, model_states)
             
-        return ped_dict
-
+        return curr_peds
 
 
     def update_agents(self, action=(0.0, 0.0)):
@@ -283,17 +292,21 @@ class Env:
         self.robot.update_states(self.position.x, self.position.y, self.goal_x, self.goal_y, theta=self.yaw)
         self.robot.update_action(action) 
 
+        robot_futures = self.robot.cv_prediction(self.future_steps)
+        self.robot.update_futures(robot_futures)
+
+        # goal as a node
         self.robot_goal.update_states(self.goal_x, self.goal_y, self.goal_x, self.goal_y, theta=0.0)
-
+        self.robot_goal.update_futures([self.robot_goal.pos for _ in range(self.future_steps)])
+        
         # update obstacle and pedestrians
-        self.obstacles = self.updateObstaclesStates(model_states, self.obstacles)
+        # self.obstacles = self.updateObstaclesStates(model_states, self.obstacles)
+        self.pedestrians_list = self.getPedestrians(model_states)
 
-        self.respawn_pedestrian.respawn(self.global_step, model_states)
-        self.pedestrians = self.updatePedestriansStates(model_states, self.pedestrians)
-
+        
     def getGraphState(self, action=[0.0, 0.0]):
 
-        graph_nodes = [self.robot, self.robot_goal] + list(self.obstacles.values()) + list(self.pedestrians.values())
+        graph_nodes = [self.robot, self.robot_goal] + self.pedestrians_list
 
         state = create_graph(graph_nodes, self.robot.pos)
 
@@ -465,8 +478,6 @@ class Env:
 
         if initGoal:
             self.init_goal()
-
-        self.update_agents()
 
         state, _, _, _ = self.getState()
         

@@ -21,7 +21,7 @@ def euler_from_quaternion(orientation_list):
 class Node(object):
     def __init__(self, node_id=0, first_timestep=0, node_type='pedestrian', max_len=100):
         # self.data = data
-        self._first_timestep = first_timestep
+        self._first_timestep = int(first_timestep)
         self._id = int(node_id)
         self._type = node_type
         
@@ -75,7 +75,7 @@ class Node(object):
 
         self._time_stamp.append(curr_timestamp)
     
-    def states_at(self, t):
+    def get_states_at(self, t):
         
         ts_idx = self.timestep_index(t)
         

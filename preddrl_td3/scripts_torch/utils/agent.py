@@ -19,10 +19,10 @@ def euler_from_quaternion(orientation_list):
 
 
 class Agent(object):
-    def __init__(self, node_id=0, node_type='robot', time_step=0.1, vpref=0.4, radius=0.2):
-        # self.data = data
+    def __init__(self, node_id, node_type='robot', first_timestep=0, time_step=0.1, vpref=0.4, radius=0.2, history_len=100):
 
-        self.id = node_id
+        self.first_timestep = int(first_timestep)
+        self.id = int(node_id)
         self.type = node_type
         self.time_step = time_step
         self.radius = radius
@@ -39,6 +39,8 @@ class Agent(object):
 
         self.theta = None
         self.action = (0., 0.)
+
+        self.state_history = deque([], history_len)
 
     def __len__(self):
         return len(self._pos)
@@ -75,30 +77,63 @@ class Agent(object):
         self.gx = gx
         self.gy = gy
         
-        self._theta = theta
+        self.theta = theta
 
-        self._time_stamp = time.time()
+        self.state_history.append((px, py, vx, vy, ax, ay, theta))
 
-    def cv_prediction(self, pred_steps=4, time_step=0.5):
+    def update_futures(self, states):
+        self.futures = states
+
+    def get_states(self, ):
+        return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
+
+    def get_states_at(self, t):
+        _idx = t - self.first_timestep
+        return self.state_history[_idx]
+
+    def get_futures(self, ):
+        return self.futures
+
+    def get_futures_at(self, t, future_steps=4):
+        _idx = t - self.first_timestep
+        future_states = [self.state_history[i] for i in range(_idx, min(_idx+future_steps, self.timesteps))]
+        return future_states
+
+    def cv_prediction(self, pred_steps=4):
 
         preds = []
-        sec_from_now = pred_steps * time_step
-        for time in np.arange(time_step, sec_from_now + time_step, time_step):
+        sec_from_now = pred_steps * self.time_step
+        for time in np.arange(self.time_step, sec_from_now + self.time_step, self.time_step):
             half_time_squared = 0.5 * time * time
-            preds.append([self.px + time * self.vx + half_time_squared * self.ax,
-                          self.py + time * self.vy + half_time_squared * self.ay])
+
+            preds.append([self.px + time * self.vx + half_time_squared * self.ax, 
+                          self.py + time * self.vy + half_time_squared * self.ay,
+                          ])
         return preds
     
 
     def compute_position(self, action):
 
-        theta = self._theta + action[1]
+        theta = self.theta + action[1]
         px, py = self._pos
         px = px + np.cos(theta) * action[0] * self.time_step
         py = py + np.sin(theta) * action[0] * self.time_step
 
         return px, py
 
+    def compute_heading(self, ):
+
+        goal_angle = math.atan2(self.gy - self.py, self.gx-self.px)
+
+        heading = goal_angle - self.theta
+
+        if heading > np.pi:
+            heading -= 2 * np.pi
+
+        if heading < -np.pi:
+            heading += 2 * np.pi
+
+        return round(heading, 2)
 
     def distance_to_goal(self,):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
@@ -107,6 +142,10 @@ class Agent(object):
         velocity = np.array((self.gx - self.px, self.gy - self.py))
         pref_vel = v_pref * velocity / np.linalg.norm(velocity)
         return pref_vel
+
+    @property
+    def states(self, ):
+        return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
 
     @property
     def pos(self, ):
@@ -122,15 +161,12 @@ class Agent(object):
 
     @property
     def heading(self, ):
-        
-        goal_angle = math.atan2(self.gy - self.py, self.gx-self.px)
+        return self.compute_heading()
 
-        heading = goal_angle - self._theta
+    @property
+    def timesteps(self):
+        return len(self.state_history)
 
-        if heading > np.pi:
-            heading -= 2 * np.pi
-
-        if heading < -np.pi:
-            heading += 2 * np.pi
-
-        return round(heading, 2)
+    @property
+    def last_timestep(self):
+        return self.first_timestep + self.timesteps - 1

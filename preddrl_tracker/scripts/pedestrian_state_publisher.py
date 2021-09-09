@@ -27,8 +27,8 @@ from rospkg import RosPack
 
 from preddrl_msgs.msg import AgentStates, AgentState
 
-from .node import Node
-
+# from .node import Node
+from preddrl_td3.scripts_torch.utils.agent import Agent
         
 def angleToQuaternion(theta, angles=True):
 
@@ -69,7 +69,9 @@ def create_actor_msg(nodes, t):
 
     for node in nodes:
 
-        p, v, q, r = node.states_at(t)
+        px, py, vx, vy, ax, ay, theta = node.get_states_at(t)
+
+        q = angleToQuaternion(theta)
 
         state = AgentState()
 
@@ -79,22 +81,18 @@ def create_actor_msg(nodes, t):
         if t>node.last_timestep-1:
             state.type = int(4)
 
-        state.pose.position.x = p[0]
-        state.pose.position.y = p[1]
-        state.pose.position.z = p[2]
+        state.pose.position.x = px
+        state.pose.position.y = py
+        state.pose.position.z = 0.
 
         state.pose.orientation.w = q[0]
         state.pose.orientation.x = q[1]
         state.pose.orientation.y = q[2]
         state.pose.orientation.z = q[3]
 
-        state.twist.linear.x = v[0]
-        state.twist.linear.y = v[1]
-        state.twist.linear.z = v[2]
-        
-        state.twist.angular.x = r[0]
-        state.twist.angular.y = r[1]
-        state.twist.angular.x = r[2]
+        state.twist.linear.x = vx
+        state.twist.linear.y = vy
+        state.twist.linear.z = 0.
 
         agents.agent_states.append(state)
 
@@ -154,19 +152,19 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
 
         
-        node = Node(pid, start_idx, node_type='pedestrian', max_len=num_intp_points)
+        node = Agent(pid, first_timestep=start_idx, time_step=1./target_frame_rate, node_type='pedestrian', history_len=num_intp_points)
         
         for i in range(len(intp_ped_pos)):
             
-            p = [intp_ped_pos[i][0], intp_ped_pos[i][1], 0.]
-            v = [intp_ped_vel[i][0], intp_ped_vel[i][1], 0.]
+            px, py = intp_ped_pos[i][0], intp_ped_pos[i][1]
+            vx, vy = intp_ped_vel[i][0], intp_ped_vel[i][1]
+
+            gx, gy = intp_ped_pos[i][-1], intp_ped_pos[i][-1]
+
+            theta = math.atan2(vy, vx) # radians
             
-            theta = math.atan2(v[1], v[0]) # radians
-            q = angleToQuaternion(theta)
-            
-            r = [0., 0., 0.]
-            
-            node.update_states(p, v, q, r)
+            # node.update_states(px, v, q, r)
+            node.update_states(px, py, gx, gy, theta)
 
         ped_nodes.append(node)
         
@@ -192,7 +190,7 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
             peds_per_frame.append(curr_ped)
         
         
-    return ped_frames, peds_per_frame, ped_nodes
+    return ped_nodes, ped_frames, peds_per_frame
 
 
 #%%
@@ -207,7 +205,7 @@ if __name__ == '__main__':
     # data_root = '/home/loc/peddrl_ws/src'
     data_path = data_root + '/data/crowds_zara01.txt'
     print('Preparing data from: ', data_path)
-    frames, peds_per_frame, ped_nodes = prepare_data(data_path, target_frame_rate=ros_rate)
+    ped_nodes, frames, peds_per_frame = prepare_data(data_path, target_frame_rate=ros_rate)
 
     # prepare gazebo plugin
     rospy.init_node("spawn_preddrl_agents", anonymous=True, disable_signals=True)
@@ -299,8 +297,8 @@ if __name__ == '__main__':
             else:
                 t += 1
 
-            rospy.sleep(0.5) # this doen't work well in python2
-            # rospy.sleep(1/ros_rate) # this doen't work well in python2
+            # rospy.sleep(0.5) # this doen't work well in python2
+            rospy.sleep(1/ros_rate) # this doen't work well in python2
             # r.sleep() # turn of use_sim_time if r.sleep() doesn't work
             
         except KeyboardInterrupt:
