@@ -173,7 +173,7 @@ class DDPG(OffPolicyAgent):
         optimizer.step()
 
     def _train_body(self, states, actions, next_states, rewards, dones, weights):
-
+        # print(actions.shape, rewards.shape, dones.shape, weights.shape)
         # Compute critic loss
         td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
         critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
@@ -183,6 +183,7 @@ class DDPG(OffPolicyAgent):
 
         # Compute actor loss
         next_action = self.actor(states)
+
         actor_loss = -self.critic(states, next_action).mean()
 
         # Optimize the actor 

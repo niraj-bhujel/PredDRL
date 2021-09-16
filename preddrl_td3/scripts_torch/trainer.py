@@ -4,8 +4,11 @@ import logging
 import shutil
 import random
 import numpy as np
-from collections import deque
 import pickle
+
+from collections import deque
+from copy import deepcopy
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -18,15 +21,12 @@ from gym.spaces import Box
 
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
-# from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src, create_new_dir
-from utils.graph_utils import node_type_list
-from utils.vis_graph import network_draw
+from utils.graph_utils import node_type_list, remove_uncommon_nodes
+from utils.vis_graph import network_draw, data_stats
 from utils.timer import Timer
-
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-
 
 class Trainer:
     def __init__(self, policy, env, args, test_env=None):
@@ -161,7 +161,7 @@ class Trainer:
 
         episode_start_time = time.perf_counter()
         
-        self._env.initialize_agents() # initialize agents
+        
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         if self._load_memory:
@@ -179,24 +179,36 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                action  = self._env.sample_robot_action(self._sampling_method)
+                action = self._env.sample_robot_action(self._sampling_method)
+
+                if isinstance(obs, DGLHeteroGraph):
+                    robot_action = action
+                    action = obs.ndata['action'].numpy()
+                    action[obs.ndata['tid']==99] = robot_action
+                    
             else:
                 action = self._policy.get_action(obs)
-            
-            if self._verbose>0:
-                print('Action: [{:6.3f}, {:6.3f}]'.format(action[0], action[1]))
                 
-            next_obs, reward, done, success = self._env.step(action)          
+            if isinstance(obs, DGLHeteroGraph):
+                robot_action = action[obs.ndata['tid']==99].flatten()                
+            else:
+                robot_action = action
+
+            next_obs, reward, done, success = self._env.step(robot_action)          
             
+            if isinstance(next_obs, DGLHeteroGraph):
+                robot_reward = reward[next_obs.ndata['tid']==99].flatten()
+            else:
+                robot_reward = reward
+
             if self._verbose>0:
-                print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+                print('Agent Action:', action)
+                print('Agent Reward:', reward)
+                print('Robot action:', np.round(robot_action, 2))
+                print('Robot Reward:', np.round(robot_reward, 2))
+                print('Robot Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
 
             if self._verbose>1:
-                print('Reward:{:3.3f}'.format(reward))
-                # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
-                #                                                                                           self._env.goal_x, self._env.goal_y,
-                #                                                                                           self._env.getGoalDistance()))
-
                 print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
                                                     np.round(self._env.robot.vel, 2).tolist(), 
                                                     np.round(self._env.robot.goal, 2).tolist(),
@@ -204,33 +216,49 @@ class Trainer:
             
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
-                network_draw(obs[1],
-                             show_node_label=True, node_labels=['pos'],
-                             show_edge_labels=True, edge_labels=['dist'],
+                network_draw(obs,
+                             show_node_label=True, node_labels=['tid'],
+                             show_edge_labels=False, edge_labels=['dist'],
                              show_legend=True,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
                              show_dirction=True,
+                             extent = data_stats['univ']
                              )
-                # with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
-                #     pickle.dump(obs, f)
+                with open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb") as f:
+                    pickle.dump(obs, f)
 
             if not episode_steps==0:
-                self.replay_buffer.add([obs, action, reward, next_obs, done])
+                if isinstance(obs, DGLHeteroGraph):
+
+                    _obs, _next_obs, _obs_nidx, _next_obs_nidx = remove_uncommon_nodes(deepcopy(obs), deepcopy(next_obs))
+                    
+                    if _obs.number_of_nodes() != _next_obs.number_of_nodes():
+                        print(_obs, _next_obs)
+
+                    assert _obs.number_of_nodes() == _next_obs.number_of_nodes()
+                    _action = action[_obs_nidx]
+                    _reward = reward[_next_obs_nidx]
+                    _done = np.repeat(done, _next_obs.number_of_nodes())
+                    self.replay_buffer.add([_obs, _action, _reward, _next_obs, _done])
+                else:
+                    self.replay_buffer.add([obs, action, reward, next_obs, done])
+
 
             if total_steps==self._policy.n_warmup:                
                 with open(self._memory_path + '.pkl', 'wb') as f:
                     pickle.dump(self.replay_buffer, f)
 
             episode_steps += 1
-            episode_return += reward
+            episode_return += np.mean(reward)
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
-            self.writer.add_scalar(self._policy.policy_name + "/act_0", action[0], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/act_1", action[1], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/reward", robot_reward, total_steps)
+            self.writer.add_histogram(self._policy.policy_name + "/agent_reward", reward, total_steps)
 
             # update
             obs = next_obs
@@ -421,9 +449,9 @@ class Trainer:
         else:
             raise Exception("Data type not known!")
 
-        act = torch.Tensor(np.stack(act, 0)).to(device)
-        rew = torch.Tensor(np.stack(rew, 0)).view(-1, 1).to(device)
-        done = torch.Tensor(np.stack(done, 0)).view(-1, 1).to(device)
+        act = torch.Tensor(np.concatenate(act, 0)).to(device)
+        rew = torch.Tensor(np.concatenate(rew, 0)).view(-1, 1).to(device)
+        done = torch.Tensor(np.concatenate(done, 0)).view(-1, 1).to(device)
 
         if self._use_prioritized_rb:
             weights = torch.Tensor(np.stack(weights, 0)).to(device)

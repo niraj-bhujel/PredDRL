@@ -12,6 +12,12 @@ import numpy as np
 from matplotlib.lines import Line2D
 import shutil
 import torch
+data_stats = {'eth': {'y_max': 15.613, 'y_min': -7.69, 'x_max': 13.943, 'x_min': -10.31},
+                'hotel': {'y_max': 15.613, 'y_min': -7.69, 'x_max': 13.943, 'x_min': -10.31},
+                'univ': {'x_max': 15.613, 'x_min': -7.69, 'y_max': 13.943, 'y_min': -10.31},
+                'zara1': {'x_max': 15.613, 'x_min': -7.69, 'y_max': 13.943, 'y_min': -10.31},
+                'zara2': {'x_max': 15.613, 'x_min': -7.69, 'y_min': 13.943, 'y_max': -10.31}}
+                
 def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=False, edge_labels=['id'], 
                  show_legend=False, pos_attr='pos', edge_attr='dist', node_size=300, font_size=6, 
                  rad=0.04,  save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
@@ -82,11 +88,9 @@ def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=
         tid_idx = np.where(unique_tid==traj_id)[0][0]
         node_colors.append(ped_colors[:, tid_idx])        
         
-        nlabel = [u_data[l].numpy().round(2) for l in node_labels]
-        node_labels_dict[u] = ' '.join([str(v) for elem in nlabel for v in elem])
-        # node_labels[u]=traj_id
-        # node_labels[u]=u_data['tid'].numpy()-unique_tid.min()+1
-
+        nlabel = '_'.join([str(u_data[label].numpy()) for label in node_labels])
+        # node_labels_dict[u] = ' '.join([str(v) for elem in nlabel for v in elem])
+        node_labels_dict[u] = nlabel
     temporal_edges = [(u, v) for (u, v, d) in G.edges(data=True) if d["spatial_mask"]==0]
     spatial_edges = [(u, v) for (u, v, d) in G.edges(data=True) if d["spatial_mask"]==1]
     spatial_edges_w = [min(1, 1/d[edge_attr].numpy()[0]) for u, v, d in G.edges(data=True) if d["spatial_mask"]==1]

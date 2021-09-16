@@ -12,11 +12,11 @@ node_type_list = ['robot', 'pedestrian', 'obstacle', 'robot_goal']
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
     ('robot', 'pedestrian'): 5.0,
-    ('robot', 'robot_goal'): 1e6,
 
+    ('robot', 'robot_goal'): 1e6,
     ('robot_goal', 'robot'): 1e6,
 
-    ('pedestrian', 'pedestrian'): 5.0,
+    ('pedestrian', 'pedestrian'): 3.0,
     ('pedestrian', 'robot') : 5.0,
 
     ('obstacle', 'pedestrian'): 5.0, # large distance to prevent graph creatiion error due to zero edges
@@ -42,9 +42,43 @@ state_dims = {
         "future_states": 2*4, # 4 is future steps
     }
 
+def remove_uncommon_nodes(g1, g2):
+    g1_tid = g1.ndata['tid'].cpu().numpy()
+    g2_tid = g2.ndata['tid'].cpu().numpy()
+
+    comm_tid = np.sort(np.intersect1d(g1_tid, g2_tid))
+
+    # remove node belonging to uncommon tid
+    g1_redundant_nodes = [g1.nodes()[g1.ndata['tid']==tid] for tid in g1_tid if tid not in comm_tid]
+    g1_node_idx = [i for i, node in enumerate(g1.nodes()) if node not in g1_redundant_nodes]
+    
+    if len(g1_redundant_nodes)>0:
+        g1.remove_nodes(g1_redundant_nodes)
+
+    g2_redundant_nodes = [g2.nodes()[g2.ndata['tid']==tid] for tid in g2_tid if tid not in comm_tid]
+    g2_node_idx = [i for i, node in enumerate(g2.nodes()) if node not in g2_redundant_nodes]
+    if len(g2_redundant_nodes)>0:
+        g2.remove_nodes(g2_redundant_nodes)
+
+    return g1, g2, g1_node_idx, g2_node_idx
+
+def find_collision_nodes(g, mask_nodes=[], collision_threshold=0.2):
+    src_nodes, dst_nodes = g.edges()
+    collision_edges = g.edge_ids(src_nodes, dst_nodes)[g.edata['dist'].squeeze(1)<collision_threshold]
+    # find the src and dst nodes of the collision edges
+    collision_src_nodes, collision_dst_nodes = g.find_edges(collision_edges)
+
+    collision_src_nodes = [node for node in collision_src_nodes if node not in mask_nodes]
+    collision_dst_nodes = [node for node in collision_dst_nodes if node not in mask_nodes]
+
+    collision_nodes = np.unique([collision_src_nodes, collision_dst_nodes])
+    collision_nidx = [i for i, node in enumerate(g.nodes()) if node in collision_nodes]
+
+    return collision_nodes, collision_nidx
+
 def min_neighbor_distance(g, node, mask_nodes=[]):
     if len(mask_nodes)>0:
-        g = dgl.remove_nodes(deepcopy(g), mask_nodes)
+        g = dgl.remove_nodes(g, mask_nodes)
 
     in_nodes, nodes = g.in_edges(node)
     in_eids = g.edge_ids(in_nodes, nodes)
@@ -90,7 +124,22 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     # N = len(nodes)
 
     for i, src_node in enumerate(nodes):
+
+        nodes_data['pos'].append(src_node.pos)
+        nodes_data['rel'].append([src_node.pos[0]-ref_pos[0], src_node.pos[1]-ref_pos[1]])
+
+        nodes_data['hed'].append(src_node.heading)
+        nodes_data['action'].append(src_node.action)
+        nodes_data['goal'].append(src_node.goal)
         
+        nodes_data['current_states'].append(src_node.get_states())
+        nodes_data['future_states'].append([s for futures in src_node.get_futures() for s in futures])
+
+        nodes_data['gdist'].append(src_node.distance_to_goal())
+        
+        nodes_data['tid'].append(src_node.id)
+        nodes_data['cid'].append(node_type_list.index(src_node.type))
+
         num_neighbors = 0
         # spatial edges
         for j, dst_node in enumerate(nodes):
@@ -124,32 +173,9 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
 
             num_neighbors+=1
 
-    # prepare node data, discard node without edges
-    valid_nodes = np.unique(edges_data['src'] + edges_data['dst'])
-    for n in valid_nodes:
-        node = nodes[n]
-
-        nodes_data['pos'].append(node.pos)
-        nodes_data['rel'].append([node.pos[0]-ref_pos[0], node.pos[1]-ref_pos[1]])
-
-        nodes_data['hed'].append(node.heading)
-        nodes_data['action'].append(node.action)
-        nodes_data['goal'].append(node.goal)
-        
-        nodes_data['current_states'].append(node.get_states())
-        nodes_data['future_states'].append([s for futures in node.get_futures() for s in futures])
-
-        # nodes_data['gdist'].append(node.distance_to_goal)
-        
-        # nodes_data['time_step'].append(node.time_step)
-
-        nodes_data['tid'].append(node.id)
-        nodes_data['cid'].append(node_type_list.index(node.type))
-
 
     # Construct the DGL graph
     g = dgl.graph((edges_data['src'], edges_data['dst']))
-    g = dgl.node_subgraph(g, valid_nodes)
 
     # Add  features
     g.ndata['tid'] = torch.tensor(nodes_data['tid'], dtype=torch.int32)
@@ -163,6 +189,8 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     
     g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
+
+    g.ndata['gdist'] = torch.tensor(np.stack(nodes_data['gdist'], axis=0), dtype=torch.float32).view(-1, state_dims['gdist'])
 
     g.ndata["current_states"] = torch.tensor(np.stack(nodes_data['current_states'], axis=0), dtype=torch.float32).view(-1, state_dims['current_states'])
     g.ndata["future_states"] = torch.tensor(np.stack(nodes_data['future_states'], axis=0), dtype=torch.float32).view(-1, state_dims['future_states'])

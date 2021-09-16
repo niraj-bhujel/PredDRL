@@ -45,14 +45,17 @@ class Agent(object):
     def __len__(self):
         return len(self._pos)
 
-    def update_action(self, action):
+    def set_action(self, action):
         self.action = action
 
-    def update_goal(self, gx, gy):
+    def set_goal(self, gx, gy):
         self.gx = gx
         self.gy = gy
-        
-    def update_states(self, px, py, gx, gy, theta):
+
+    def set_futures(self, futures):
+        self.futures = futures
+
+    def set_states(self, px, py, gx, gy, theta):
 
         if self.px is not None:
             vx = (px - self.px)/self.time_step
@@ -79,10 +82,8 @@ class Agent(object):
         
         self.theta = theta
 
-        self.state_history.append((px, py, vx, vy, ax, ay, theta))
-
-    def update_futures(self, states):
-        self.futures = states
+    def update_history(self, px, py, vx, vy, gx, gy, theta):
+        self.state_history.append((px, py, vx, vy, gx, gy, theta))
 
     def get_states(self, ):
         return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)

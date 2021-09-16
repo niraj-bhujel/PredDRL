@@ -164,7 +164,8 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
             theta = math.atan2(vy, vx) # radians
             
             # node.update_states(px, v, q, r)
-            node.update_states(px, py, gx, gy, theta)
+            # node.update_states(px, py, gx, gy, theta)
+            node.update_history(px, py, vx, vy,  gx, gy, theta)
 
         ped_nodes.append(node)
         

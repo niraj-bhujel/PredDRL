@@ -36,11 +36,12 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        # self.out = MLP(net_params['net']['hidden_dim'] + state_shape[0], net_params['net']['hidden_dim'], hidden_size=net_params['mlp']['hidden_size'])
-        self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
-        self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
+        self.out = MLP(net_params['net']['hidden_dim'], action_dim, hidden_size=net_params['mlp']['hidden_size'])
+        
+        # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
+        # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
 
-        self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 2)
+        # self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 2)
         # self.l4 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
 
         self.max_action = max_action
@@ -48,19 +49,21 @@ class Actor(nn.Module):
         self.input_edges = args.input_edges
 
     def forward(self, state):
-        state, g = state
+        g = state
 
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
         g, h, e = self.net(g, h, e)
-        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
+        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
         
-        h = torch.cat([h, state], dim=-1)
-        h = F.relu(self.l1(h))
-        h = F.relu(self.l2(h))
+        # h = torch.cat([h, state], dim=-1)
+        # h = F.relu(self.l1(h))
+        # h = F.relu(self.l2(h))
+        # h = self.l3(h)
 
-        h = self.max_action*torch.tanh(self.l3(h))
+        h = self.out(h)
+        h = self.max_action*torch.tanh(h)
 
         return h
 
@@ -82,27 +85,29 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0] + action_dim, net_params['mlp']['hidden_size'][0])
-        self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
-        self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
+        self.out = MLP(net_params['net']['hidden_dim'] + action_dim, 1, hidden_size=net_params['mlp']['hidden_size'])
 
-        # self.out = MLP(net_params['net']['hidden_dim'] + state_shape[0] + action_dim, 1, hidden_size=net_params['mlp']['hidden_size'])
+        # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0] + action_dim, net_params['mlp']['hidden_size'][0])
+        # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
+        # self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
+
 
     def forward(self, state, action):
-
-        state, g = state
+        g = state
 
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         
         g, h, _ = self.net(g, h, e)
-        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
 
-        h = torch.cat([h, state, action], dim=-1)
-        # h = self.out(h)
-        h = F.relu(self.l1(h))
-        h = F.relu(self.l2(h))
-        h = self.l3(h)
+        # h = torch.cat([h, state, action], dim=-1)
+        # h = F.relu(self.l1(h))
+        # h = F.relu(self.l2(h))
+        # h = self.l3(h)
+
+        h = torch.cat([h, action], dim=-1)
+        h = self.out(h)
 
         return h
 
@@ -140,12 +145,9 @@ class GraphDDPG(DDPG):
 
     def get_action(self, state, test=False, tensor=False):
         
-        state, g = state
+        state = dgl.batch([state]).to(self.device)
 
-        state = torch.Tensor(state).view(1, -1).to(self.device)
-        g = dgl.batch([g]).to(self.device)
-
-        action = self._get_action_body([state, g], 
+        action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
                                        self.actor.max_action)
         if tensor:
@@ -163,4 +165,4 @@ class GraphDDPG(DDPG):
         self.actor.train()
 
         # action = torch.clamp(action, -max_action, max_action)
-        return action.squeeze(0)
+        return action
