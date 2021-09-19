@@ -188,25 +188,23 @@ class Trainer:
                     
             else:
                 action = self._policy.get_action(obs)
-                
-            if isinstance(obs, DGLHeteroGraph):
-                robot_action = action[obs.ndata['tid']==99].flatten()                
-            else:
-                robot_action = action
 
-            next_obs, reward, done, success = self._env.step(robot_action)          
+            next_obs, reward, done, success = self._env.step(action)          
             
             if isinstance(next_obs, DGLHeteroGraph):
+                robot_action = action[obs.ndata['tid']==99].flatten() 
                 robot_reward = reward[next_obs.ndata['tid']==99].flatten()
             else:
+                robot_action = action
                 robot_reward = reward
 
             if self._verbose>0:
-                print('Agent Action:', action)
-                print('Agent Reward:', reward)
+                # print('Agent Action:', action)
+                # print('Agent Reward:', reward)
                 print('Robot action:', np.round(robot_action, 2))
-                print('Robot Reward:', np.round(robot_reward, 2))
-                print('Robot Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+                print('Robot cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+                print('Robot reward:', np.round(robot_reward, 2))
+                
 
             if self._verbose>1:
                 print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
@@ -233,15 +231,15 @@ class Trainer:
                 if isinstance(obs, DGLHeteroGraph):
 
                     _obs, _next_obs, _obs_nidx, _next_obs_nidx = remove_uncommon_nodes(deepcopy(obs), deepcopy(next_obs))
-                    
-                    if _obs.number_of_nodes() != _next_obs.number_of_nodes():
-                        print(_obs, _next_obs)
 
-                    assert _obs.number_of_nodes() == _next_obs.number_of_nodes()
+                    assert _obs.number_of_nodes() == _next_obs.number_of_nodes(), "obs is not similar to next_obs"
+                    
                     _action = action[_obs_nidx]
                     _reward = reward[_next_obs_nidx]
                     _done = np.repeat(done, _next_obs.number_of_nodes())
+                    
                     self.replay_buffer.add([_obs, _action, _reward, _next_obs, _done])
+                
                 else:
                     self.replay_buffer.add([obs, action, reward, next_obs, done])
 
@@ -464,7 +462,15 @@ if __name__ == '__main__':
     import sys
     if './' not in sys.path: 
         sys.path.insert(0, './')
-
+    
+    tracker_path = './preddrl_tracker/scripts/'
+    if tracker_path not in sys.path:
+        sys.path.insert(0, tracker_path)
+        
+    td3_path = './preddrl_td3/scripts_torch/'
+    if td3_path not in sys.path:
+        sys.path.insert(0, td3_path)
+        
     import args
     import yaml
 

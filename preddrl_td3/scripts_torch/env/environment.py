@@ -72,7 +72,7 @@ class Env:
         self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
 
-        self.respawn_goal = Respawn(stage) # stage argument added by niraj        
+        self.goal_spawnner = Respawn(stage) # stage argument added by niraj        
 
         self.time_step = 0.2
         self.timer = Timer() # set by trainer
@@ -91,6 +91,7 @@ class Env:
 
     def initialize_agents(self, ):
 
+        self.vel_cmd = Twist()
         # keep track of nodes and their id, added by niraj
         # self.nid = 0
         self.robot = Agent(node_id=99, node_type='robot', time_step=self.time_step)
@@ -107,7 +108,7 @@ class Env:
                                                             max_peds=20)
             # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
-            self.respawn_pedestrian = RespawnPedestrians()
+            self.ped_spawnner = RespawnPedestrians()
 
         self.update_agents()
 
@@ -262,11 +263,12 @@ class Env:
         ped_states = {}
         # update action of the current peds
         for ped in curr_peds:
-            # extract current ground truth 
+            # ground truth state
             state = ped.get_states_at(t) 
 
             ped.set_states(state[0], state[1], state[4], state[5], state[6])
 
+            # ground truth action
             if self.action_type=='xy':
                 action = (ped.vx, ped.vy)
             else:
@@ -274,7 +276,7 @@ class Env:
 
             ped.set_action(action)
 
-            # extract gt futures
+            # ground truth futures
             ped_futures = np.zeros((self.future_steps, 2))
             for i, _t in enumerate(range(t, min(t+self.future_steps, ped.timesteps))):
                 ped_futures[i] = ped.get_states_at(_t)[:2]
@@ -283,12 +285,12 @@ class Env:
 
             ped_states[ped.id] = state
 
-        self.respawn_pedestrian.respawn(ped_states, model_states)
+        self.ped_spawnner.respawn(ped_states, model_states)
             
         return curr_peds
 
 
-    def update_agents(self, action=(0.0, 0.0)):
+    def update_agents(self,):
 
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
@@ -297,7 +299,7 @@ class Env:
             raise ValueError 
 
         self.robot.set_states(self.position.x, self.position.y, self.goal_x, self.goal_y, theta=self.yaw)
-        self.robot.set_action(action) 
+        self.robot.set_action((self.vel_cmd.linear.x, self.vel_cmd.angular.z)) 
 
         robot_futures = self.robot.cv_prediction(self.future_steps)
         self.robot.set_futures(robot_futures)
@@ -311,16 +313,21 @@ class Env:
         self.pedestrians_list = self.updatePedestrians(model_states)
 
         
-    def getGraphState(self, action=[0.0, 0.0]):
+    def getGraphState(self, action=None):
 
         graph_nodes = [self.robot, self.robot_goal] + self.pedestrians_list
 
         state = create_graph(graph_nodes, self.robot.pos)
 
+        if action==None:
+            return state
+
+        # compute  rewards
         current_distance = self.getGoalDistance()
         reaching_goal = current_distance < self.goal_threshold
         too_far = current_distance > self.max_goal_distance
-            
+        
+        # collision detection from the ground truth 
         robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
         goal_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot_goal')]
         robot_neighbor_dist = min_neighbor_distance(deepcopy(state), robot_node, mask_nodes=goal_node)
@@ -330,6 +337,7 @@ class Env:
         else:
             collision = False
 
+        # index of nodes having collision
         _, collision_node_idx = find_collision_nodes(state, mask_nodes=goal_node, collision_threshold=self.collision_threshold)
         
         # collisoin rewards
@@ -338,9 +346,9 @@ class Env:
 
         #NOTE! need to mask out goal nodes
         goal_mask = state.ndata['cid']!=node_type_list.index('robot_goal')
-        total_rewards -= np.linalg.norm(state.ndata['action'].numpy() - action, axis=-1, keepdims=True)
-        # TODO! compute goal distance with current action
-
+        total_rewards -= np.linalg.norm(self.last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)
+        
+        # compute goal reaching rewards with current action
         total_rewards += (self.goal_threshold - state.ndata['gdist'].numpy()) * 0.1 * goal_mask.numpy()
         total_rewards += (state.ndata['gdist'].numpy()<self.goal_threshold)*150 * goal_mask.numpy()
 
@@ -349,7 +357,6 @@ class Env:
         return state, collision, reaching_goal, too_far, total_rewards
 
     def getState(self, action=[0., 0.]):
-        
 
         scan = None
         while scan is None:
@@ -423,15 +430,20 @@ class Env:
 
     def step(self, action):
 
-        self.vel_cmd = self.action_to_vel_cmd(action, self.action_type)
+        if self.graph_state:
+            robot_action = action[obs.ndata['tid']==99].reshape(2,)           
+        else:
+            robot_action = action
+
+        self.vel_cmd = self.action_to_vel_cmd(robot_action, self.action_type)
         self.pub_cmd_vel.publish(self.vel_cmd)
 
         rospy.sleep(self.time_step)
         self.pub_cmd_vel.publish(Twist())
 
-        self.update_agents(action)
+        self.global_step+=1
 
-        
+        self.update_agents(action)
 
         if self.graph_state:
             state, collision, reaching_goal, too_far, reward = self.getGraphState(action)
@@ -467,17 +479,17 @@ class Env:
             # self.pub_cmd_vel.publish(Twist())
             self.reset()
 
-        self.global_step+=1
+        self.last_state = state
 
         return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
     def init_goal(self, position_check=False, test=False):
         
-        self.goal_x, self.goal_y = self.respawn_goal.getPosition(position_check, test)
+        self.goal_x, self.goal_y = self.goal_spawnner.getPosition(position_check, test)
         
-        if self.respawn_goal.check_model: self.respawn_goal.deleteModel()
-        self.respawn_goal.respawnModel()
+        if self.goal_spawnner.check_model: self.goal_spawnner.deleteModel()
+        self.goal_spawnner.respawnModel()
 
 
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
