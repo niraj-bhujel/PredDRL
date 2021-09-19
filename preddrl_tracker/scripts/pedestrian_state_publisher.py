@@ -7,8 +7,7 @@ This is equivalen to tracker that publish the current position of the agents onl
 
 import os
 import sys
-if not './' in sys.path:
-    sys.path.insert(0, './')
+
 
 import math
 import numpy as np
@@ -196,6 +195,9 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
 
 #%%
 if __name__ == '__main__':
+
+    if not './' in sys.path:
+        sys.path.insert(0, './')
     
     ros_rate = 25.
     rospack = RosPack()
