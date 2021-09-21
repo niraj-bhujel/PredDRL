@@ -138,8 +138,8 @@ class DDPG(OffPolicyAgent):
             self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
             self.writer.add_scalar(self.policy_name + "/td_error", np.mean(td_errors), self.iteration)
 
-            self.writer.add_histogram(self.policy_name + "/avg_actions", actions.cpu().numpy(), self.iteration)
-            self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
+            self.writer.add_histogram(self.policy_name + "/batch_actions", actions.cpu().numpy(), self.iteration)
+            self.writer.add_histogram(self.policy_name + "/batch_rewards", rewards.cpu().numpy(), self.iteration)
 
 
             if self._verbose>0:

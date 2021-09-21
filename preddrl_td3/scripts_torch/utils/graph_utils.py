@@ -42,6 +42,7 @@ state_dims = {
         "future_states": 2*4, # 4 is future steps
     }
 
+
 def remove_uncommon_nodes(g1, g2):
     g1_tid = g1.ndata['tid'].cpu().numpy()
     g2_tid = g2.ndata['tid'].cpu().numpy()
@@ -57,6 +58,7 @@ def remove_uncommon_nodes(g1, g2):
 
     g2_redundant_nodes = [g2.nodes()[g2.ndata['tid']==tid] for tid in g2_tid if tid not in comm_tid]
     g2_node_idx = [i for i, node in enumerate(g2.nodes()) if node not in g2_redundant_nodes]
+    
     if len(g2_redundant_nodes)>0:
         g2.remove_nodes(g2_redundant_nodes)
 
@@ -128,7 +130,9 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         nodes_data['pos'].append(src_node.pos)
         nodes_data['rel'].append([src_node.pos[0]-ref_pos[0], src_node.pos[1]-ref_pos[1]])
 
+        nodes_data['yaw'].append(src_node.theta)
         nodes_data['hed'].append(src_node.heading)
+        
         nodes_data['action'].append(src_node.action)
         nodes_data['goal'].append(src_node.goal)
         
@@ -186,7 +190,7 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
 
 
     g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
-    
+    g.ndata['yaw'] = torch.tensor(np.stack(nodes_data['yaw'], axis=0), dtype=torch.float32).view(-1, state_dims['yaw'])
     g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
 

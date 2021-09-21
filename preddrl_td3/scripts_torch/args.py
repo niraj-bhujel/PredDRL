@@ -7,10 +7,12 @@ def get_argument(parser=None):
     # policy setting
     parser.add_argument('--policy', type=str, default='ddpg_graph',
                         help="Model name one of [td3, ddpg, graph_ddpg, gcn]")
-    parser.add_argument('--sampling_method', type=str, default='orca',
-                        help="Action sampling method. One of [uniform, prefered_vel, orca]")
-
     parser.add_argument('--memory_capacity', type=int, default=int(1e6))
+
+    parser.add_argument('--sampling_method', type=str, default='uniform',
+                        help="Action sampling method. One of [uniform, vpref, orca]")
+    parser.add_argument('--robot_type', type=str, default='non-holonomic',
+                        help="Action sampling method. One of [holonomic, non-holonomic]")
 
     # experiment settings
     parser.add_argument('--max_steps', type=int, default=int(1e6),
@@ -68,7 +70,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['current_states', 'future_states'],
+    parser.add_argument('--input_states', nargs='+', default=['rel', 'action', 'hed'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')

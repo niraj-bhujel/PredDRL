@@ -126,7 +126,7 @@ class Trainer:
         # graph visualization
         self._vis_graph = args.vis_graph
         self._vis_graph_dir = self._output_dir + '/graphs/'
-        shutil.rmtree(self._vis_graph_dir, ignore_errors=True)
+        # shutil.rmtree(self._vis_graph_dir, ignore_errors=True)
         create_new_dir(self._vis_graph_dir)
 
 
@@ -139,6 +139,8 @@ class Trainer:
 
         self._policy.writer = self.writer
         self._policy._verbose = self._verbose
+
+        self._env.writer = self.writer
 
     def set_seed(self, seed):
         #setup seeds
@@ -159,11 +161,10 @@ class Trainer:
         actor_loss = 0
         critic_loss = 0
 
+        collision_times = 0
+
         episode_start_time = time.perf_counter()
         
-        
-        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
-
         if self._load_memory:
             try:
                 with open(self._memory_path + '.pkl', 'rb') as f:
@@ -171,6 +172,8 @@ class Trainer:
                 total_steps=self._policy.n_warmup + 1
             except Exception as e:
                 print('Unable to load memory!', e)
+
+        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         while total_steps < self._max_steps:
             self._env.timer.tic()
@@ -189,17 +192,19 @@ class Trainer:
             else:
                 action = self._policy.get_action(obs)
 
-            next_obs, reward, done, success = self._env.step(action)          
+            next_obs, reward, done, success = self._env.step(action, obs)          
             
             if isinstance(next_obs, DGLHeteroGraph):
-                robot_action = action[obs.ndata['tid']==99].flatten() 
-                robot_reward = reward[next_obs.ndata['tid']==99].flatten()
+                robot_action = action[obs.ndata['tid']==99].flatten()
+                robot_reward = reward[next_obs.ndata['tid']==99].flatten().item()
             else:
                 robot_action = action
                 robot_reward = reward
 
             if self._verbose>0:
-                # print('Agent Action:', action)
+                # print(obs.ndata['tid'], next_obs.ndata['tid'])
+                print('Agent Action:', action)
+                print('Agent Action (GT):', obs.ndata['action'])
                 # print('Agent Reward:', reward)
                 print('Robot action:', np.round(robot_action, 2))
                 print('Robot cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
@@ -249,14 +254,14 @@ class Trainer:
                     pickle.dump(self.replay_buffer, f)
 
             episode_steps += 1
-            episode_return += np.mean(reward)
+            episode_return += robot_reward
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
             self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/reward", robot_reward, total_steps)
-            self.writer.add_histogram(self._policy.policy_name + "/agent_reward", reward, total_steps)
+            self.writer.add_scalar("Common/collisions", self._env.collision_times, total_steps)
 
             # update
             obs = next_obs
@@ -270,6 +275,7 @@ class Trainer:
                 self.logger.info("{0: 5}/{1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f}, Sucess Rate:{5: .2f}, FPS: {4: 5.2f}".format(
                         n_episode, total_steps, episode_steps, episode_return, fps, success_rate))
 
+                self._env.collision_times = 0
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter()
@@ -290,8 +296,7 @@ class Trainer:
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
-                    samples = self.sample_data(batch_size=self._policy.batch_size,
-                                               device=self._policy.device)
+                    samples = self.sample_data(batch_size=self._policy.batch_size, device=self._policy.device)
 
                     self._policy.train(samples["obs"], 
                                         samples["act"], 
