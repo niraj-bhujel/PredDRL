@@ -9,7 +9,7 @@ def get_argument(parser=None):
                         help="Model name one of [td3, ddpg, graph_ddpg, gcn]")
     parser.add_argument('--memory_capacity', type=int, default=int(1e6))
 
-    parser.add_argument('--sampling_method', type=str, default='uniform',
+    parser.add_argument('--sampling_method', type=str, default='orca',
                         help="Action sampling method. One of [uniform, vpref, orca]")
     parser.add_argument('--robot_type', type=str, default='non-holonomic',
                         help="Action sampling method. One of [holonomic, non-holonomic]")

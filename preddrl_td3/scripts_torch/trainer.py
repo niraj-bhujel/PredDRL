@@ -203,8 +203,8 @@ class Trainer:
 
             if self._verbose>0:
                 # print(obs.ndata['tid'], next_obs.ndata['tid'])
-                print('Agent Action:', action)
-                print('Agent Action (GT):', obs.ndata['action'])
+                # print('Agent Action:', action)
+                # print('Agent Action (GT):', obs.ndata['action'])
                 # print('Agent Reward:', reward)
                 print('Robot action:', np.round(robot_action, 2))
                 print('Robot cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))

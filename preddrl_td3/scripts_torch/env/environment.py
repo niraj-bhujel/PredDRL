@@ -371,17 +371,16 @@ class Env:
         total_rewards = np.zeros([curr_state.number_of_nodes(), 1])        
         total_rewards[collision_agents_idx] = -150.
 
-        # compute goal reaching rewards with current action, computed on previous graph
-        goal_mask = (last_state.ndata['cid']!=node_type_list.index('robot_goal')).unsqueeze(1).numpy()
-
+        # compute goal reaching rewards with current action, only for robot
+        robot_mask = (last_state.ndata['cid']==node_type_list.index('robot')).unsqueeze(1).numpy()
         goal_dist = np.linalg.norm(pred_pos - last_state.ndata['goal'].numpy(), axis=-1, keepdims=True)
-        goal_rewards = (goal_dist<self.goal_threshold) * 150. * goal_mask
+        goal_rewards = (goal_dist<self.goal_threshold) * 150. * robot_mask
         total_rewards[curr_node_idx] += goal_rewards[last_node_idx]
         # total_rewards += (self.goal_threshold - curr_state.ndata['gdist'].numpy()) * 0.1 * goal_mask
 
-        # compute correct action reward
-        robot_mask = (last_state.ndata['cid']!=node_type_list.index('robot')).unsqueeze(1).numpy()
-        vel_error = np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)*robot_mask*goal_mask*10
+        # compute correct action reward for agents
+        agent_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
+        vel_error = np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)*agent_mask
         # total_rewards -= np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)
         total_rewards[curr_node_idx] -= vel_error[last_node_idx]
         print('Action Error:', np.mean(vel_error))
