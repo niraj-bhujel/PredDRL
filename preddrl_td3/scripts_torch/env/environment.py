@@ -260,11 +260,15 @@ class Env:
         ped_states = {}
         # update action of the current peds
         for ped in curr_peds:
-
+            # ground truth state
+            state = ped.get_states_at(t) 
+            ped.update_states(state[0], state[1], state[4], state[5], state[6])
+            
+            # ground truth action
             if self.action_type=='xy':
-                action = (ped.vx, ped.vy)
+                action = (state[2], state[3])
             else:
-                action = (math.hypot(ped.vx, ped.vy), ped.theta)
+                action = (math.hypot(state[2], state[3]), state[6])
 
             ped.update_action(action)
 
