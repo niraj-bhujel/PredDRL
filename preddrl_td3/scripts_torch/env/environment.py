@@ -379,16 +379,16 @@ class Env:
         total_rewards[curr_node_idx] += goal_reaching_rewards[last_node_idx]
 
         # goal distance rewards
-        goal_dist_rewards = (self.goal_threshold - goal_dist) * 0.1 * goal_mask
+        goal_dist_rewards = (self.goal_threshold - goal_dist) * goal_mask
         total_rewards[curr_node_idx] += goal_dist_rewards[last_node_idx]
 
         # compute correct action reward for agents
         ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
-        vel_error = np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)*ped_mask
-        # total_rewards -= np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)
-        total_rewards[curr_node_idx] -= vel_error[last_node_idx]
-        print('Action Error:', np.mean(vel_error))
-
+        action_error = np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)*ped_mask
+        # total_rewards[curr_node_idx] -= action_error[last_node_idx]
+        print('Action Error:', np.mean(action_error))
+        self.writer.add_scalar('Common/action_error', np.mean(action_error), self.global_step)
+        
         return curr_state, collision, reaching_goal, too_far, total_rewards
 
     def getState(self, action=None):

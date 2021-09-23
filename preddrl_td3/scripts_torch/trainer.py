@@ -256,8 +256,9 @@ class Trainer:
             episode_steps += 1
             episode_return += robot_reward
             total_steps += 1
-            fps = episode_steps / (time.perf_counter() - episode_start_time)
-
+            # fps = episode_steps / (time.perf_counter() - episode_start_time)
+            fps = self._env.timer.diff
+            
             self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/reward", robot_reward, total_steps)
