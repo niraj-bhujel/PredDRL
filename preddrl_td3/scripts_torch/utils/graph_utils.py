@@ -38,8 +38,8 @@ state_dims = {
         "dist": 1,
         "action": 2,
         "goal": 2,
-        "current_states":7,
-        "future_states": 2*4, # 4 is future steps
+        "state":7,
+        "future": 2*4, # 4 is future steps
     }
 
 def min_neighbor_distance(g, node, mask_nodes=[]):
@@ -136,8 +136,8 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         nodes_data['action'].append(node.action)
         nodes_data['goal'].append(node.goal)
         
-        nodes_data['current_states'].append(node.state)
-        nodes_data['future_states'].append([s for futures in node.futures for s in futures])
+        nodes_data['state'].append(node.state)
+        nodes_data['future'].append([s for futures in node.futures for s in futures])
 
         # nodes_data['gdist'].append(node.distance_to_goal)
         # nodes_data['time_step'].append(node.time_step)
@@ -163,8 +163,8 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
 
-    g.ndata["current_states"] = torch.tensor(np.stack(nodes_data['current_states'], axis=0), dtype=torch.float32).view(-1, state_dims['current_states'])
-    g.ndata["future_states"] = torch.tensor(np.stack(nodes_data['future_states'], axis=0), dtype=torch.float32).view(-1, state_dims['future_states'])
+    g.ndata["state"] = torch.tensor(np.stack(nodes_data['state'], axis=0), dtype=torch.float32).view(-1, state_dims['state'])
+    g.ndata["future"] = torch.tensor(np.stack(nodes_data['future'], axis=0), dtype=torch.float32).view(-1, state_dims['future'])
 
     g.edata['dist'] = torch.tensor(np.array(edges_data['dist']), dtype=torch.float32).view(-1, state_dims['dist'])
     g.edata['diff'] = torch.tensor(np.array(edges_data['diff']), dtype=torch.float32).view(-1, state_dims['diff'])
