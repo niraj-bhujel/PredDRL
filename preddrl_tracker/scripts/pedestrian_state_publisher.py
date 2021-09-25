@@ -146,7 +146,8 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         
         intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points).round(2)
         
-        intp_ped_vel = (intp_ped_pos[1:] - intp_ped_pos[:-1]) * target_frame_rate
+        intp_ped_vel = np.round((intp_ped_pos[1:] - intp_ped_pos[:-1]) * target_frame_rate, 2)
+
         # intp_ped_vel = np.gradient(intp_ped_pos, 1.0/target_frame_rate, axis=0).round(2)
 
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
@@ -160,10 +161,10 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
 
             gx, gy = intp_ped_pos[-1][0], intp_ped_pos[-1][1]
 
-            theta = math.atan2(vy, vx) # radians
+            theta = round(math.atan2(vy, vx), 2) # radians
             
             # node.update_states(px, v, q, r)
-            node.update_states(px, py, vx, vy, gx, gy, theta)
+            node.update_history(px, py, vx, vy, gx, gy, theta)
 
         ped_nodes.append(node)
         

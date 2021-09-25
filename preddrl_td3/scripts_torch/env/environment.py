@@ -261,24 +261,23 @@ class Env:
         # update action of the current peds
         for ped in curr_peds:
             # ground truth state
-            state = ped.get_states_at(t) 
-            ped.update_states(state[0], state[1], state[4], state[5], state[6])
+            state = ped.get_state_at(t) 
+            ped.set_state(state.px, state.py, state.vx, state.vy, state.gx, state.gy, state.theta)
             
             # ground truth action
             if self.action_type=='xy':
-                action = (state[2], state[3])
+                action = (state.vx, state.vy)
             else:
-                action = (math.hypot(state[2], state[3]), state[6])
-
-            ped.update_action(action)
+                action = (math.hypot(state.vx, state.vy), state.theta)
+            ped.set_action(action)
 
             ped_futures = np.zeros((self.future_steps, 2))
             for i, ts in enumerate(range(t, min(t+self.future_steps, ped.timesteps))):
-                ped_futures[i] = ped.get_states_at(ts)[:2]
+                _s = ped.get_state_at(ts)
+                ped_futures[i] = (_s.vx, _s.vy)
+            ped.set_futures(ped_futures)
 
-            ped.update_futures(ped_futures)
-
-            ped_states[ped.id] = ped.get_states_at(t)
+            ped_states[ped.id] = ped.deserialize_state(state)
 
         self.respawn_pedestrian.respawn(ped_states, model_states)
             
@@ -293,15 +292,19 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        self.robot.update_states(self.position.x, self.position.y, self.goal_x, self.goal_y, theta=self.yaw)
-        self.robot.update_action(action) 
+        for i, m_name in enumerate(model_states.name):
+            if m_name == 'turtlebot3_burger':
+                rvel = model_states.twist[i].linear
 
-        robot_futures = self.robot.cv_prediction(self.future_steps)
-        self.robot.update_futures(robot_futures)
+        self.robot.set_state(self.position.x, self.position.y, rvel.x, rvel.y, self.goal_x, self.goal_y, theta=self.yaw)
+        self.robot.set_action(action) 
+
+         # future vel
+        self.robot.set_futures([(rvel.x, rvel.y) for _ in range(self.future_steps)])
 
         # goal as a node
-        self.robot_goal.update_states(self.goal_x, self.goal_y, self.goal_x, self.goal_y, theta=0.0)
-        self.robot_goal.update_futures([self.robot_goal.pos for _ in range(self.future_steps)])
+        self.robot_goal.set_state(self.goal_x, self.goal_y, 0., 0., self.goal_x, self.goal_y, theta=0.0)
+        self.robot_goal.set_futures([(0., 0.) for _ in range(self.future_steps)]) # future vel
         
         # update obstacle and pedestrians
         # self.obstacles = self.updateObstaclesStates(model_states, self.obstacles)

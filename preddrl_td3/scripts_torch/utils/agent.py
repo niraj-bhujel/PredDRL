@@ -4,7 +4,9 @@
 import time
 import math
 import numpy as np
-from collections import deque 
+from collections import deque, namedtuple
+
+State = namedtuple('State', ['px', 'py', 'vx', 'vy', 'gx', 'gy', 'theta'])
 
 def euler_from_quaternion(orientation_list):
     '''
@@ -40,30 +42,28 @@ class Agent(object):
         self.theta = None
         self.action = (0., 0.)
 
-        self.state_history = deque([], history_len)
+        self.state_history = []
 
     def __len__(self):
-        return len(self._pos)
+        return len(self.state_history)
 
-    def update_action(self, action):
+    def set_action(self, action):
         self.action = action
 
-    def update_goal(self, gx, gy):
+    def set_goal(self, gx, gy):
         self.gx = gx
         self.gy = gy
-        
-    def update_states(self, px, py, gx, gy, theta):
 
-        if self.px is not None:
-            vx = (px - self.px)/self.time_step
-            vy = (py - self.py)/self.time_step
+    def set_futures(self, futures):
+        self.futures = futures
 
-            ax = (vx - self.vx)/self.time_step
-            ay = (vy - self.vy)/self.time_step
+    def set_state(self, px, py, vx, vy, gx, gy, theta):
 
-        else:
-            vx, vy = 0., 0.
-            ax, ay = 0., 0.
+        # if self.px is not None:
+        #     self.ax = (vx - self.vx)/self.time_step
+        #     self.ay = (vy - self.vy)/self.time_step
+        # else:
+        #     self.ax, self.ay = 0., 0.
 
         self.px = px
         self.py = py
@@ -71,28 +71,20 @@ class Agent(object):
         self.vx = vx
         self.vy = vy
 
-        self.ax = ax
-        self.ay = ay
-
         self.gx = gx
         self.gy = gy
         
         self.theta = theta
 
-        self.state_history.append((px, py, vx, vy, ax, ay, theta))
+    def update_history(self, px, py, vx, vy, gx, gy, theta):
+        self.state_history.append(State(px, py, vx, vy, gx, gy, theta))
 
-    def update_futures(self, states):
-        self.futures = states
+    def get_state(self, ):
+        return State(self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
 
-    def get_states(self, ):
-        return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
-
-    def get_states_at(self, t):
+    def get_state_at(self, t):
         _idx = t - self.first_timestep
         return self.state_history[_idx]
-
-    def get_futures(self, ):
-        return self.futures
 
     def get_futures_at(self, t, future_steps=4):
         _idx = t - self.first_timestep
@@ -103,6 +95,7 @@ class Agent(object):
 
         preds = []
         sec_from_now = pred_steps * self.time_step
+
         for time in np.arange(self.time_step, sec_from_now + self.time_step, self.time_step):
             half_time_squared = 0.5 * time * time
 
@@ -115,9 +108,9 @@ class Agent(object):
     def compute_position(self, action):
 
         theta = self.theta + action[1]
-        px, py = self._pos
-        px = px + np.cos(theta) * action[0] * self.time_step
-        py = py + np.sin(theta) * action[0] * self.time_step
+
+        px = self.px + np.cos(theta) * action[0] * self.time_step
+        py = self.py + np.sin(theta) * action[0] * self.time_step
 
         return px, py
 
@@ -138,15 +131,20 @@ class Agent(object):
     def distance_to_goal(self,):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
 
-    def preferred_vel(self, v_pref=0.4):
+    def preferred_vel(self, speed=0.4):
         velocity = np.array((self.gx - self.px, self.gy - self.py))
-        pref_vel = v_pref * velocity / np.linalg.norm(velocity)
+        pref_vel = speed * velocity / np.linalg.norm(velocity)
         return pref_vel
 
-    @property
-    def states(self, ):
-        return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
+    def serialize_state(self, s):
+        return State(s)
 
+    def deserialize_state(self, s):
+        return (s.px, s.py, s.vx, s.vy, s.gx, s.gy, s.theta)
+
+    @property
+    def state(self, ):
+        return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
     @property
     def pos(self, ):
         return (self.px, self.py)
