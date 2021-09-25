@@ -101,9 +101,9 @@ class Env:
 
         if self.stage==7:
             self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_tracker/data/crowds_zara01.txt', 
-                                                            target_frame_rate=int(1/self.time_step), 
-                                                            max_peds=10)
-            self.ped_frames = self.ped_frames[:50]# use only first 50 frames
+                                                            target_frame_rate=2*int(1/self.time_step), 
+                                                            max_peds=40)
+            # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
             self.respawn_pedestrian = RespawnPedestrians()
 
@@ -208,7 +208,7 @@ class Env:
 
         else:
             v, w = action[0], action[1]
-            v = (v+2)/10.
+            # v = (v+2)/10.
 
         vel_msg.linear.x = v
         vel_msg.angular.z = w
@@ -436,7 +436,6 @@ class Env:
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True, test=self.test)
-            self.robot.update_goal(self.goal_x, self.goal_y)
 
         if done:
             # self.pub_cmd_vel.publish(Twist())
