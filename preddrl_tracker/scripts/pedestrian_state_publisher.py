@@ -145,26 +145,25 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         ped_pos = data[data[:, 1]==pid, 2:4]
         
         intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points).round(2)
-
-        intp_ped_vel = np.gradient(intp_ped_pos, 1.0/target_frame_rate, axis=0).round(2)
-        # ped_acc = np.gradient(ped_vel, 1.0/target_frame_rate, axis=0).round(2)
+        
+        intp_ped_vel = (intp_ped_pos[1:] - intp_ped_pos[:-1]) * target_frame_rate
+        # intp_ped_vel = np.gradient(intp_ped_pos, 1.0/target_frame_rate, axis=0).round(2)
 
         start_idx = intp_data_frames.tolist().index(ped_frames[0])
-
         
         node = Agent(pid, first_timestep=start_idx, time_step=1./target_frame_rate, node_type='pedestrian', history_len=num_intp_points)
         
-        for i in range(len(intp_ped_pos)):
+        for i in range(len(intp_ped_pos)-1):
             
-            px, py = intp_ped_pos[i][0], intp_ped_pos[i][1]
+            px, py = intp_ped_pos[i+1][0], intp_ped_pos[i+1][1]
             vx, vy = intp_ped_vel[i][0], intp_ped_vel[i][1]
 
-            gx, gy = intp_ped_pos[i][-1], intp_ped_pos[i][-1]
+            gx, gy = intp_ped_pos[-1][0], intp_ped_pos[-1][1]
 
             theta = math.atan2(vy, vx) # radians
             
             # node.update_states(px, v, q, r)
-            node.update_states(px, py, gx, gy, theta)
+            node.update_states(px, py, vx, vy, gx, gy, theta)
 
         ped_nodes.append(node)
         
@@ -172,6 +171,8 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         
         num_ped_considered+=1
         
+        # break
+    
         if num_ped_considered>max_peds:
             break
     
