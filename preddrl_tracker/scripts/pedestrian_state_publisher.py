@@ -177,7 +177,7 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         if num_ped_considered>max_peds:
             break
     
-    ped_frames = []
+    peds_frames = []
     peds_per_frame = []
     for t, frame in enumerate(intp_data_frames):
         curr_ped = []
@@ -188,11 +188,11 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
                 curr_ped.append(ped_nodes[i].id)
         
         if len(curr_ped)>0:
-            ped_frames.append(frame)
+            peds_frames.append(frame)
             peds_per_frame.append(curr_ped)
         
         
-    return ped_nodes, ped_frames, peds_per_frame
+    return ped_nodes, peds_frames, peds_per_frame
 
 
 #%%

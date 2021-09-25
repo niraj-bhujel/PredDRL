@@ -272,11 +272,12 @@ class Env:
             ped.set_action(action)
 
             ped_futures = np.zeros((self.future_steps, 2))
-            for i, ts in enumerate(range(t, min(t+self.future_steps, ped.timesteps))):
+            for i, ts in enumerate(range(t, min(t+self.future_steps, ped.last_timestep))):
                 _s = ped.get_state_at(ts)
                 ped_futures[i] = (_s.vx, _s.vy)
             ped.set_futures(ped_futures)
-
+            print('future:', ped.futures)
+            
             ped_states[ped.id] = ped.deserialize_state(state)
 
         self.respawn_pedestrian.respawn(ped_states, model_states)
