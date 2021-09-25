@@ -130,6 +130,7 @@ class Env:
 
         self.position = odom.pose.pose.position
         self.orientation = odom.pose.pose.orientation
+        self.linear_vel = odom.twist.linear
 
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_list)
@@ -276,8 +277,8 @@ class Env:
                 _s = ped.get_state_at(ts)
                 ped_futures[i] = (_s.vx, _s.vy)
             ped.set_futures(ped_futures)
-            print('future:', ped.futures)
-            
+            # print('future:', ped.futures)
+
             ped_states[ped.id] = ped.deserialize_state(state)
 
         self.respawn_pedestrian.respawn(ped_states, model_states)
@@ -293,15 +294,12 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        for i, m_name in enumerate(model_states.name):
-            if m_name == 'turtlebot3_burger':
-                rvel = model_states.twist[i].linear
 
-        self.robot.set_state(self.position.x, self.position.y, rvel.x, rvel.y, self.goal_x, self.goal_y, theta=self.yaw)
+        self.robot.set_state(self.position.x, self.position.y, self.linear_vel.x, self.linear_vel.y, self.goal_x, self.goal_y, theta=self.yaw)
         self.robot.set_action(action) 
 
          # future vel
-        self.robot.set_futures([(rvel.x, rvel.y) for _ in range(self.future_steps)])
+        self.robot.set_futures([(self.linear_vel.x, self.linear_vel.y) for _ in range(self.future_steps)])
 
         # goal as a node
         self.robot_goal.set_state(self.goal_x, self.goal_y, 0., 0., self.goal_x, self.goal_y, theta=0.0)
