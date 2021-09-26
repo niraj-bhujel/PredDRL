@@ -21,7 +21,7 @@ def get_argument(parser=None):
                         help='Number of experiments')
     parser.add_argument('--show_progress', action='store_true',
                         help='Call `render` in training process')
-    parser.add_argument('--save_model_interval', type=int, default=int(1e6),
+    parser.add_argument('--save_model_interval', type=int, default=int(5e3),
                         help='Interval to save model')
     parser.add_argument('--save_summary_interval', type=int, default=int(1e3),
                         help='Interval to save summary')
@@ -117,7 +117,7 @@ def get_argument(parser=None):
                         help='One of [0, 1, 2]')
 
     # simulation env
-    parser.add_argument('--stage', type=int, default=0,
-                        help='Value from 0-6')   
+    parser.add_argument('--stage', type=int, default=7,
+                        help='Value from 0-7')   
 
     return parser

@@ -110,18 +110,19 @@ def frames_to_gif(frames, prefix, save_dir, interval=50, fps=30):
     anim.save(output_path, writer='imagemagick', fps=fps)
 
 
-def save_ckpt(model, save_ckpt_dir, step):
+def save_ckpt(model, save_ckpt_dir):
     state = {
 
         'model_state': model.state_dict(),
         'actor_optimizer': model.actor_optimizer.state_dict(),
         'critic_optimizer': model.critic_optimizer.state_dict(),
     }
+    print('Saving checkpoint .. ', save_ckpt_dir)
+    torch.save(state, os.path.join(save_ckpt_dir, 'model.pth'))
 
-    torch.save(state, os.path.join(save_ckpt_dir, 'model_step_' + str(step) + '.pth'))
-
-def load_ckpt(model, load_ckpt_dir, last_step):
-    checkpoint = torch.load(os.path.join(load_ckpt_dir, 'model_step_' + str(last_step) + '.pth'))
+def load_ckpt(model, load_ckpt_dir):
+    print('Loading checkpoint .. ', load_ckpt_dir)
+    checkpoint = torch.load(os.path.join(load_ckpt_dir, 'model.pth'))
 
     model.load_state_dict(checkpoint['model_state'])
     model.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])

@@ -132,8 +132,8 @@ class Agent(object):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
 
     def preferred_vel(self, speed=0.4):
-        velocity = np.array((self.gx - self.px, self.gy - self.py))
-        pref_vel = speed * velocity / np.linalg.norm(velocity)
+        direction = np.array((self.gx - self.px, self.gy - self.py))
+        pref_vel = speed * direction / np.linalg.norm(direction)
         return pref_vel
 
     def serialize_state(self, s):

@@ -86,6 +86,8 @@ class Env:
         self.global_step = 0
 
         self.future_steps = 4
+        
+        self.initialize_agents()
 
     def initialize_agents(self, ):
 
@@ -214,7 +216,6 @@ class Env:
 
         vel_msg.linear.x = v
         vel_msg.angular.z = w
-
 
         return vel_msg
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import logging
 import shutil
@@ -6,6 +7,7 @@ import random
 import numpy as np
 from collections import deque
 import pickle
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -16,15 +18,24 @@ import rospy
 
 from gym.spaces import Box
 
+if './' not in sys.path: 
+    sys.path.insert(0, './')
+
+tracker_path = './preddrl_tracker/scripts/'
+if tracker_path not in sys.path:
+    sys.path.insert(0, tracker_path)
+        
+td3_path = './preddrl_td3/scripts_torch'
+if not td3_path in sys.path:
+    sys.path.insert(0, td3_path)
+    
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
-# from misc.get_replay_buffer import get_replay_buffer
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src, create_new_dir
 from utils.graph_utils import node_type_list
 from utils.vis_graph import network_draw
 from utils.timer import Timer
-
 from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 
@@ -68,7 +79,7 @@ class Trainer:
         self._verbose = args.verbose 
 
         # self.timer = Timer()
-        self.r = rospy.Rate(1/self._env.time_step)
+        # self.r = rospy.Rate(1/self._env.time_step)
 
         if self._normalize_obs:
             assert isinstance(env.observation_space, Box)
@@ -103,9 +114,6 @@ class Trainer:
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
-
-        if self._evaluate or self._restore_checkpoint:
-            load_ckpt(self._policy, self._output_dir, last_step=1e4)
 
         # prepare buffer
         if self._use_prioritized_rb:
@@ -161,7 +169,6 @@ class Trainer:
 
         episode_start_time = time.perf_counter()
         
-        self._env.initialize_agents() # initialize agents
         obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         if self._load_memory:
@@ -294,7 +301,7 @@ class Trainer:
                     self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
                     
                 if total_steps % self._save_model_interval == 0:
-                    save_ckpt(self._policy, self._output_dir, total_steps)
+                    save_ckpt(self._policy, self._output_dir)
 
             # self.r.sleep()
             self._env.timer.toc()
@@ -305,39 +312,13 @@ class Trainer:
         self.writer.close()
         save_ckpt(self._policy, self._output_dir, total_steps)
 
-    def evaluate_policy_continuously(self):
-        """
-        Periodically search the latest checkpoint, and keep evaluating with the latest model until user kills process.
-        """
-        if self._model_dir is None:
-            self.logger.error("Please specify model directory by passing command line argument `--model-dir`")
-            exit(-1)
-
-        self.evaluate_policy(total_steps=0)
-        while True:
-            latest_path_ckpt = tf.train.latest_checkpoint(self._model_dir)
-
-            if self._latest_path_ckpt != latest_path_ckpt:
-                self._latest_path_ckpt = latest_path_ckpt
-
-                self._checkpoint.restore(self._latest_path_ckpt)
-
-                self.logger.info("Restored {}".format(self._latest_path_ckpt))
-
-            self.evaluate_policy(total_steps=0)
-
     def evaluate_policy(self, total_steps):
         
-        tf.summary.experimental.set_step(total_steps)
-
         if self._normalize_obs:
             self._test_env.normalizer.set_params(*self._env.normalizer.get_params())
 
         avg_test_return = 0.
-        if self._save_test_path:
-            replay_buffer = get_replay_buffer(self._policy, 
-                                              self._test_env, 
-                                              size=self._episode_max_steps)
+
 
         for i in range(self._test_episodes):
             episode_return = 0.
@@ -346,16 +327,10 @@ class Trainer:
             obs = self._test_env.reset(initGoal=True)
 
             for _ in range(self._episode_max_steps):
-                action = self._policy.get_action(obs, test=True)
 
-                next_obs, reward, done, success, _ = self._test_env.step(action)
+                action = self._policy.get_action(obs)
 
-                if self._save_test_path:
-                    replay_buffer.add(obs=obs, 
-                                      act=action,
-                                      next_obs=next_obs, 
-                                      rew=reward, 
-                                      done=done)
+                next_obs, reward, done, success = self._test_env.step(action)
 
                 if self._save_test_movie:
                     frames.append(self._test_env.render(mode='rgb_array'))
@@ -371,23 +346,10 @@ class Trainer:
                     break
 
             prefix = "step_{0:08d}_epi_{1:02d}_return_{2:010.4f}".format(total_steps, i, episode_return)
-
-            if self._save_test_path:
-
-                save_path(replay_buffer._encode_sample(np.arange(self._episode_max_steps)), 
-                          os.path.join(self._output_dir, prefix + ".pkl"))
-
-                replay_buffer.clear()
-
             if self._save_test_movie:
                 frames_to_gif(frames, prefix, self._output_dir)
 
             avg_test_return += episode_return
-
-        if self._show_test_images:
-            images = tf.cast(tf.expand_dims(np.array(obs).transpose(2, 0, 1), axis=3), tf.uint8)
-
-            tf.summary.image('train/input_img', images,)
 
         return avg_test_return / self._test_episodes
 
@@ -433,9 +395,6 @@ class Trainer:
         return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
 #%%
 if __name__ == '__main__':
-    import sys
-    if './' not in sys.path: 
-        sys.path.insert(0, './')
 
     import args
     import yaml
@@ -472,15 +431,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # print({val[0]:val[1] for val in sorted(vars(args).items())})
 
-    # test param, modified by niraj
-    if args.evaluate:
-        args.test_episodes=50
-        args.episode_max_steps = int(1e4)
-        args.model_dir = './preddrl_td3/results/compare_network/1conv_2dnn_3input_dropout_1'
-        args.show_test_progress=False
-        args.save_model_interval = int(1e10)
-        args.restore_checkpoint = True
-
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
 
     rospy.init_node('turtlebot3_td3_stage_3', disable_signals=True)
@@ -493,16 +443,15 @@ if __name__ == '__main__':
     with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
         net_params = yaml.load(f, Loader = yaml.FullLoader)
 
-    policy = policies[args.policy](
-        state_shape=env.observation_space.shape,
-        action_dim=env.action_space.high.size,
-        max_action=env.action_space.high[1],
-        gpu=args.gpu,
-        memory_capacity=args.memory_capacity,
-        batch_size=args.batch_size,
-        n_warmup=args.n_warmup,
-        net_params=net_params,
-        args=args,)
+    policy = policies[args.policy](state_shape=env.observation_space.shape,
+                                    action_dim=env.action_space.high.size,
+                                    max_action=env.action_space.high[1],
+                                    gpu=args.gpu,
+                                    memory_capacity=args.memory_capacity,
+                                    batch_size=args.batch_size,
+                                    n_warmup=args.n_warmup,
+                                    net_params=net_params,
+                                    args=args,)
 
     policy = policy.to(policy.device)
     print(repr(policy))
@@ -511,17 +460,20 @@ if __name__ == '__main__':
     print('Critic Paramaters:', model_parameters(policy.critic))
     print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
-    # policy.apply(init_weights_xavier)
-    # policy.apply(init_weights_kaiming)
 
+    if args.evaluate:
+        eval_path = './preddrl_td3/results/2021_09_26_GraphDDPG_warmup_10_bs100_stage_7_episode_step1000_sampling_orca' 
+        policy = load_ckpt(policy, eval_path)
+                    
     trainer = Trainer(policy, env, args, test_env=test_env, )
 
     trainer.set_seed(args.seed)
 
     try:
         if args.evaluate:
+
             print('-' * 89)
-            print('Evaluating %s'%trainer._output_dir)
+            print('Evaluating ... %s'%exp)
             trainer.evaluate_policy(10000)  # 每次测试都会在生成临时文件，要定期处理
 
         else:

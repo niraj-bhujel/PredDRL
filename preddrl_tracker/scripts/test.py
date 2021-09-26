@@ -58,7 +58,7 @@ for global_step in range(1000):
             _s = ped.get_state_at(ts)
             ped_futures[i] = (_s.px, _s.py)
         ped.set_futures(ped_futures)
-        print('future:', ped.futures)
+        # print('future:', ped.futures)
     
     if t == 615:
         sys.exit()
