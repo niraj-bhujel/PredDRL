@@ -445,7 +445,7 @@ if __name__ == '__main__':
 
     policy = policies[args.policy](state_shape=env.observation_space.shape,
                                     action_dim=env.action_space.high.size,
-                                    max_action=env.action_space.high[1],
+                                    max_action=env.action_space.high,
                                     gpu=args.gpu,
                                     memory_capacity=args.memory_capacity,
                                     batch_size=args.batch_size,

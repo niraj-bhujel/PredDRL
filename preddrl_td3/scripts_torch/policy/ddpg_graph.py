@@ -40,8 +40,8 @@ class Actor(nn.Module):
         self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
         self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
 
-        self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 2)
-        # self.l4 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
+        self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
+        self.l4 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
 
         self.max_action = max_action
         self.input_states = args.input_states
@@ -60,8 +60,10 @@ class Actor(nn.Module):
         h = F.relu(self.l1(h))
         h = F.relu(self.l2(h))
 
-        h = self.max_action*torch.tanh(self.l3(h))
-
+        # h = self.max_action*torch.tanh(self.l3(h))
+        v = self.max_action[0]*torch.sigmoid(self.l3(h))
+        w = self.max_action[1]*torch.tanh(self.l4(h))
+        h = torch.cat([v, w], dim=-1)
         return h
 
 class Critic(nn.Module):
