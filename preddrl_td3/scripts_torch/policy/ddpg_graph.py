@@ -64,7 +64,7 @@ class Actor(nn.Module):
         v = self.max_action[0]*torch.sigmoid(self.l3(h))
         w = self.max_action[1]*torch.tanh(self.l4(h))
         h = torch.cat([v, w], dim=-1)
-
+        
         return h
 
 class Critic(nn.Module):
@@ -162,7 +162,7 @@ class GraphDDPG(DDPG):
         self.actor.eval()
         with torch.no_grad():
             action = self.actor(state)
-            action += torch.empty_like(action).normal_(mean=0,std=sigma)
+            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.actor.train()
 
         # action = torch.clamp(action, -max_action, max_action)
