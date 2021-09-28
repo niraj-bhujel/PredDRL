@@ -214,7 +214,7 @@ class Trainer:
                 network_draw(obs[1],
                              show_node_label=True, node_labels=['pos'],
                              show_edge_labels=True, edge_labels=['dist'],
-                             show_legend=True,
+                             show_legend=False,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
