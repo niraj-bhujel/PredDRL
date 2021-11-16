@@ -38,7 +38,7 @@ class RespawnPedestrians:
         
         self.spawnned_models = []
         
-    def respawn(self, ped_states, model_states=None, verbose=0, t=0):
+    def respawn(self, ped_states, model_states=None, verbose=0, t=0, reference_frame='world'):
 
 
         if model_states is None:
@@ -62,7 +62,7 @@ class RespawnPedestrians:
                 if verbose>0:
                     rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
 
-                self.spawn_model(model_name, self.xml_string, "", model_pose, "world")
+                self.spawn_model(model_name, self.xml_string, "", model_pose, reference_frame)
                 
                 self.spawnned_models.append(model_name)
                 
@@ -73,7 +73,7 @@ class RespawnPedestrians:
                 tmp_state = ModelState()
                 tmp_state.model_name = model_name
                 tmp_state.pose = model_pose
-                tmp_state.reference_frame ="world"
+                tmp_state.reference_frame = reference_frame
                 
                 self.set_model_state(tmp_state)
 

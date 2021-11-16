@@ -4,9 +4,9 @@
 2. source devel/setup.bash 
 
 3. Change to preddrl_gazebo_plugin director
-$ roslaunch preddrl_gazebo_plugin social_contexts.launch
+$ roslaunch preddrl_gazebo social_contexts.launch
 
-4. Change to preddrl_ws/src and run the python script 
-$ python2 preddrl_tracker/src/pedestrian_state_publisher.py
+4. Change to preddrl_ws/src and run the python script to train the model
+$ python3 preddrl_td3/scripts_torch/trainer.py --stage 7 --policy ddpg_graph --verbose 1 --n_warmup 2000 --sampling_method orca
 
 

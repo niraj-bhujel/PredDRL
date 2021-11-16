@@ -11,13 +11,13 @@ node_type_list = ['robot', 'pedestrian', 'obstacle', 'robot_goal']
 
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
-    ('robot', 'pedestrian'): 5.0,
+    ('robot', 'pedestrian'): 3.0,
     ('robot', 'robot_goal'): 1e6,
 
     ('robot_goal', 'robot'): 1e6,
 
-    ('pedestrian', 'pedestrian'): 5.0,
-    ('pedestrian', 'robot') : 5.0,
+    ('pedestrian', 'pedestrian'): 3.0,
+    ('pedestrian', 'robot') : 3.0,
 
     ('obstacle', 'pedestrian'): 5.0, # large distance to prevent graph creatiion error due to zero edges
     ('obstacle', 'robot'): 15,
@@ -33,6 +33,9 @@ state_dims = {
         "rot": 1,
         "yaw": 1,
         "hed": 1,
+        "dir": 2,
+        "vpref": 2,
+        "theta": 1, 
         "gdist": 1,
         "diff": 2,
         "dist": 1,
@@ -131,8 +134,12 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
 
         nodes_data['pos'].append(node.pos)
         nodes_data['rel'].append([node.pos[0]-ref_pos[0], node.pos[1]-ref_pos[1]])
-
+        nodes_data['vel'].append(node.vel)
+        nodes_data['vpref'].append(node.preferred_vel())
+        nodes_data['theta'].append(node.theta)
+        nodes_data['dir'].append([node.gx - node.px, node.gy - node.py])
         nodes_data['hed'].append(node.heading)
+
         nodes_data['action'].append(node.action)
         nodes_data['goal'].append(node.goal)
         
@@ -149,19 +156,23 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     # Construct the DGL graph
     g = dgl.graph((edges_data['src'], edges_data['dst']))
     g = dgl.node_subgraph(g, valid_nodes)
-
+    
     # Add  features
     g.ndata['tid'] = torch.tensor(nodes_data['tid'], dtype=torch.int32)
     g.ndata['cid'] = torch.tensor(nodes_data['cid'], dtype=torch.int32)
     
     g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
     g.ndata['rel'] = torch.tensor(np.stack(nodes_data['rel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel'])
+    g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
 
+    g.ndata['vpref'] = torch.tensor(np.stack(nodes_data['vpref'], axis=0), dtype=torch.float32).view(-1, state_dims['vpref'])
+    g.ndata['theta'] = torch.tensor(np.stack(nodes_data['theta'], axis=0), dtype=torch.float32).view(-1, state_dims['theta'])
 
-    g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
-    
+    g.ndata['dir'] = torch.tensor(np.stack(nodes_data['dir'], axis=0), dtype=torch.float32).view(-1, state_dims['dir'])        
     g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
     g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
+
+    g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
 
     g.ndata["state"] = torch.tensor(np.stack(nodes_data['state'], axis=0), dtype=torch.float32).view(-1, state_dims['state'])
     g.ndata["future"] = torch.tensor(np.stack(nodes_data['future'], axis=0), dtype=torch.float32).view(-1, state_dims['future'])

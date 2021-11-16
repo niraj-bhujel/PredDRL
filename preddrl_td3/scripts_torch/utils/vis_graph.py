@@ -12,6 +12,14 @@ import numpy as np
 from matplotlib.lines import Line2D
 import shutil
 import torch
+
+data_stats = {'eth': {'x_min': -7.69, 'x_max': 14.42, 'y_min': -3.17, 'y_max': 13.21},
+              'hotel': {'x_min': -10.31, 'x_max': 4.31, 'y_min': -4.35, 'y_max': 3.25},
+             'students1': {'x_min': -0.462, 'x_max': 15.469, 'y_min': -0.318, 'y_max': 13.892},
+             'students3': {'x_min': -0.462, 'x_max': 15.469, 'y_min': -0.318, 'y_max': 13.892},
+             'zara1': {'x_min': -0.14, 'x_max': 15.481, 'y_min': -0.375, 'y_max': 12.386},
+             'zara2': {'x_min': -0.358, 'x_max': 15.558, 'y_min': -0.274, 'y_max': 13.943}}
+
 def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=False, edge_labels=['id'], 
                  show_legend=False, pos_attr='pos', edge_attr='dist', node_size=300, font_size=6, 
                  rad=0.04,  save_dir=None, fprefix=None, fsuffix=None, frame=None, counter=0,
@@ -61,7 +69,7 @@ def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=
     fig_name = kwargs.get('fig_name', '')
     
 
-    G = g.cpu().to_networkx(node_attrs=node_labels + [pos_attr, 'tid'], 
+    G = g.cpu().to_networkx(node_attrs=node_labels + [pos_attr], 
                             edge_attrs=edge_labels + [edge_attr, 'spatial_mask'])    
 
 
@@ -83,9 +91,10 @@ def network_draw(g, show_node_label=True, node_labels=['tid'], show_edge_labels=
         node_colors.append(ped_colors[:, tid_idx])        
         
         nlabel = [u_data[l].numpy().round(2) for l in node_labels]
-        node_labels_dict[u] = ' '.join([str(v) for elem in nlabel for v in elem])
-        # node_labels[u]=traj_id
-        # node_labels[u]=u_data['tid'].numpy()-unique_tid.min()+1
+        try:
+            node_labels_dict[u] = ' '.join([str(v) for elem in nlabel for v in elem])
+        except Exception:
+            node_labels_dict[u] = ' '.join([str(v) for v in nlabel])
 
     temporal_edges = [(u, v) for (u, v, d) in G.edges(data=True) if d["spatial_mask"]==0]
     spatial_edges = [(u, v) for (u, v, d) in G.edges(data=True) if d["spatial_mask"]==1]

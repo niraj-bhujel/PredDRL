@@ -37,7 +37,7 @@ class Timer(object):
 
     @property
     def fps(self, ):
-        return self.calls/self.duration
+        return 1/self.duration
         
     def clear(self):
         self.total_time = 0.

@@ -20,3 +20,5 @@ scipy==1.4.1
 #torchvision==0.7.0+cu101 -f https://download.pytorch.org/whl/torch_stable.html
 
 #dgl-cu101 -f https://data.dgl.ai/wheels/repo.html
+
+# Install RVO library from https://github.com/sybrenstuvel/Python-RVO2

@@ -28,7 +28,7 @@ class Agent(object):
         self.type = node_type
         self.time_step = time_step
         self.radius = radius
-        self.vpref = vpref
+        self.vpref = vpref # speed
 
         self.px = None
         self.py = None
@@ -132,9 +132,11 @@ class Agent(object):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
 
     def preferred_vel(self, speed=0.4):
-        direction = np.array((self.gx - self.px, self.gy - self.py))
-        pref_vel = speed * direction / np.linalg.norm(direction)
-        return pref_vel
+        dist = np.array((self.gx - self.px, self.gy - self.py))
+        dnorm = np.linalg.norm(dist)
+        # pref_vel = dist/dnorm if dnorm>1 else dist
+        pref_vel = dist/dnorm if dnorm>0 else  dist
+        return pref_vel * self.vpref
 
     def serialize_state(self, s):
         return State(s)

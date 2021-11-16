@@ -35,6 +35,8 @@ def get_argument(parser=None):
                         help='Output directory')
     parser.add_argument('--overwrite', action='store_false', default=True,
                         help='Overwrite existing experiments')
+    parser.add_argument('--dataset', type=str, default='zara1',
+                        help='Dataset to use')    
 
     # test settings
     parser.add_argument('--evaluate', action='store_true',
@@ -68,7 +70,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['rel', 'hed', 'action', 'future'],
+    parser.add_argument('--input_states', nargs='+', default=['dir', 'vel', 'vpref'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['action'],
                         help='Prediction states of the nodes')
@@ -80,7 +82,7 @@ def get_argument(parser=None):
                         help='Plot graph during training step. Plot in output_dir/graphs/')
     parser.add_argument('--future_steps', default=4., type=float,
                         help='Apply dropout to input features')
-    # gated gcn
+    # gcn
     parser.add_argument('--in_feat_dropout', default=0., type=float,
                         help='Apply dropout to input features')
     parser.add_argument('--dropout', default=0., type=float,
