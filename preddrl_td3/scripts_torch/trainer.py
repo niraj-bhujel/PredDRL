@@ -290,7 +290,7 @@ class Trainer:
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps)
-                self.writer.add_scalar("Common/collisions", self._env.collision_times/total_steps, total_steps)
+                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/total_steps, total_steps)
 
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:

@@ -165,7 +165,7 @@ class GraphDDPG(DDPG):
         ped_mask = (states.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1)
         action_error = torch.norm((states.ndata['action'] - action)*ped_mask)
 
-        self.writer.add_scalar("Common/action_error", action_error, self.iteration+self.n_warmup)
+        self.writer.add_scalar("Common/action_error", action_error, self.iteration)
 
         # Optimize the actor 
         self.optimization_step(self.actor_optimizer, actor_loss+0.1*action_error)

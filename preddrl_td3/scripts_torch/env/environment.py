@@ -80,7 +80,7 @@ class Env:
         self.timer = Timer() # set by trainer
 
         self.max_goal_distance = 20.
-        self.last_goal_distance = 0.
+        self.last_goal_distance = 100.
 
         # robot policy
         self.orca = ORCA(self.time_step)
@@ -163,8 +163,7 @@ class Env:
                 action = self.xy_to_vw(action)
         else:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
-            action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list,
-                                                obstacles=obstacle_pos)
+            action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list, obstacles=obstacle_pos)
             print('ORCA Vel:', action)
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
@@ -303,20 +302,6 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        # for i, m_name in enumerate(model_states.name):
-
-        #     if not m_name==self.robot_name:
-        #         continue
-
-        #     # preprare data to update
-        #     robot_pose = model_states.pose[i]
-        #     robot_twist = model_states.twist[i]
-
-        # print('robot position (odom)', self.position)
-        # print('robot position (model_states)', robot_pose.position)
-        # print('robot linear(odom)', self.linear)
-        # print('robot linear (model_states)', robot_twist.linear)
-
         if self.robot.px is not None:
             vx = (self.position.x - self.robot.px)/self.time_step
             vy = (self.position.y - self.robot.py)/self.time_step
@@ -398,7 +383,7 @@ class Env:
             
         elif too_far:
             done = True
-            reward = 100
+            reward = -100
             rospy.loginfo('Too Far from Goal!!')
 
         else:
