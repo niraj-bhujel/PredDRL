@@ -84,7 +84,7 @@ class ORCA(object):
     def set_phase(self, phase):
         return
 
-    def predict(self, self_state, humans=[], obstacle_pos=[]):
+    def predict(self, self_state, humans=[], obstacles=[]):
         """
         Create a rvo2 simulation at each time step and run one step
         Python-RVO2 API: https://github.com/sybrenstuvel/Python-RVO2/blob/master/src/rvo2.pyx
@@ -97,7 +97,7 @@ class ORCA(object):
         """
         # self_state = state.self_state
         # params = self.neighbor_dist, self.max_neighbors, self.time_horizon, self.time_horizon_obst
-        # print([tuple(np.round(pos, 2)) for pos in obstacle_pos])
+        # print([tuple(np.round(pos, 2)) for pos in obstacles])
         if self.sim is not None:
             
             if self.sim.getNumAgents() != len(humans) + 1:
@@ -132,8 +132,8 @@ class ORCA(object):
                                       human_state.radius + 0.01 + self.safety_space,
                                       self.max_speed, 
                                       human_state.vel)
-            if len(obstacle_pos)>0:
-                self.sim.addObstacle(obstacle_pos)
+            if len(obstacles)>0:
+                self.sim.addObstacle(obstacles)
                 self.sim.processObstacles()
 
         else:

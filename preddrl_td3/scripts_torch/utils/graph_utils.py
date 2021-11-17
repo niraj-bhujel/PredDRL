@@ -146,9 +146,6 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
         nodes_data['state'].append(node.state)
         nodes_data['future'].append([s for futures in node.futures for s in futures])
 
-        # nodes_data['gdist'].append(node.distance_to_goal)
-        # nodes_data['time_step'].append(node.time_step)
-
         nodes_data['tid'].append(node.id)
         nodes_data['cid'].append(node_type_list.index(node.type))
 

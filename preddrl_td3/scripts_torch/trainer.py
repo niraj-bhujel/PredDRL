@@ -454,7 +454,7 @@ if __name__ == '__main__':
     # test_env = Env(test=True, stage=args.stage, graph_state=graph_state, dataset=args.dataset)
 
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
-    with open("./preddrl_td3/scripts_torch/params.yaml", 'r') as f:
+    with open("./preddrl_td3/scripts_torch/net_params.yaml", 'r') as f:
         net_params = yaml.load(f, Loader = yaml.FullLoader)
 
     print('Creating policy ... ')

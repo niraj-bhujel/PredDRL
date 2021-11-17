@@ -107,7 +107,7 @@ class Env:
 
         if self.stage==7:
             self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
-                                                            target_frame_rate=2*int(1/self.time_step), 
+                                                            target_frame_rate=2*int(1/self.time_step),
                                                             max_peds=40)
             # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
@@ -164,7 +164,7 @@ class Env:
         else:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
             action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list,
-                                                obstacle_pos=obstacle_pos)
+                                                obstacles=obstacle_pos)
             print('ORCA Vel:', action)
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
