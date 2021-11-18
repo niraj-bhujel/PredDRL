@@ -58,7 +58,7 @@ class Actor(nn.Module):
         g, h, e = self.net(g, h, e)
         
         h = self.out(h)
-        # h = torch.tensor(self.max_action).to(h.device)*torch.tanh(h)
+        h = -1.2*torch.tanh(h)
 
         # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
         
@@ -164,11 +164,13 @@ class GraphDDPG(DDPG):
         # compute correct action reward for agents
         ped_mask = (states.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1)
         action_error = torch.norm((states.ndata['action'] - action)*ped_mask)
-
         self.writer.add_scalar("Common/action_error", action_error, self.iteration)
 
+        actor_loss += action_error
+
+
         # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss+0.1*action_error)
+        self.optimization_step(self.actor_optimizer, actor_loss)
 
         # Update target networks
         self.soft_update_of_target_network(self.actor, self.actor_target)

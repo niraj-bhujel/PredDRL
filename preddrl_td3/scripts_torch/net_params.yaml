@@ -1,5 +1,5 @@
 net:
-    hidden_dim: 128
+    hidden_dim: 256
     num_layers: 2
     in_dim_node: 2
     in_dim_edge: 1

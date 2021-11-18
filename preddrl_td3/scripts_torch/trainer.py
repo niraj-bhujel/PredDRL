@@ -65,9 +65,8 @@ class Trainer:
         self._save_test_path = args.save_test_path
         self._save_test_movie = args.save_test_movie
         self._show_test_images = args.show_test_images
-
         self._evaluate = args.evaluate
-        self._restore_checkpoint = args.restore_checkpoint
+        self._resume_training = args.resume_training
 
         self._policy = policy
         self._sampling_method = args.sampling_method
@@ -180,6 +179,9 @@ class Trainer:
                 total_steps=self._policy.n_warmup + 1
             except Exception as e:
                 print('Unable to load memory!', e)
+
+        if self._resume_training:
+            total_steps = self._policy.iteration
 
         while total_steps < self._max_steps:
             self._env.timer.tic()
@@ -325,7 +327,7 @@ class Trainer:
                     self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
                     
                 if total_steps % self._save_model_interval == 0:
-                    save_ckpt(self._policy, self._output_dir)
+                    save_ckpt(self._policy, self._output_dir, total_steps)
 
             # self.r.sleep()
             self._env.timer.toc()
@@ -478,12 +480,13 @@ if __name__ == '__main__':
     trainer = Trainer(policy, env, args)
     trainer.set_seed(args.seed)
 
+    if args.resume_training or args.evaluate:
+        # eval_path = './preddrl_td3/results/'
+        # model_path = '2021_11_11_GraphDDPG_warmup_1000_bs100_stage_7_episode_step1000_sampling_orca_node_prediction'
+        policy = load_ckpt(policy, trainer._output_dir)
+
     try:
         if args.evaluate:
-            # eval_path = './preddrl_td3/results/'
-            # model_path = '2021_11_11_GraphDDPG_warmup_1000_bs100_stage_7_episode_step1000_sampling_orca_node_prediction'
-            policy = load_ckpt(policy, trainer._output_dir)
-
             print('-' * 89)
             print('Evaluating ...', trainer._output_dir)
             trainer.evaluate_policy(1000)  # 每次测试都会在生成临时文件，要定期处理

@@ -27,8 +27,8 @@ interaction_direction = {
 
 state_dims = {
         "pos": 2,
-        "rel": 2,
         "vel": 2,
+        "rel_vel": 2,
         "acc": 2,
         "rot": 1,
         "yaw": 1,
@@ -114,8 +114,12 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
             # edges from source to dest
             edges_data['src'].extend([i])
             edges_data['dst'].extend([j])
+
             edges_data['dist'].extend([dist])
             edges_data['diff'].extend([diff])
+
+            edges_data['rel_vel'].extend([np.array(src_node.vel) - np.array(dst_node.vel)])
+
             edges_data['spatial_mask'].extend([1.0])
 
             if bidirectional:
@@ -127,15 +131,16 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
 
             num_neighbors+=1
 
+    robot_node = [node for node in nodes if node.type=='robot'][0]
     # prepare node data, discard node without edges
     valid_nodes = np.unique(edges_data['src'] + edges_data['dst'])
     for n in valid_nodes:
         node = nodes[n]
 
         nodes_data['pos'].append(node.pos)
-        nodes_data['rel'].append([node.pos[0]-ref_pos[0], node.pos[1]-ref_pos[1]])
         nodes_data['vel'].append(node.vel)
         nodes_data['vpref'].append(node.preferred_vel())
+
         nodes_data['theta'].append(node.theta)
         nodes_data['dir'].append([node.gx - node.px, node.gy - node.py])
         nodes_data['hed'].append(node.heading)
@@ -159,8 +164,8 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
     g.ndata['cid'] = torch.tensor(nodes_data['cid'], dtype=torch.int32)
     
     g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
-    g.ndata['rel'] = torch.tensor(np.stack(nodes_data['rel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel'])
     g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
+    # g.ndata['rel_vel'] = torch.tensor(np.stack(nodes_data['rel_vel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel_vel'])
 
     g.ndata['vpref'] = torch.tensor(np.stack(nodes_data['vpref'], axis=0), dtype=torch.float32).view(-1, state_dims['vpref'])
     g.ndata['theta'] = torch.tensor(np.stack(nodes_data['theta'], axis=0), dtype=torch.float32).view(-1, state_dims['theta'])
@@ -176,6 +181,9 @@ def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
 
     g.edata['dist'] = torch.tensor(np.array(edges_data['dist']), dtype=torch.float32).view(-1, state_dims['dist'])
     g.edata['diff'] = torch.tensor(np.array(edges_data['diff']), dtype=torch.float32).view(-1, state_dims['diff'])
+
+    g.edata['rel_vel'] = torch.tensor(np.array(edges_data['rel_vel']), dtype=torch.float32).view(-1, state_dims['rel_vel'])
+
     g.edata['spatial_mask'] = torch.tensor(np.array(edges_data['spatial_mask']), dtype=torch.int32).view(-1, 1)
     
     return g
