@@ -45,10 +45,9 @@ class Env:
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
         self.goal_threshold = 0.3
-        self.collision_threshold = 0.15
+        self.collision_threshold = 0.2
 
-        self.inital_pos = Point(7.5, 6.5, 0.)
-        # self.inital_pos = Point(0., 0., 0.)
+        self.inital_pos = Point(12.0, 6.5, 0.)
         
         self.num_beams = 20  # 激光数
 
@@ -76,7 +75,7 @@ class Env:
 
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.time_step = 0.2
+        self.time_step = 0.4
         self.timer = Timer() # set by trainer
 
         self.max_goal_distance = 20.
@@ -95,13 +94,10 @@ class Env:
 
     def initialize_agents(self, ):
         self.vel_cmd = Twist()
-        # keep track of nodes and their id, added by niraj
-        self.nid = 0
-        self.robot = Agent(node_id=self.nid, node_type='robot', time_step=self.time_step)
-        self.nid+=1
 
-        self.robot_goal = Agent(node_id=self.nid, node_type='robot_goal', time_step=self.time_step)
-        self.nid += 1
+        self.robot = Agent(node_id=555, node_type='robot', time_step=self.time_step)
+
+        self.robot_goal = Agent(node_id=556, node_type='robot_goal', time_step=self.time_step)
 
         self.obstacles = dict()
 
@@ -158,7 +154,7 @@ class Env:
 
         elif policy == 'vpref':
             action = self.robot.preferred_vel() #+ np.random.normal(0, 0.1, size=(2,))
-            print("V_pref:", action)
+            print("V_pref(sampled):", action)
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
         else:
@@ -176,14 +172,20 @@ class Env:
         vy = action[0] * np.sin(theta)
         return vx, vy
 
-    def xy_to_vw(self, v):
-        
+    def xy_to_vw_(self, action):
+        v = np.linalg.norm(action)
+        w = np.arctan2(action[0], action[1]) - self.yaw
+        return v, w
+
+    def xy_to_vw(self, action):
+        # adopted from https://github.com/dongfangliu/NH-ORCA-python/blob/main/python/turtlebot.py
+
         A = 0.5*cos(self.yaw)+SelfD*sin(self.yaw)/SelfL
         B = 0.5*cos(self.yaw)-SelfD*sin(self.yaw)/SelfL
         C = 0.5*sin(self.yaw)-SelfD*cos(self.yaw)/SelfL
         D = 0.5*sin(self.yaw)+SelfD*cos(self.yaw)/SelfL
         
-        vx, vy = v[0], v[1]
+        vx, vy = action[0], action[1]
 
         vr = (vy-C/A*vx)/(D-B*C/A)
         vl = (vx-B*vr)/A
@@ -198,7 +200,6 @@ class Env:
         return v, w
 
     def action_to_vel_cmd(self, action, action_type='xy'):
-        # adopted from https://github.com/dongfangliu/NH-ORCA-python/
         vel_msg = Twist()
 
         vel_msg.linear.y = 0
@@ -294,7 +295,7 @@ class Env:
             
         return curr_peds
 
-    def update_agents(self, action=None, robot_action=None):
+    def update_agents(self, robot_action=None):
 
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
@@ -302,14 +303,14 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        if self.robot.px is not None:
-            vx = (self.position.x - self.robot.px)/self.time_step
-            vy = (self.position.y - self.robot.py)/self.time_step
-        else:
-            vx, vy = (0., 0.)
+        # if self.robot.px is not None:
+        #     vx = (self.position.x - self.robot.px)/self.time_step
+        #     vy = (self.position.y - self.robot.py)/self.time_step
+        # else:
+        #     vx, vy = (0., 0.)
 
         # print('robot linear(manual)', vx, vy)
-        self.robot.set_state(self.position.x, self.position.y, vx, vy, self.gx, self.gy, theta=self.yaw)
+        self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_action(robot_action) 
 
          # future vel
@@ -324,54 +325,42 @@ class Env:
         self.pedestrians_list = self.updatePedestrians(model_states)
 
         
-    def getGraphState(self, action=None, last_state=None, done=False, success=False):
+    def getGraphState(self, agent_actions=None, robot_action=None, last_state=None, done=False, success=False):
+        #NOTE: Enuse nodes are updated before creating graph by calling update_agents()
+        self.update_agents(robot_action=robot_action)
+        state = create_graph([self.robot, self.robot_goal] + self.pedestrians_list)
 
-        graph_nodes = [self.robot, self.robot_goal] + self.pedestrians_list
-
-        state = create_graph(graph_nodes, self.robot.pos)
-
-        if action is None:
+        if agent_actions is None:
             return state
-
 
         current_distance = self.getGoalDistance()
         reaching_goal = current_distance < self.goal_threshold
         too_far = current_distance > self.max_goal_distance
 
+        # check robot collision
+        robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
+        goal_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot_goal')]
+        robot_neighbor_dist = min_neighbor_distance(state, robot_node, mask_nodes=goal_node)
+        
+        collision = robot_neighbor_dist < self.collision_threshold+self.robot.radius:
+
+        # check collision times between agents
         if self.action_type=='vw':
-            theta = last_state.ndata['yaw'].numpy().flatten() + action[:, 1]
-            px = last_state.ndata['pos'][:, 0].numpy() + np.cos(theta) * action[:, 0] * self.time_step
-            py = last_state.ndata['pos'][:, 1].numpy() + np.sin(theta) * action[:, 0] * self.time_step
+            theta = last_state.ndata['yaw'].numpy().flatten() + agent_actions[:, 1]
+            px = last_state.ndata['pos'][:, 0].numpy() + np.cos(theta) * agent_actions[:, 0] * self.time_step
+            py = last_state.ndata['pos'][:, 1].numpy() + np.sin(theta) * agent_actions[:, 0] * self.time_step
             pred_pos = np.stack([px, py], axis=-1)
         else:
-            pred_pos = last_state.ndata['pos'] + action * self.time_step
-
-        collision_agents = []
+            pred_pos = last_state.ndata['pos'] + agent_actions * self.time_step
+        
+        # exluce goal node
+        pred_pos = pred_pos[last_state.ndata['cid']!=node_type_list.index('robot_goal')]
         distance_matrix = np.linalg.norm(pred_pos[:, None, :]-pred_pos[None, :, :], axis=-1)
         
-        num_collisions = 0
-        for i in range(distance_matrix.shape[0]):
-            if last_state.ndata['cid'][i]==node_type_list.index('robot_goal'):
-                continue
-            for j in range(i+1, distance_matrix.shape[1]):
-                if last_state.ndata['cid'][j]==node_type_list.index('robot_goal'):
-                    continue
-
-                if distance_matrix[i][j] < self.collision_threshold+0.15:
-                    # get the corresponding id
-                    collision_agents.extend([int(last_state.ndata['tid'][i]), int(last_state.ndata['tid'][j])])
-
-                    # break # one collision is enough
-                    num_collisions += 1
-
-        collision = self.robot.id in collision_agents
-
-        # # compute correct action reward for agents
-        # ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
-        # self.action_error = np.mean(np.linalg.norm(last_state.ndata['action'].numpy() - action, axis=-1, keepdims=True)*ped_mask)
+        num_collisions = np.logical_and(distance_matrix>0, distance_matrix<1).sum()/2
 
         if collision:
-            rospy.loginfo("Collision!!")
+            rospy.loginfo("Step [{}]: Collision!!".format(self.global_step))
             done = True
             reward = -100
             self.collision_times += 1
@@ -379,21 +368,22 @@ class Env:
         elif reaching_goal:
             success = True
             reward = 150#100
-            rospy.loginfo('Success!!')
+            rospy.loginfo('Step [{}]: Success!!'.format(self.global_step))
             
         elif too_far:
             done = True
-            reward = -100
-            rospy.loginfo('Too Far from Goal!!')
+            reward = -50
+            rospy.loginfo('Step [{}]: Too Far from Goal!!'.format(self.global_step))
 
         else:
             reward = 0.
+            # reward = 0.1*(self.goal_threshold-self.getGoalDistance())
 
         goal_distance = self.getGoalDistance()
         if goal_distance < self.last_goal_distance:
-            reward += 1
+            reward += 0.1*goal_distance
         else:
-            reward -= 1
+            reward -= 0.1*goal_distance
 
         self.last_goal_distance = goal_distance
 
@@ -485,22 +475,15 @@ class Env:
         rospy.sleep(self.time_step)
         self.pub_cmd_vel.publish(Twist())
 
-        self.update_agents(action, robot_action=robot_action)
-
-
         if self.graph_state:
-            state, reward, done, success = self.getGraphState(action, last_state)
+            
+            state, reward, done, success = self.getGraphState(action, robot_action, last_state)
         else:
             state, reward, done, success = self.getState(action)
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
             self.init_goal(position_check=True)
-
-
-        if done:
-            # self.pub_cmd_vel.publish(Twist())
-            self.reset()
 
         self.global_step+=1
 
@@ -517,8 +500,10 @@ class Env:
         rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.gx, self.gy)
 
     def reset(self, initGoal=False):
+        print('Resetting env ... ')
         # reset robot velocity
         self.pub_cmd_vel.publish(Twist())
+        self.position = self.inital_pos # update robot pos
 
         # reset robot pose and randomly set the orientation
         tmp_state = ModelState()
@@ -533,7 +518,7 @@ class Env:
             self.init_goal()
 
         if self.graph_state:
-            state = self.getGraphState()
+            state = self.getGraphState(robot_action=(0., 0.))
         else:
             state = self.getState()
 

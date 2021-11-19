@@ -172,7 +172,6 @@ class Trainer:
 
         episode_start_time = time.perf_counter()
         
-        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
 
         if self._load_memory:
             print('Loading memory ...')
@@ -186,6 +185,9 @@ class Trainer:
         if self._resume_training:
             total_steps = self._policy.iteration
 
+        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
+
+        ##### Begin Training ###########
         while total_steps < self._max_steps:
             self._env.timer.tic()
             
@@ -216,17 +218,14 @@ class Trainer:
                 print('Robot Action:', np.round(robot_action, 2))
                 print('Reward:', np.round(reward, 2))
                 # print('Vpref', obs.ndata['vpref'])
-
+                print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+                print('Robot position:', self._env.robot.pos)
             if self._verbose>1:
                 print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
                                                     np.round(self._env.robot.vel, 2).tolist(), 
                                                     np.round(self._env.robot.goal, 2).tolist(),
                                                     self._env.robot.distance_to_goal()))  
-                            
-            if self._verbose>0:
-                print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
 
-            if self._verbose>1:
                 print('Reward:{:3.3f}'.format(reward))
                 # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
                 #                                                                                           self._env.goal_x, self._env.goal_y,
@@ -273,12 +272,6 @@ class Trainer:
             if done or episode_steps == self._episode_max_steps:
                 obs = self._env.reset()
 
-                if self._verbose>1:
-                    print("Robot position after reset:", [self._env.position.x, self._env.position.z])
-
-                self.logger.info("Total Steps: {0: 5}, Episode: {1: 7}, Episode Return: {2: 5.4f}, Sucess Rate:{3: .2f}".format(
-                        total_steps, n_episode, episode_return, success_rate))
-
                 episode_steps = 0
                 episode_return = 0
                 episode_start_time = time.perf_counter()
@@ -290,6 +283,10 @@ class Trainer:
 
                 if done or success or episode_steps==0: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
                     n_episode += 1
+
+                    self.logger.info("Total Steps: {}, Episode: {}, Sucess Rate:{:.2f}".format(
+                            total_steps, n_episode, success_rate))
+
 
                 success_rate = episode_success/n_episode
 

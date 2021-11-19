@@ -83,7 +83,7 @@ def n1_has_n2_in_sight(n1, n2, fov=57):
     
     return abs(angle)<fov*math.pi/180
 
-def create_graph(nodes, ref_pos=(0., 0.), bidirectional=False):
+def create_graph(nodes, bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''

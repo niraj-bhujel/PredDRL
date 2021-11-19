@@ -132,10 +132,9 @@ class Agent(object):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
 
     def preferred_vel(self, speed=0.4):
-        dist = np.array((self.gx - self.px, self.gy - self.py))
-        dnorm = np.linalg.norm(dist)
-        # pref_vel = dist/dnorm if dnorm>1 else dist
-        pref_vel = dist/dnorm if dnorm>0 else  dist
+        goal_vec = np.array((self.gx - self.px, self.gy - self.py))
+        norm = np.linalg.norm(goal_vec)
+        pref_vel = goal_vec/norm if norm>1 else goal_vec
         return pref_vel * self.vpref
 
     def serialize_state(self, s):
