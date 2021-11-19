@@ -200,7 +200,7 @@ class Trainer:
                 if isinstance(obs, DGLHeteroGraph):
                     robot_action = action
                     action = obs.ndata['action'].numpy()
-                    action[obs.ndata['tid']==node_type_list.index('robot')] = robot_action
+                    action[obs.ndata['cid']==node_type_list.index('robot')] = robot_action
 
             else:
                 action = self._policy.get_action(obs)
@@ -208,12 +208,11 @@ class Trainer:
             next_obs, reward, done, success = self._env.step(action, obs)          
             
             if isinstance(next_obs, DGLHeteroGraph):
-                robot_action = action[obs.ndata['tid']==node_type_list.index('robot')].flatten()
+                robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
             else:
                 robot_action = action
 
             if self._verbose>0:
-                # print(obs.ndata['tid'], next_obs.ndata['tid'])
                 # print('Agent Action:', np.round(action, 2))
                 print('Robot Action:', np.round(robot_action, 2))
                 print('Reward:', np.round(reward, 2))
@@ -399,7 +398,7 @@ class Trainer:
                 next_obs, reward, done, success = self._test_env.step(action, obs)
 
                 if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action[obs.ndata['tid']==node_type_list.index('robot')].flatten()
+                    robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
                 else:
                     robot_action = action
                 print('STEP-[{}/{}]'.format(j, self._episode_max_steps))

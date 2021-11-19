@@ -342,7 +342,7 @@ class Env:
         goal_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot_goal')]
         robot_neighbor_dist = min_neighbor_distance(state, robot_node, mask_nodes=goal_node)
         
-        collision = robot_neighbor_dist < self.collision_threshold+self.robot.radius:
+        collision = robot_neighbor_dist < self.collision_threshold+self.robot.radius
 
         # check collision times between agents
         if self.action_type=='vw':
@@ -468,7 +468,7 @@ class Env:
 
     def step(self, action, last_state):
 
-        robot_action = action[last_state.ndata['tid']==node_type_list.index('robot')].flatten() if self.graph_state else action
+        robot_action = action[last_state.ndata['cid']==node_type_list.index('robot')].flatten() if self.graph_state else action
 
         self.vel_cmd = self.action_to_vel_cmd(robot_action, self.action_type)
         self.pub_cmd_vel.publish(self.vel_cmd)
