@@ -143,7 +143,7 @@ class DDPG(OffPolicyAgent):
             self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
 
 
-            if self._verbose>0:
+            if self._verbose>1:
                 print('Step:{} - batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
                                                                                                     rewards.mean().item(),
                                                                                                     actor_loss,

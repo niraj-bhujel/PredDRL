@@ -12,8 +12,8 @@ node_type_list = ['robot', 'pedestrian', 'obstacle', 'robot_goal']
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
     ('robot', 'pedestrian'): 3.0,
-    ('robot', 'robot_goal'): 1e6,
 
+    ('robot', 'robot_goal'): 1e6,
     ('robot_goal', 'robot'): 1e6,
 
     ('pedestrian', 'pedestrian'): 3.0,

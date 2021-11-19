@@ -58,7 +58,7 @@ class Actor(nn.Module):
         g, h, e = self.net(g, h, e)
         
         h = self.out(h)
-        h = -1.2*torch.tanh(h)
+        h = 1.2*torch.tanh(h)
 
         # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
         

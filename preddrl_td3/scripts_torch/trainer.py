@@ -40,7 +40,7 @@ from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 
 class Trainer:
-    def __init__(self, policy, env, args, test_env=None):
+    def __init__(self, policy, env, args, net_params=None, test_env=None, **kwargs):
 
         # experiment settings
         self._max_steps = args.max_steps
@@ -90,9 +90,12 @@ class Trainer:
                         'warmup_%d'%policy.n_warmup,
                         'bs%d'%policy.batch_size,
                         # 'seed_%d'%args.seed,
-                        'stage_%d'%args.stage,
-                        'episode_step%d'%args.episode_max_steps,
+                        # 'stage_%d'%args.stage,
+                        # 'episode_step%d'%args.episode_max_steps,
                         'sampling_%s'%args.sampling_method,
+                        'input_%s'%'_'.join(args.input_states),
+                        'h%d'%net_params['net']['hidden_dim'],
+                        'l%d'%net_params['net']['num_layers'],
                         ])
 
         if self._use_prioritized_rb:
@@ -273,8 +276,8 @@ class Trainer:
                 if self._verbose>1:
                     print("Robot position after reset:", [self._env.position.x, self._env.position.z])
 
-                self.logger.info("{0: 5}/{1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f}, Sucess Rate:{5: .2f}, FPS: {4: 5.2f}".format(
-                        n_episode, total_steps, episode_steps, episode_return, fps, success_rate))
+                self.logger.info("Total Steps: {0: 5}, Episode: {1: 7}, Episode Return: {2: 5.4f}, Sucess Rate:{3: .2f}".format(
+                        total_steps, n_episode, episode_return, success_rate))
 
                 episode_steps = 0
                 episode_return = 0
@@ -285,7 +288,7 @@ class Trainer:
                 if success:
                     episode_success += 1
 
-                if done or success:
+                if done or success or episode_steps==0: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
                     n_episode += 1
 
                 success_rate = episode_success/n_episode
@@ -477,7 +480,7 @@ if __name__ == '__main__':
     print('Critic Paramaters:', model_parameters(policy.critic))
     print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
-    trainer = Trainer(policy, env, args)
+    trainer = Trainer(policy, env, args, net_params)
     trainer.set_seed(args.seed)
 
     if args.resume_training or args.evaluate:
