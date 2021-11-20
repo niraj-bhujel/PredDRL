@@ -250,11 +250,11 @@ class Trainer:
                 # pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
 
             # update buffer/memory
-            if not episode_steps==0:
-                self.replay_buffer.add([obs, action, reward, next_obs, done])
+            # if not episode_steps==0:
+            self.replay_buffer.add([obs, action, reward, next_obs, done])
 
-                if total_steps==self._policy.n_warmup:                
-                    pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
+            if total_steps==self._policy.n_warmup:                
+                pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
 
             episode_steps += 1
             episode_return += reward
@@ -288,7 +288,7 @@ class Trainer:
 
                 success_rate = episode_success/n_episode
 
-                self.writer.add_scalar("Common/training_return", episode_return, total_steps)
+                self.writer.add_scalar("Common/episode_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps)
                 self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
 

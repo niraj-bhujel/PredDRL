@@ -325,7 +325,7 @@ class Env:
         self.pedestrians_list = self.updatePedestrians(model_states)
 
         
-    def getGraphState(self, agent_actions=None, robot_action=None, last_state=None, done=False, success=False):
+    def getGraphState(self, agent_actions=None, robot_action=None, last_state=None):
         #NOTE: Enuse nodes are updated before creating graph by calling update_agents()
         self.update_agents(robot_action=robot_action)
         state = create_graph([self.robot, self.robot_goal] + self.pedestrians_list)
@@ -359,6 +359,8 @@ class Env:
         
         num_collisions = np.logical_and(distance_matrix>0, distance_matrix<1).sum()/2
 
+        done=False
+        success=False
         if collision:
             rospy.loginfo("Step [{}]: Collision!!".format(self.global_step))
             done = True
