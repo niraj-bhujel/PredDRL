@@ -163,7 +163,7 @@ class GraphDDPG(DDPG):
 
         # compute correct action reward for agents
         ped_mask = (states.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1)
-        action_error = torch.norm((states.ndata['action'] - action)*ped_mask)
+        action_error = torch.norm((states.ndata['future'].view(-1, 4, 2)[:, 0, :] - action)*ped_mask)
         self.writer.add_scalar("Common/action_error", action_error, self.iteration)
 
         actor_loss += action_error

@@ -40,7 +40,7 @@ class Env:
         self.robot_name = 'turtlebot3_burger'
 
         self.gx = 0
-        self.gy = 1
+        self.gy = 0
 
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
@@ -51,7 +51,7 @@ class Env:
         
         self.num_beams = 20  # 激光数
 
-        self.maxLinearSpeed = 0.43
+        self.maxLinearSpeed = 0.7
         self.maxAngularSpeed = 2.0
 
         self.action_type='xy'
@@ -75,7 +75,7 @@ class Env:
 
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.time_step = 0.4
+        self.time_step = 0.2
         self.timer = Timer() # set by trainer
 
         self.max_goal_distance = 20.
@@ -103,7 +103,7 @@ class Env:
 
         if self.stage==7:
             self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
-                                                            target_frame_rate=2*int(1/self.time_step),
+                                                            target_frame_rate=1/self.time_step,
                                                             max_peds=40)
             # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))

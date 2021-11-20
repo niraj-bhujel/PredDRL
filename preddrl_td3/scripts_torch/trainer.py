@@ -218,7 +218,7 @@ class Trainer:
                 print('Reward:', np.round(reward, 2))
                 # print('Vpref', obs.ndata['vpref'])
                 print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
-                print('Robot position:', self._env.robot.pos)
+                # print('Robot position:', self._env.robot.pos)
             if self._verbose>1:
                 print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
                                                     np.round(self._env.robot.vel, 2).tolist(), 
@@ -283,15 +283,14 @@ class Trainer:
                 if done or success or episode_steps==0: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
                     n_episode += 1
 
-                    self.logger.info("Total Steps: {}, Episode: {}, Sucess Rate:{:.2f}".format(
-                            total_steps, n_episode, success_rate))
+                    self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, success_rate))
 
 
                 success_rate = episode_success/n_episode
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps)
-                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/total_steps, total_steps)
+                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
 
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
