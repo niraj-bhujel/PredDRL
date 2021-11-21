@@ -86,7 +86,8 @@ class Trainer:
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
         # prepare log directory
-        suffix = '_'.join(['%s'%policy.policy_name,
+        suffix = '_'.join(['run_%d'%args.run,
+                          '%s'%policy.policy_name,
                         'warmup_%d'%policy.n_warmup,
                         'bs%d'%policy.batch_size,
                         # 'seed_%d'%args.seed,
@@ -213,19 +214,18 @@ class Trainer:
                 robot_action = action
 
             if self._verbose>0:
-                # print('Agent Action:', np.round(action, 2))
+                print('Robot Pose (x, y, yaw):', (self._env.position.x, self._env.position.y, self._env.yaw))
                 print('Robot Action:', np.round(robot_action, 2))
-                print('Reward:', np.round(reward, 2))
-                # print('Vpref', obs.ndata['vpref'])
+                print('Robot Vpref', obs.ndata['vpref'][obs.ndata['cid']==node_type_list.index('robot')])
                 print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
-                # print('Robot position:', self._env.robot.pos)
+                print('Reward:', np.round(reward, 2))
+
             if self._verbose>1:
                 print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
                                                     np.round(self._env.robot.vel, 2).tolist(), 
                                                     np.round(self._env.robot.goal, 2).tolist(),
                                                     self._env.robot.distance_to_goal()))  
 
-                print('Reward:{:3.3f}'.format(reward))
                 # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
                 #                                                                                           self._env.goal_x, self._env.goal_y,
                 #                                                                                           self._env.getGoalDistance()))
@@ -256,14 +256,14 @@ class Trainer:
             if total_steps==self._policy.n_warmup:                
                 pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
 
+            self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
+
             episode_steps += 1
             episode_return += reward
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
-
-            self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
 
             # update
             obs = next_obs
@@ -481,6 +481,7 @@ if __name__ == '__main__':
     if args.resume_training or args.evaluate:
         # eval_path = './preddrl_td3/results/'
         # model_path = '2021_11_11_GraphDDPG_warmup_1000_bs100_stage_7_episode_step1000_sampling_orca_node_prediction'
+        output_dir = trainer._output_dir
         policy = load_ckpt(policy, trainer._output_dir)
 
     try:

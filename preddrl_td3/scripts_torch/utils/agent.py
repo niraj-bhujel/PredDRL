@@ -135,7 +135,7 @@ class Agent(object):
         goal_vec = np.array((self.gx - self.px, self.gy - self.py))
         norm = np.linalg.norm(goal_vec)
         pref_vel = goal_vec/norm if norm>1 else goal_vec
-        return pref_vel * self.vpref
+        return pref_vel
 
     def serialize_state(self, s):
         return State(s)

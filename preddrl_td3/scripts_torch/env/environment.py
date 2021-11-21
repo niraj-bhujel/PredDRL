@@ -277,7 +277,7 @@ class Env:
             ped.set_action(action)
 
             ped_futures = np.zeros((self.future_steps, 2))
-            for i, ts in enumerate(range(t, min(t+self.future_steps, ped.last_timestep))):
+            for i, ts in enumerate(range(t+1, min(t+self.future_steps+1, ped.last_timestep))):
                 _s = ped.get_state_at(ts)
 
                 if self.action_type=='xy':
@@ -314,7 +314,7 @@ class Env:
         self.robot.set_action(robot_action) 
 
          # future vel
-        self.robot.set_futures([self.robot.action for _ in range(self.future_steps)])
+        self.robot.set_futures([self.robot.preferred_vel() for _ in range(self.future_steps)])
 
         # goal as a node
         self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)

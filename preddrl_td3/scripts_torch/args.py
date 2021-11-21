@@ -119,7 +119,8 @@ def get_argument(parser=None):
                         help='One of [0, 1, 2]')
     parser.add_argument('--resume_training', action='store_true', 
                         help='If resume training from the last checkpoint') 
-
+    parser.add_argument('--run', type=int, default=0,
+                        help='Used for output dir naming')
     # simulation env
     parser.add_argument('--stage', type=int, default=7,
                         help='Value from 0-7')   

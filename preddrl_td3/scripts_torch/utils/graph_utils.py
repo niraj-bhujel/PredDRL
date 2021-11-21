@@ -43,6 +43,7 @@ state_dims = {
         "goal": 2,
         "state":7,
         "future": 2*4, # 4 is future steps
+        "spatial_mask": 1,
     }
 
 def min_neighbor_distance(g, node, mask_nodes=[]):
@@ -92,6 +93,8 @@ def create_graph(nodes, bidirectional=False):
     edges_data = defaultdict(list)
     # N = len(nodes)
 
+    src_nodes = []
+    dst_nodes = []
     for i, src_node in enumerate(nodes):
         
         num_neighbors = 0
@@ -112,8 +115,8 @@ def create_graph(nodes, bidirectional=False):
 
             # if n1_has_n2_in_sight(src_node, dst_node):
             # edges from source to dest
-            edges_data['src'].extend([i])
-            edges_data['dst'].extend([j])
+            src_nodes.extend([i])
+            dst_nodes.extend([j])
 
             edges_data['dist'].extend([dist])
             edges_data['diff'].extend([diff])
@@ -123,8 +126,8 @@ def create_graph(nodes, bidirectional=False):
             edges_data['spatial_mask'].extend([1.0])
 
             if bidirectional:
-                edges_data['src'].extend([j])
-                edges_data['dst'].extend([i])
+                src_nodes.extend([j])
+                dst_nodes.extend([i])
                 edges_data['dist'].extend([dist])
                 edges_data['diff'].extend([-diff])
                 edges_data['spatial_mask'].extend([1.0])
@@ -133,7 +136,7 @@ def create_graph(nodes, bidirectional=False):
 
     robot_node = [node for node in nodes if node.type=='robot'][0]
     # prepare node data, discard node without edges
-    valid_nodes = np.unique(edges_data['src'] + edges_data['dst'])
+    valid_nodes = np.unique(src_nodes + dst_nodes)
     for n in valid_nodes:
         node = nodes[n]
 
@@ -156,35 +159,23 @@ def create_graph(nodes, bidirectional=False):
 
 
     # Construct the DGL graph
-    g = dgl.graph((edges_data['src'], edges_data['dst']))
+    g = dgl.graph((src_nodes, dst_nodes))
     g = dgl.node_subgraph(g, valid_nodes)
     
     # Add  features
-    g.ndata['tid'] = torch.tensor(nodes_data['tid'], dtype=torch.int32)
-    g.ndata['cid'] = torch.tensor(nodes_data['cid'], dtype=torch.int32)
+
     
-    g.ndata['pos'] = torch.tensor(np.stack(nodes_data['pos'], axis=0), dtype=torch.float32).view(-1, state_dims['pos'])
-    g.ndata['vel'] = torch.tensor(np.stack(nodes_data['vel'], axis=0), dtype=torch.float32).view(-1, state_dims['vel'])
-    # g.ndata['rel_vel'] = torch.tensor(np.stack(nodes_data['rel_vel'], axis=0), dtype=torch.float32).view(-1, state_dims['rel_vel'])
+    for node_attr, ndata in nodes_data.items():
+        if node_attr in ['tid', 'cid']:
+            g.ndata[node_attr] = torch.tensor(ndata, dtype=torch.int32)
+        else:
+            g.ndata[node_attr] = torch.tensor(np.stack(ndata, axis=0), dtype=torch.float32).view(-1, state_dims[node_attr])
 
-    g.ndata['vpref'] = torch.tensor(np.stack(nodes_data['vpref'], axis=0), dtype=torch.float32).view(-1, state_dims['vpref'])
-    g.ndata['theta'] = torch.tensor(np.stack(nodes_data['theta'], axis=0), dtype=torch.float32).view(-1, state_dims['theta'])
-
-    g.ndata['dir'] = torch.tensor(np.stack(nodes_data['dir'], axis=0), dtype=torch.float32).view(-1, state_dims['dir'])        
-    g.ndata['hed'] = torch.tensor(np.stack(nodes_data['hed'], axis=0), dtype=torch.float32).view(-1, state_dims['hed'])    
-    g.ndata['goal'] = torch.tensor(np.stack(nodes_data['goal'], axis=0), dtype=torch.float32).view(-1, state_dims['goal'])
-
-    g.ndata['action'] = torch.tensor(np.stack(nodes_data['action'], axis=0), dtype=torch.float32).view(-1, state_dims['action'])
-
-    g.ndata["state"] = torch.tensor(np.stack(nodes_data['state'], axis=0), dtype=torch.float32).view(-1, state_dims['state'])
-    g.ndata["future"] = torch.tensor(np.stack(nodes_data['future'], axis=0), dtype=torch.float32).view(-1, state_dims['future'])
-
-    g.edata['dist'] = torch.tensor(np.array(edges_data['dist']), dtype=torch.float32).view(-1, state_dims['dist'])
-    g.edata['diff'] = torch.tensor(np.array(edges_data['diff']), dtype=torch.float32).view(-1, state_dims['diff'])
-
-    g.edata['rel_vel'] = torch.tensor(np.array(edges_data['rel_vel']), dtype=torch.float32).view(-1, state_dims['rel_vel'])
-
-    g.edata['spatial_mask'] = torch.tensor(np.array(edges_data['spatial_mask']), dtype=torch.int32).view(-1, 1)
+    for edge_attr, edata in edges_data.items():
+        if edge_attr=='spatial_mask':
+            g.edata[edge_attr] = torch.tensor(np.array(edata), dtype=torch.int32).view(-1, state_dims[edge_attr])
+        else:
+            g.edata[edge_attr] = torch.tensor(np.array(edata), dtype=torch.float32).view(-1, state_dims[edge_attr])
     
     return g
 
