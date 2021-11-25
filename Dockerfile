@@ -3,14 +3,11 @@
 
 FROM nvidia/cudagl:10.1-devel-ubuntu16.04
 
-ARG nvidia_cudnn_version=7.6.4.38-1+cuda10.1
-
-ENV NVIDIA_CUDNN_VERSION=${nvidia_cudnn_version}
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcudnn7=${NVIDIA_CUDNN_VERSION} \
-    libcudnn7-dev=${NVIDIA_CUDNN_VERSION} \
-    && apt-mark hold libcudnn7 \
-    && rm -rf /var/lib/apt/lists/
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES \
+    ${NVIDIA_VISIBLE_DEVICES:-all}
+ENV NVIDIA_DRIVER_CAPABILITIES \
+    ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
 
 
 RUN apt-get update && apt-get -y install software-properties-common
