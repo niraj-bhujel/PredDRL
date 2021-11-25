@@ -26,12 +26,14 @@ from utils.timer import Timer
 from policy.orca import ORCA
 from preddrl_data.scripts.prepare_data import prepare_data
 
-SelfD=0.175
-SelfL=0.23
-
-
+# # turtlebot3_burger, https://emanual.robotis.com/docs/en/platform/turtlebot3/features/#features
+SelfD=0.1 # Robot effective distance/radius
+SelfL=0.16 # Length of wheel axels in meters
+# turtlebot2
+# SelfD = 0.175
+# SelfL = 0.23
 class Env:
-    def __init__(self, test=False, stage=0, graph_state=False, dataset='zara1'):
+    def __init__(self, test=False, stage=0, graph_state=False, dataset='zara1', verbose=0):
 
         self.test = test
         self.graph_state = graph_state
@@ -47,17 +49,18 @@ class Env:
         self.goal_threshold = 0.3
         self.collision_threshold = 0.2
 
-        self.inital_pos = Point(12.0, 6.5, 0.)
+        self.inital_pos = Point(0.0, 0.0, 0.)
         
         self.num_beams = 20  # 激光数
 
-        self.maxLinearSpeed = 0.7
-        self.maxAngularSpeed = 2.0
+        self.minLinearSpeed = 0.
+        self.maxLinearSpeed = 0.6
+        self.maxAngularSpeed = 2.
 
         self.action_type='xy'
 
         if self.action_type=='xy':
-            self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
+            self.action_space = spaces.Box(low=np.array([-self.minLinearSpeed, -self.minLinearSpeed]), 
                                            high=np.array([self.maxLinearSpeed, self.maxLinearSpeed]), 
                                            dtype=np.float32)
         elif self.action_type=='vw':
@@ -69,13 +72,13 @@ class Env:
                                             high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
                                             dtype=np.float32)
 
-        self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
+        self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
 
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
 
-        self.time_step = 0.2
+        self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
         self.max_goal_distance = 20.
@@ -94,6 +97,7 @@ class Env:
 
     def initialize_agents(self, ):
         self.vel_cmd = Twist()
+        self.position = self.inital_pos
 
         self.robot = Agent(node_id=555, node_type='robot', time_step=self.time_step)
 
@@ -131,7 +135,7 @@ class Env:
         self.linear = odom.twist.twist.linear
 
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
-        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_list)
+        _, _, self.yaw = euler_from_quaternion(orientation_list)
         
         inc_y = self.gy - self.position.y
         inc_x = self.gx - self.position.x
@@ -173,9 +177,21 @@ class Env:
         return vx, vy
 
     def xy_to_vw_(self, action):
-        v = np.linalg.norm(action)
-        w = np.arctan2(action[0], action[1]) - self.yaw
-        return v, w
+        # v = np.linalg.norm(action)
+        v = action[0]
+        theta = np.arctan2(action[1], action[0])
+        dtheta = theta - self.yaw
+        if dtheta > pi:
+            dtheta -= 2 * pi
+        elif dtheta < -pi:
+            dtheta += 2 * pi  
+
+        w = dtheta/self.time_step
+
+        v = np.clip(0, v, self.maxLinearSpeed)
+        w = np.clip(-self.maxAngularSpeed, w, self.maxAngularSpeed)
+        
+        return (v, w)
 
     def xy_to_vw(self, action):
         # adopted from https://github.com/dongfangliu/NH-ORCA-python/blob/main/python/turtlebot.py
@@ -194,7 +210,8 @@ class Env:
 
         w = (vr-vl)/SelfL
 
-        v = np.clip(0, v, self.maxLinearSpeed)
+
+        v = np.clip(self.minLinearSpeed, v, self.maxLinearSpeed)
         w = np.clip(-self.maxAngularSpeed, w, self.maxAngularSpeed)
 
         return v, w
@@ -210,7 +227,7 @@ class Env:
 
         if action_type=='xy':
             v, w = self.xy_to_vw(action)
-
+            # print('action, pose, vel_cmd', np.round(action, 3), np.round((self.position.x, self.position.y, self.yaw), 2), np.round((v, w), 2))
         else:
             v, w = action[0], action[1]
 
@@ -298,7 +315,7 @@ class Env:
     def update_agents(self, robot_action=None):
 
         try:
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
         except rospy.ROSException:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
@@ -374,7 +391,7 @@ class Env:
             
         elif too_far:
             done = True
-            reward = -50
+            reward = -100
             rospy.loginfo('Step [{}]: Too Far from Goal!!'.format(self.global_step))
 
         else:
@@ -382,10 +399,11 @@ class Env:
             # reward = 0.1*(self.goal_threshold-self.getGoalDistance())
 
         goal_distance = self.getGoalDistance()
-        if goal_distance < self.last_goal_distance:
-            reward += 0.1*goal_distance
+        if goal_distance<self.last_goal_distance:
+            reward += 1
         else:
-            reward -= 0.1*goal_distance
+            reward -= 1
+        # reward += 0.1*self.last_goal_distance - goal_distance
 
         self.last_goal_distance = goal_distance
 
@@ -394,8 +412,8 @@ class Env:
 
         return state, reward, done, success
 
-    def getState(self, action=None, done=False, success=False):
-        
+    def getState(self, action=None):
+        self.update_agents(robot_action=action)
         scan = None
         while scan is None:
             try:
@@ -413,7 +431,7 @@ class Env:
             else:
                 scan_range_collision.append(scan.ranges[i])
 
-        if action==None:
+        if action is None:
             return scan_range_collision + [0., 0.,self.heading, self.getGoalDistance()]
 
         collision =  min(scan_range_collision)+1e-6 < self.collision_threshold
@@ -438,6 +456,8 @@ class Env:
 
         state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
 
+        done = False
+        success = False
         if collision:
             rospy.loginfo("Collision!!")
             done = True

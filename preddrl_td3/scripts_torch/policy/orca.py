@@ -2,7 +2,7 @@ from __future__ import division
 import numpy as np
 import rvo2
 
-
+# Adapted from https://github.com/vita-epfl/CrowdNav/blob/master/crowd_sim/envs/policy/orca.py
 
 class ORCA(object):
     def __init__(self, time_step=0.5):

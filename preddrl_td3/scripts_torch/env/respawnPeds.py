@@ -42,7 +42,7 @@ class RespawnPedestrians:
 
 
         if model_states is None:
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
 
         # print(model_states.name)
         # print(self.spawnned_ped_list)

@@ -78,7 +78,7 @@ class Respawn():
         rospy.wait_for_service('gazebo/delete_model')
         del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
         del_model_prox(self.modelName)
-        rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
+        # rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
 
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag

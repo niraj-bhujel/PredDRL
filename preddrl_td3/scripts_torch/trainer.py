@@ -214,10 +214,10 @@ class Trainer:
                 robot_action = action
 
             if self._verbose>0:
-                print('Robot Pose (x, y, yaw):', (self._env.position.x, self._env.position.y, self._env.yaw))
                 print('Robot Action:', np.round(robot_action, 2))
                 print('Robot Vpref', obs.ndata['vpref'][obs.ndata['cid']==node_type_list.index('robot')])
                 print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
+                # print('Robot Pose (x, y, yaw):', (self._env.position.x, self._env.position.y, self._env.yaw))
                 print('Reward:', np.round(reward, 2))
 
             if self._verbose>1:
