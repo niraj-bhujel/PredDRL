@@ -8,7 +8,7 @@ from copy import deepcopy
 from gym import spaces
 from gym.utils import seeding
 from math import pi, cos, sin
-from geometry_msgs.msg import Twist, Point, Pose, PoseStamped, Quaternion
+from geometry_msgs.msg import Twist, Point, Pose, PoseStamped, Quaternion, Vector3
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
@@ -21,7 +21,7 @@ from .respawnPeds import RespawnPedestrians
 from .env_utils import *
 
 from utils.agent import Agent
-from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
+from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list, FUTURE_STEPS
 from utils.timer import Timer
 from policy.orca import ORCA
 from preddrl_data.scripts.prepare_data import prepare_data
@@ -72,8 +72,8 @@ class Env:
                                             high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
                                             dtype=np.float32)
 
-        self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-        self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
+        # self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+        # self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
 
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
@@ -89,15 +89,13 @@ class Env:
 
         self.global_step = 0
 
-        self.future_steps = 4
+        self.future_steps = FUTURE_STEPS
         
         self.collision_times = 0
 
         self.initialize_agents()
 
     def initialize_agents(self, ):
-        self.vel_cmd = Twist()
-        self.position = self.inital_pos
 
         self.robot = Agent(node_id=555, node_type='robot', time_step=self.time_step)
 
@@ -113,7 +111,7 @@ class Env:
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
             self.respawn_pedestrian = RespawnPedestrians()
 
-        self.update_agents(robot_action=(0., 0.))
+        # self.update_agents(robot_action=(0., 0.))
 
     def setScan(self, scan):
         self.scan = scan
@@ -287,11 +285,13 @@ class Env:
             ped.set_state(state.px, state.py, state.vx, state.vy, state.gx, state.gy, state.theta)
             
             # ground truth action
+            next_state = ped.get_state_at(t+1)
             if self.action_type=='xy':
-                action = (state.vx, state.vy)
+                action = (next_state.vx, next_state.vy)
             else:
-                action = (math.hypot(state.vx, state.vy), state.theta)
+                action = (math.hypot(next_state.vx, next_state.vy), next_state.theta)
             ped.set_action(action)
+
 
             ped_futures = np.zeros((self.future_steps, 2))
             for i, ts in enumerate(range(t+1, min(t+self.future_steps+1, ped.last_timestep))):
@@ -320,13 +320,7 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        # if self.robot.px is not None:
-        #     vx = (self.position.x - self.robot.px)/self.time_step
-        #     vy = (self.position.y - self.robot.py)/self.time_step
-        # else:
-        #     vx, vy = (0., 0.)
-
-        # print('robot linear(manual)', vx, vy)
+        # self.robot.set_state(px, py, vx, vy, self.gx, self.gy, self.yaw)
         self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_action(robot_action) 
 
@@ -375,6 +369,7 @@ class Env:
         distance_matrix = np.linalg.norm(pred_pos[:, None, :]-pred_pos[None, :, :], axis=-1)
         
         num_collisions = np.logical_and(distance_matrix>0, distance_matrix<1).sum()/2
+        curr_goal_distance = self.getGoalDistance()
 
         done=False
         success=False
@@ -395,17 +390,16 @@ class Env:
             rospy.loginfo('Step [{}]: Too Far from Goal!!'.format(self.global_step))
 
         else:
-            reward = 0.
-            # reward = 0.1*(self.goal_threshold-self.getGoalDistance())
+            # reward = 0.
+            reward = 1/curr_goal_distance
 
-        goal_distance = self.getGoalDistance()
-        if goal_distance<self.last_goal_distance:
+        diff = self.last_goal_distance - curr_goal_distance
+        if diff>0.1:
             reward += 1
         else:
             reward -= 1
-        # reward += 0.1*self.last_goal_distance - goal_distance
 
-        self.last_goal_distance = goal_distance
+        self.last_goal_distance = curr_goal_distance
 
         reward -= num_collisions/last_state.number_of_nodes()
         # reward -= self.action_error
@@ -492,10 +486,18 @@ class Env:
 
         robot_action = action[last_state.ndata['cid']==node_type_list.index('robot')].flatten() if self.graph_state else action
 
-        self.vel_cmd = self.action_to_vel_cmd(robot_action, self.action_type)
-        self.pub_cmd_vel.publish(self.vel_cmd)
-        rospy.sleep(self.time_step)
-        self.pub_cmd_vel.publish(Twist())
+        # self.vel_cmd = self.action_to_vel_cmd(robot_action, self.action_type)
+        # self.pub_cmd_vel.publish(self.vel_cmd)
+        # rospy.sleep(self.time_step)
+        # self.pub_cmd_vel.publish(Twist())
+
+        vx, vy = robot_action
+        self.position.x = self.position.x + vx*self.time_step
+        self.position.y = self.position.y + vy*self.time_step
+        self.yaw = math.atan2(vy, vx)
+        self.linear.x = vx
+        self.linear.y = vy
+        self.set_robot_pose(self.position, self.yaw)
 
         if self.graph_state:
             
@@ -519,22 +521,28 @@ class Env:
         self.respawn_goal.respawnModel()
 
 
-        rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.gx, self.gy)
+        rospy.loginfo("New Goal : (%.1f, %.1f)", self.gx, self.gy)
 
-    def reset(self, initGoal=False):
-        print('Resetting env ... ')
-        # reset robot velocity
-        self.pub_cmd_vel.publish(Twist())
-        self.position = self.inital_pos # update robot pos
+    def set_robot_pose(self, position, yaw):
 
-        # reset robot pose and randomly set the orientation
         tmp_state = ModelState()
         tmp_state.model_name = "turtlebot3_burger"
-        tmp_state.pose = Pose(self.inital_pos, euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)]))
+        tmp_state.pose = Pose(position, euler_to_quaternion([0.0, 0.0, yaw]))
         tmp_state.reference_frame = "world"
         rospy.wait_for_service("/gazebo/set_model_state")
         set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
         set_model_state(tmp_state)
+
+    def reset(self, initGoal=False):
+        print('Resetting env ... ')
+        # reset robot velocity
+        # self.pub_cmd_vel.publish(Twist())
+        self.position = deepcopy(self.inital_pos)
+        self.yaw = random.uniform(0, 360)
+        self.linear = Vector3(0., 0., 0.)
+        print("Resetting robot position to:", self.position)
+        # reset robot pose and randomly set the orientation
+        self.set_robot_pose(self.position, self.yaw)
 
         if initGoal:
             self.init_goal()

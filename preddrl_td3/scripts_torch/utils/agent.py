@@ -43,6 +43,7 @@ class Agent(object):
         self.action = (0., 0.)
 
         self.state_history = []
+        self.futures = None
 
     def __len__(self):
         return len(self.state_history)

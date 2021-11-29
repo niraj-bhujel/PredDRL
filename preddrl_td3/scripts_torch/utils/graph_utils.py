@@ -25,6 +25,7 @@ interaction_direction = {
 
 }
 
+FUTURE_STEPS = 2
 state_dims = {
         "pos": 2,
         "vel": 2,
@@ -42,7 +43,7 @@ state_dims = {
         "action": 2,
         "goal": 2,
         "state":7,
-        "future": 2*4, # 4 is future steps
+        "future": FUTURE_STEPS*2, # 4 is future steps
         "spatial_mask": 1,
     }
 
@@ -88,6 +89,7 @@ def create_graph(nodes, bidirectional=False):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''
+    global FUTURE_STEPS
 
     nodes_data = defaultdict(list)
     edges_data = defaultdict(list)
@@ -152,6 +154,7 @@ def create_graph(nodes, bidirectional=False):
         nodes_data['goal'].append(node.goal)
         
         nodes_data['state'].append(node.state)
+
         nodes_data['future'].append([s for futures in node.futures for s in futures])
 
         nodes_data['tid'].append(node.id)

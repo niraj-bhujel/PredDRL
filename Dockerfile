@@ -1,6 +1,3 @@
-# Use nvidia/cudagl rather than nvidia/cuda 
-# https://www.ybliu.com/2020/06/docker-libGL-failed-swrast.html
-
 FROM nvidia/cudagl:10.1-devel-ubuntu16.04
 
 # nvidia-container-runtime

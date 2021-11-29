@@ -162,10 +162,10 @@ class GraphDDPG(DDPG):
         actor_loss = -self.critic(states, action).mean()
 
         # compute correct action reward for agents
-        # ped_mask = (states.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1)
-        action_error = torch.mean((states.ndata['future'].view(-1, 4, 2)[:, 0, :] - action)**2)
+        ped_mask = (states.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1)
+        action_error = torch.mean(ped_mask*(states.ndata['action'] - action)**2)
         self.writer.add_scalar("Common/action_error", action_error, self.iteration)
-        actor_loss += action_error
+        actor_loss += 0.1*action_error
 
 
         # Optimize the actor 
