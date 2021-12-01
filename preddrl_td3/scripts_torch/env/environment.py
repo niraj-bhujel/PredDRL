@@ -174,23 +174,6 @@ class Env:
         vy = action[0] * np.sin(theta)
         return vx, vy
 
-    def xy_to_vw_(self, action):
-        # v = np.linalg.norm(action)
-        v = action[0]
-        theta = np.arctan2(action[1], action[0])
-        dtheta = theta - self.yaw
-        if dtheta > pi:
-            dtheta -= 2 * pi
-        elif dtheta < -pi:
-            dtheta += 2 * pi  
-
-        w = dtheta/self.time_step
-
-        v = np.clip(0, v, self.maxLinearSpeed)
-        w = np.clip(-self.maxAngularSpeed, w, self.maxAngularSpeed)
-        
-        return (v, w)
-
     def xy_to_vw(self, action):
         # adopted from https://github.com/dongfangliu/NH-ORCA-python/blob/main/python/turtlebot.py
 
@@ -371,6 +354,11 @@ class Env:
         num_collisions = np.logical_and(distance_matrix>0, distance_matrix<1).sum()/2
         curr_goal_distance = self.getGoalDistance()
 
+        # compute correct action reward for agents
+        ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
+        action_error = np.mean(ped_mask*(last_state.ndata['action'].numpy() - agent_actions)**2)
+        self.writer.add_scalar("Common/action_error", action_error, self.global_step)
+
         done=False
         success=False
         if collision:
@@ -390,8 +378,8 @@ class Env:
             rospy.loginfo('Step [{}]: Too Far from Goal!!'.format(self.global_step))
 
         else:
-            # reward = 0.
-            reward = 1/curr_goal_distance
+            reward = 0.
+            # reward = 1/curr_goal_distance
 
         diff = self.last_goal_distance - curr_goal_distance
         if diff>0.1:
@@ -402,7 +390,7 @@ class Env:
         self.last_goal_distance = curr_goal_distance
 
         reward -= num_collisions/last_state.number_of_nodes()
-        # reward -= self.action_error
+        reward -= action_error
 
         return state, reward, done, success
 
