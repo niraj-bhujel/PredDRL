@@ -77,7 +77,6 @@ class Trainer:
         self._test_env = self._env if test_env is None else test_env
         self._verbose = args.verbose
         self._dataset = args.dataset
-
         # self.timer = Timer()
         # self.r = rospy.Rate(1/self._env.time_step)
 
@@ -86,7 +85,7 @@ class Trainer:
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
         # prepare log directory
-        suffix = '_'.join(['run_%d'%args.run,
+        suffix = '_'.join(['run%d'%args.run,
                           '%s'%policy.policy_name,
                         'warmup_%d'%policy.n_warmup,
                         'bs%d'%policy.batch_size,
@@ -113,7 +112,6 @@ class Trainer:
                                               time_format='%Y_%m_%d',
                                               suffix=suffix
                                               )
-
         # backup scripts
         copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
@@ -456,7 +454,7 @@ if __name__ == '__main__':
     # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
     with open("./preddrl_td3/scripts_torch/net_params.yaml", 'r') as f:
         net_params = yaml.load(f, Loader = yaml.FullLoader)
-
+    print(net_params)
     print('Creating policy ... ')
     policy = policies[args.policy](state_shape=env.observation_space.shape,
                                     action_dim=env.action_space.high.size,

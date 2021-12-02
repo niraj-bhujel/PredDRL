@@ -33,7 +33,7 @@ def get_argument(parser=None):
                         help='Normalize observation')
     parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
                         help='Output directory')
-    parser.add_argument('--overwrite', action='store_false', default=True,
+    parser.add_argument('--overwrite', action='store_false',
                         help='Overwrite existing experiments')
     parser.add_argument('--dataset', type=str, default='zara1',
                         help='Dataset to use')    

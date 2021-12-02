@@ -43,7 +43,7 @@ state_dims = {
         "action": 2,
         "goal": 2,
         "state":7,
-        "future": FUTURE_STEPS*2, # 4 is future steps
+        "future": FUTURE_STEPS*2,
         "spatial_mask": 1,
     }
 

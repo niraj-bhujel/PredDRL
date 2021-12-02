@@ -49,7 +49,7 @@ class Env:
         self.goal_threshold = 0.3
         self.collision_threshold = 0.2
 
-        self.inital_pos = Point(0.0, 0.0, 0.)
+        self.inital_pos = Point(10.0, 10.0, 0.)
         
         self.num_beams = 20  # 激光数
 
@@ -355,8 +355,9 @@ class Env:
         curr_goal_distance = self.getGoalDistance()
 
         # compute correct action reward for agents
-        ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
-        action_error = np.mean(ped_mask*(last_state.ndata['action'].numpy() - agent_actions)**2)
+        # ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
+        # action_error = np.mean(ped_mask*(last_state.ndata['action'].numpy() - agent_actions)**2)
+        action_error = np.mean((last_state.ndata['future'].view(-1, FUTURE_STEPS, 2)[:, 0, :].numpy() - agent_actions)**2)
         self.writer.add_scalar("Common/action_error", action_error, self.global_step)
 
         done=False
@@ -364,12 +365,12 @@ class Env:
         if collision:
             rospy.loginfo("Step [{}]: Collision!!".format(self.global_step))
             done = True
-            reward = -100
+            reward = -150
             self.collision_times += 1
 
         elif reaching_goal:
             success = True
-            reward = 150#100
+            reward = 100
             rospy.loginfo('Step [{}]: Success!!'.format(self.global_step))
             
         elif too_far:
