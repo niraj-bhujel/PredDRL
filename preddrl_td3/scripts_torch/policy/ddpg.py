@@ -19,10 +19,7 @@ class Actor(torch.nn.Module):
 
         self.l1 = nn.Linear(state_shape[0], units[0])
         self.l2 = nn.Linear(units[0], units[1])
-        # self.l3 = nn.Linear(units[1], action_dim)
-
-        self.l4 = nn.Linear(units[1], 1)
-        self.l5 = nn.Linear(units[1], 1)
+        self.l3 = nn.Linear(units[1], action_dim)
         
         self.max_action = max_action
 
@@ -30,12 +27,7 @@ class Actor(torch.nn.Module):
         #DNN
         features = F.relu(self.l1(inputs))
         features = F.relu(self.l2(features))
-        # features = self.l3(features)
-
-        # action = self.max_action * torch.tanh(features)
-        v = self.max_action[0] * torch.sigmoid(self.l4(features))
-        w = self.max_action[1] * torch.tanh(self.l5(features))
-        action = torch.cat([v, w], dim=-1)
+        action = self.max_action[0] * torch.tanh(self.l3(features))
 
         return action
 
@@ -64,8 +56,8 @@ class DDPG(OffPolicyAgent):
             action_dim,
             name="DDPG",
             max_action=1.,
-            lr_actor=0.001,
-            lr_critic=0.001,
+            lr_actor=0.0001,
+            lr_critic=0.0001,
             actor_units=[400, 300],
             critic_units=[400, 300],
             sigma=0.1,
@@ -102,10 +94,9 @@ class DDPG(OffPolicyAgent):
         self.iteration=n_warmup
 
     def get_action(self, state, test=False, tensor=False):
-        if isinstance(state, tuple):
-            state = torch.Tensor(state[0])
-        else:
-            state = torch.Tensor(state)
+
+        state = torch.Tensor(state)
+
         state = state.to(self.device)
         action = self._get_action_body(state, 
                                        self.sigma * (1. - test), 
@@ -121,7 +112,7 @@ class DDPG(OffPolicyAgent):
         self.actor.eval()
         with torch.no_grad():
             action = self.actor(state)
-            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
+            action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.actor.train()
         # return torch.clamp(action, -max_action, max_action)
         return action.squeeze(0)

@@ -189,25 +189,8 @@ class Trainer:
                 action  = self._env.sample_robot_action(self._sampling_method)
             else:
                 action = self._policy.get_action(obs)
-            
-            if self._verbose>0:
-                print('Action: [{:6.3f}, {:6.3f}]'.format(action[0], action[1]))
-                
+
             next_obs, reward, done, success = self._env.step(action)          
-            
-            if self._verbose>0:
-                print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
-
-            if self._verbose>1:
-                print('Reward:{:3.3f}'.format(reward))
-                # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
-                #                                                                                           self._env.goal_x, self._env.goal_y,
-                #                                                                                           self._env.getGoalDistance()))
-
-                print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
-                                                    np.round(self._env.robot.vel, 2).tolist(), 
-                                                    np.round(self._env.robot.goal, 2).tolist(),
-                                                    self._env.robot.distance_to_goal()))              
             
             # plot graph, 
             if self._vis_graph: #and total_steps<100:
@@ -244,9 +227,6 @@ class Trainer:
 
             if done or episode_steps == self._episode_max_steps:
                 obs = self._env.reset()
-
-                if self._verbose>1:
-                    print("Robot position after reset:", [self._env.position.x, self._env.position.z])
 
                 self.logger.info("{0: 5}/{1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f}, Sucess Rate:{5: .2f}, FPS: {4: 5.2f}".format(
                         n_episode, total_steps, episode_steps, episode_return, fps, success_rate))
@@ -307,7 +287,7 @@ class Trainer:
             self._env.timer.toc()
             self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
             if self._verbose>0:
-                print('Time per step:', self._env.timer.diff)
+                print('Time per step:', round(self._env.timer.diff, 2))
 
         self.writer.close()
         save_ckpt(self._policy, self._output_dir, total_steps)

@@ -8,7 +8,7 @@ from copy import deepcopy
 from gym import spaces
 from gym.utils import seeding
 from math import pi, cos, sin
-from geometry_msgs.msg import Twist, Point, Pose, PoseStamped, Quaternion
+from geometry_msgs.msg import Twist, Point, Pose, PoseStamped, Quaternion, Vector3
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
@@ -31,18 +31,19 @@ SelfL=0.23
 
 
 class Env:
-    def __init__(self, test=False, stage=0, graph_state=False):
+    def __init__(self, test=False, stage=0, graph_state=False, verbose=1):
 
         self.test = test
         self.graph_state = graph_state
         self.stage = stage
+        self.verbose = verbose
 
         self.goal_x = 0
         self.goal_y = 1
 
         self.inflation_rad = 0.37  # 包含0.17的自身半径
 
-        self.maxLinearSpeed = 0.4#0.67
+        self.maxLinearSpeed = 0.7
         self.maxAngularSpeed = 2.0
 
         self.goal_threshold = 0.3
@@ -53,7 +54,7 @@ class Env:
         
         self.num_beams = 20  # 激光数
 
-        self.action_type='vw'
+        self.action_type='xy'
 
         if self.action_type=='xy':
             self.action_space = spaces.Box(low=np.array([-self.maxLinearSpeed, -self.maxLinearSpeed]), 
@@ -68,8 +69,8 @@ class Env:
                                             high=np.array([3.5]*self.num_beams + [0.2, 2., 2*pi, 4]), 
                                             dtype=np.float32)
 
-        self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-        self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
+        # self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5)
+        # self.sub_odom = rospy.Subscriber('odom', Odometry, self.setOdometry)
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.setScan)
 
         self.respawn_goal = Respawn(stage) # stage argument added by niraj        
@@ -77,7 +78,7 @@ class Env:
         self.time_step = 0.2
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 20.
+        self.max_goal_distance = 15.
         self.last_goal_distance = 0.
 
         # robot policy
@@ -109,7 +110,7 @@ class Env:
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
             self.respawn_pedestrian = RespawnPedestrians()
 
-        self.update_agents()
+        # self.update_agents()
 
     def setScan(self, scan):
         self.scan = scan
@@ -163,11 +164,11 @@ class Env:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
             action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list,
                                                 obstacle_pos=obstacle_pos)
-            print('orca vel:', action)
+            print('ORCA Vel:', np.round(action, 3))
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
 
-        return action
+        return np.round(action, 3)
 
     def vw_to_xy(self, action):
         theta = self.yaw + action[1]
@@ -302,14 +303,8 @@ class Env:
             rospy.logerr('ModelStates timeout')
             raise ValueError 
 
-        if self.robot.px is not None:
-            vx = (self.position.x - self.robot.px)/self.time_step
-            vy = (self.position.y - self.robot.py)/self.time_step
-        else:
-            vx, vy = (0., 0.)
-
         # print('robot vel:', vx, vy)
-        self.robot.set_state(self.position.x, self.position.y, vx, vy, self.goal_x, self.goal_y, theta=self.yaw)
+        self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.goal_x, self.goal_y, theta=self.yaw)
         self.robot.set_action(action) 
 
          # future vel
@@ -391,20 +386,27 @@ class Env:
         goal_distance = self.getGoalDistance()
         reaching_goal = goal_distance< self.goal_threshold
         too_far = goal_distance > self.max_goal_distance
+        pref_vel = preferred_vel(self.position.x, self.position.y, self.goal_x, self.goal_y, speed=self.maxLinearSpeed)
 
-        state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
-
+        # state = scan_range_collision + [action[0], action[1], self.heading, goal_distance]
+        state = scan_range_collision + list(pref_vel) + [self.heading, goal_distance]
         return state, collision, reaching_goal, too_far
 
 
-
     def step(self, action):
+        if self.verbose>0:
+            print('Action:', action[0], action[1])
+        vx, vy = action
+        self.position.x = self.position.x + vx*self.time_step
+        self.position.y = self.position.y + vy*self.time_step
+        self.yaw = math.atan2(vy, vx)
+        self.linear.x = vx
+        self.linear.y = vy
 
-        self.vel_cmd = self.action_to_vel_cmd(action, self.action_type)
-        self.pub_cmd_vel.publish(self.vel_cmd)
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.goal_x, self.goal_y)
 
-        rospy.sleep(self.time_step)
-        self.pub_cmd_vel.publish(Twist())
+        self.set_robot_pose(self.position, self.yaw)
+        # rospy.sleep(self.time_step)
 
         self.update_agents(action)
 
@@ -434,16 +436,17 @@ class Env:
 
         else:
             reward = 0.
-            # reward = self.goal_threshold-self.getGoalDistance()
 
         goal_distance = self.getGoalDistance()
         if goal_distance < self.last_goal_distance:
             reward += 1#50
         else:
             reward -= 1
+        
+        reward += self.goal_threshold-goal_distance
 
-        if abs(self.heading)>1.5:
-            reward -= 1#20
+        # if abs(self.heading)>1.5:
+        #     reward -= 1#20
         self.last_goal_distance = goal_distance
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
@@ -455,6 +458,9 @@ class Env:
             self.reset()
 
         self.global_step+=1
+        if self.verbose>0:
+            print('Reward:', round(reward, 3))
+
         return state, reward, done, success
 
     # add a separate function to initialize goal, delete old goal if exist and respawn new goal
@@ -466,39 +472,37 @@ class Env:
         self.respawn_goal.respawnModel()
 
 
-        rospy.loginfo("Init New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
+        rospy.loginfo("New Goal : (%.1f, %.1f)", self.goal_x, self.goal_y)
 
-    def reset(self, initGoal=False):
-        # reset robot velocity
-        self.pub_cmd_vel.publish(Twist())
-        # reset scan as well
-        # self.scan = None
+    def set_robot_pose(self, position, yaw):
 
-        # try:
-        #     rospy.wait_for_service('gazebo/reset_simulation')
-        #     reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        #     reset_proxy()
-            
-        #     rospy.loginfo('Env Reset')
-
-        # except (rospy.ServiceException) as e:
-        #     rospy.loginfo("gazebo/reset_simulation service call failed")
-
-        # reset robot pose and randomly set the orientation
         tmp_state = ModelState()
         tmp_state.model_name = "turtlebot3_burger"
-        tmp_state.pose = Pose(self.inital_pos, 
-                              euler_to_quaternion([0.0, 0.0, random.uniform(0, 360)])
-                              )
+        tmp_state.pose = Pose(position, euler_to_quaternion([0.0, 0.0, yaw]))
         tmp_state.reference_frame = "world"
         rospy.wait_for_service("/gazebo/set_model_state")
         set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
         set_model_state(tmp_state)
 
+        if self.verbose>0:
+            print('Robot pos:', round(position.x, 2), round(position.y, 2))
+
+    def reset(self, initGoal=False):
+
         if initGoal:
             self.init_goal()
 
-        self.update_agents()
+        self.position = deepcopy(self.inital_pos)
+        self.yaw = random.uniform(0, 360)
+        self.linear = Vector3(0., 0., 0.)
+        # goal must be updated before computing heading
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.goal_x, self.goal_y) 
+        
+        self.update_agents(action=(0.0, 0.0))
+        self.set_robot_pose(self.inital_pos, self.yaw)
+
+        print("Robot position reset to:", (self.position.x, self.position.y))
+
         state, _, _, _ = self.getState()
         
         if self.graph_state:
