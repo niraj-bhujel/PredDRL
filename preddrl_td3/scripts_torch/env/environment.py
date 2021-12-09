@@ -498,6 +498,7 @@ class Env:
         if initGoal:
             self.init_goal()
 
+        self.update_agents()
         state, _, _, _ = self.getState()
         
         if self.graph_state:

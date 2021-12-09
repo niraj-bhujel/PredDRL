@@ -19,17 +19,23 @@ class Actor(torch.nn.Module):
 
         self.l1 = nn.Linear(state_shape[0], units[0])
         self.l2 = nn.Linear(units[0], units[1])
-        self.l3 = nn.Linear(units[1], action_dim)
+        # self.l3 = nn.Linear(units[1], action_dim)
 
+        self.l4 = nn.Linear(units[1], 1)
+        self.l5 = nn.Linear(units[1], 1)
+        
         self.max_action = max_action
 
     def forward(self, inputs):
         #DNN
         features = F.relu(self.l1(inputs))
         features = F.relu(self.l2(features))
-        features = self.l3(features)
+        # features = self.l3(features)
 
-        action = self.max_action * torch.tanh(features)
+        # action = self.max_action * torch.tanh(features)
+        v = self.max_action[0] * torch.sigmoid(self.l4(features))
+        w = self.max_action[1] * torch.tanh(self.l5(features))
+        action = torch.cat([v, w], dim=-1)
 
         return action
 
