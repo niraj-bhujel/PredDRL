@@ -87,7 +87,8 @@ class Env:
         self.global_step = 0
 
         self.future_steps = 4
-        
+        self.collision_times = 0
+
         self.initialize_agents()
 
     def initialize_agents(self, ):
@@ -423,6 +424,7 @@ class Env:
             rospy.loginfo("Collision!!")
             done = True
             reward = -100
+            self.collision_times += 1
 
         elif reaching_goal:
             success = True
@@ -496,13 +498,12 @@ class Env:
         self.yaw = random.uniform(0, 360)
         self.linear = Vector3(0., 0., 0.)
         # goal must be updated before computing heading
-        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.goal_x, self.goal_y) 
-        
-        self.update_agents(action=(0.0, 0.0))
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.goal_x, self.goal_y)         
         self.set_robot_pose(self.inital_pos, self.yaw)
 
         print("Robot position reset to:", (self.position.x, self.position.y))
-
+        
+        self.update_agents()
         state, _, _, _ = self.getState()
         
         if self.graph_state:

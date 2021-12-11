@@ -161,6 +161,7 @@ class Trainer:
         episode_return = 0
         
         n_episode = 1
+        n_timeout = 0
         episode_success = 0
         success_rate = 0
 
@@ -225,7 +226,9 @@ class Trainer:
             # update
             obs = next_obs
 
-            if done or episode_steps == self._episode_max_steps:
+            time_out = episode_steps == self._episode_max_steps
+
+            if done or time_out:
                 obs = self._env.reset()
 
                 self.logger.info("{0: 5}/{1: 7} Episode Steps: {2: 5} Episode Return: {3: 5.4f}, Sucess Rate:{5: .2f}, FPS: {4: 5.2f}".format(
@@ -240,14 +243,18 @@ class Trainer:
                 if success:
                     episode_success += 1
 
-                if done or success:
+                if time_out:
+                    n_timeout += 1
+
+                if done or success or time_out:
                     n_episode += 1
 
                 success_rate = episode_success/n_episode
 
                 self.writer.add_scalar("Common/training_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps) 
-                
+                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
+                self.writer.add_scalar("Common/timeout_rate", n_timeout/n_episode, total_steps)
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
