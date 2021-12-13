@@ -107,7 +107,9 @@ class Agent(object):
     
 
     def compute_position(self, action):
-
+        '''
+        action: (v, w)
+        '''
         theta = self.theta + action[1]
 
         px = self.px + np.cos(theta) * action[0] * self.time_step
@@ -132,7 +134,7 @@ class Agent(object):
     def distance_to_goal(self,):
         return round(math.hypot(self.gx - self.px, self.gy - self.py), 2)
 
-    def preferred_vel(self, speed=0.4):
+    def preferred_vel(self, ):
         goal_vec = np.array((self.gx - self.px, self.gy - self.py))
         norm = np.linalg.norm(goal_vec)
         pref_vel = goal_vec/norm if norm>1 else goal_vec

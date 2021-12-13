@@ -163,7 +163,8 @@ class Trainer:
         episode_return = 0
         
         n_episode = 1
-        episode_success = 0
+        n_success = 0
+        n_timeout = 0
         success_rate = 0
 
         actor_loss = 0
@@ -211,28 +212,7 @@ class Trainer:
             else:
                 robot_action = action
 
-            if self._verbose>0:
-                print('Robot Action:', np.round(robot_action, 2))
-                print('Robot Vpref', obs.ndata['vpref'][obs.ndata['cid']==node_type_list.index('robot')])
-                # print('Vel cmd:[{:3.3f}, {:3.3f}]'.format(self._env.vel_cmd.linear.x, self._env.vel_cmd.angular.z))
-                # print('Robot Pose:', (self._env.position.x, self._env.position.y, self._env.yaw))
-                print('Reward:', np.round(reward, 2))
 
-            if self._verbose>1:
-                print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
-                                                    np.round(self._env.robot.vel, 2).tolist(), 
-                                                    np.round(self._env.robot.goal, 2).tolist(),
-                                                    self._env.robot.distance_to_goal()))  
-
-                # print("Position:[{:2.2f}, {:2.2f}], Goal:[{:.2f}, {:.2f}], Goal Distance:{:.2f}".format(self._env.position.x, self._env.position.y, 
-                #                                                                                           self._env.goal_x, self._env.goal_y,
-                #                                                                                           self._env.getGoalDistance()))
-
-                print("Pos:{}, Vel:{}, Goal:{}, Goal Distance:{:.2f}".format(np.round(self._env.robot.pos, 2).tolist(),
-                                                    np.round(self._env.robot.vel, 2).tolist(), 
-                                                    np.round(self._env.robot.goal, 2).tolist(),
-                                                    self._env.robot.distance_to_goal()))              
-            
             # plot graph, 
             if self._vis_graph and total_steps<100:
                 network_draw(obs,
@@ -266,7 +246,8 @@ class Trainer:
             # update
             obs = next_obs
 
-            if done or episode_steps == self._episode_max_steps:
+            time_out = episode_steps == self._episode_max_steps
+            if done or time_out:
                 obs = self._env.reset()
 
                 episode_steps = 0
@@ -276,7 +257,10 @@ class Trainer:
             if total_steps > self._policy.n_warmup-1:
                 # count success rate only after warmup
                 if success:
-                    episode_success += 1
+                    n_success += 1
+
+                if time_out:
+                    n_timeout += 1
 
                 if done or success or episode_steps==0: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
                     n_episode += 1
@@ -284,11 +268,12 @@ class Trainer:
                     self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, success_rate))
 
 
-                success_rate = episode_success/n_episode
+                success_rate = n_success/n_episode
 
                 self.writer.add_scalar("Common/episode_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", success_rate, total_steps)
                 self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
+                self.writer.add_scalar("Common/timeout_rate", n_timeout/n_episode, total_steps)
 
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:

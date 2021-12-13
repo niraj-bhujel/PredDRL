@@ -143,7 +143,12 @@ def create_graph(nodes, bidirectional=False):
         node = nodes[n]
 
         nodes_data['pos'].append(node.pos)
-        nodes_data['vel'].append(node.vel)
+
+        if node.type == 'robot':
+            nodes_data['vel'].append(node.preferred_vel())
+        else:
+            nodes_data['vel'].append(node.vel)
+        
         nodes_data['vpref'].append(node.preferred_vel())
 
         nodes_data['theta'].append(node.theta)

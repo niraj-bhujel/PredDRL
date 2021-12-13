@@ -44,3 +44,23 @@ def euler_to_quaternion(euler_angles):
     q.z = cr * cp * sy - sr * sp * cy
 
     return q
+
+def compute_heading(px, py, yaw, gx, gy):
+
+    goal_angle = math.atan2(gy - py, gx - px)
+    
+    heading = goal_angle - yaw
+
+    if heading > pi:
+        heading -= 2 * pi
+
+    elif heading < -pi:
+        heading += 2 * pi
+
+    return round(heading, 2)
+
+def preferred_vel(px, py, gx, gy, speed=0.4):
+    goal_vec = np.array((gx - px, gy - py))
+    norm = np.linalg.norm(goal_vec)
+    pref_vel = goal_vec/norm if norm>1 else goal_vec
+    return pref_vel * speed

@@ -33,13 +33,14 @@ SelfL=0.16 # Length of wheel axels in meters
 # SelfD = 0.175
 # SelfL = 0.23
 class Env:
-    def __init__(self, test=False, stage=0, graph_state=False, dataset='zara1', verbose=0):
+    def __init__(self, test=False, stage=0, graph_state=False, dataset='zara1', verbose=1):
 
         self.test = test
         self.graph_state = graph_state
         self.stage = stage
         self.dataset = dataset
         self.robot_name = 'turtlebot3_burger'
+        self.verbose = verbose
 
         self.gx = 0
         self.gy = 0
@@ -135,24 +136,12 @@ class Env:
         orientation_list = [self.orientation.x, self.orientation.y, self.orientation.z, self.orientation.w]
         _, _, self.yaw = euler_from_quaternion(orientation_list)
         
-        inc_y = self.gy - self.position.y
-        inc_x = self.gx - self.position.x
-        goal_angle = math.atan2(inc_y, inc_x)
-        
-        heading = goal_angle - self.yaw
-
-        if heading > pi:
-            heading -= 2 * pi
-
-        elif heading < -pi:
-            heading += 2 * pi
-
-        self.heading = round(heading, 2)
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.gx, self.gy)
 
     def sample_robot_action(self, policy='uniform'):
         if policy =='uniform':
             action = self.action_space.sample()
-            print("uniform Vel:", action)
+            print("uniform vel:", action)
 
         elif policy == 'vpref':
             action = self.robot.preferred_vel() #+ np.random.normal(0, 0.1, size=(2,))
@@ -162,7 +151,7 @@ class Env:
         else:
             obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
             action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list, obstacles=obstacle_pos)
-            print('ORCA Vel:', action)
+            print('ORCA Vel:', np.round(action, 3))
             if self.action_type=='vw':
                 action = self.xy_to_vw(action)
 
@@ -307,7 +296,16 @@ class Env:
         self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_action(robot_action) 
 
-         # future vel
+        # future vel
+        robot_futures = []
+        px, py = self.position.x, self.position.y
+        for t in range(FUTURE_STEPS):
+            pref_vel = preferred_vel(px, py, self.gx, self.gy, speed=0.4)
+            px = px + pref_vel[0] * self.time_step
+            py = py + pref_vel[1] * self.time_step
+            robot_futures.append(pref_vel)
+
+        print(robot_futures)
         self.robot.set_futures([self.robot.preferred_vel() for _ in range(self.future_steps)])
 
         # goal as a node
@@ -474,18 +472,18 @@ class Env:
     def step(self, action, last_state):
 
         robot_action = action[last_state.ndata['cid']==node_type_list.index('robot')].flatten() if self.graph_state else action
+        if self.verbose>0:
+            print('Action:', np.round(robot_action, 3))
 
-        # self.vel_cmd = self.action_to_vel_cmd(robot_action, self.action_type)
-        # self.pub_cmd_vel.publish(self.vel_cmd)
-        # rospy.sleep(self.time_step)
-        # self.pub_cmd_vel.publish(Twist())
-
+        # step robot
         vx, vy = robot_action
         self.position.x = self.position.x + vx*self.time_step
         self.position.y = self.position.y + vy*self.time_step
         self.yaw = math.atan2(vy, vx)
         self.linear.x = vx
         self.linear.y = vy
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.gx, self.gy)
+
         self.set_robot_pose(self.position, self.yaw)
 
         if self.graph_state:
@@ -493,6 +491,9 @@ class Env:
             state, reward, done, success = self.getGraphState(action, robot_action, last_state)
         else:
             state, reward, done, success = self.getState(action)
+
+        if self.verbose>0:
+            print('Reward:', round(reward, 3))
 
         # NOTE! if goal node is included in the graph, goal must be respawned before calling graph state, otherwise graph create fails. 
         if success:
@@ -522,15 +523,20 @@ class Env:
         set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
         set_model_state(tmp_state)
 
+        if self.verbose>0:
+            print('Robot pos set to:', round(position.x, 2), round(position.y, 2))
+
     def reset(self, initGoal=False):
         print('Resetting env ... ')
-        # reset robot velocity
-        # self.pub_cmd_vel.publish(Twist())
+
+        if initGoal:
+            self.init_goal()
+
         self.position = deepcopy(self.inital_pos)
         self.yaw = random.uniform(0, 360)
         self.linear = Vector3(0., 0., 0.)
-        print("Resetting robot position to:", self.position)
-        # reset robot pose and randomly set the orientation
+        self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.gx, self.gy) # goal must be updated before
+
         self.set_robot_pose(self.position, self.yaw)
 
         if initGoal:
