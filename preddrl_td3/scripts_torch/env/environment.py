@@ -55,7 +55,7 @@ class Env:
         self.num_beams = 20  # 激光数
 
         self.minLinearSpeed = 0.
-        self.maxLinearSpeed = 0.6
+        self.maxLinearSpeed = 0.7
         self.maxAngularSpeed = 2.
 
         self.action_type='xy'
@@ -106,7 +106,7 @@ class Env:
 
         if self.stage==7:
             self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
-                                                            target_frame_rate=1/self.time_step,
+                                                            target_frame_rate=2*1/self.time_step,
                                                             max_peds=40)
             # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
@@ -284,7 +284,7 @@ class Env:
             
         return curr_peds
 
-    def update_agents(self, robot_action=None):
+    def update_agents(self, robot_action=(0., 0.)):
 
         try:
             model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
@@ -319,17 +319,19 @@ class Env:
         self.pedestrians_list = self.updatePedestrians(model_states)
 
         
-    def getGraphState(self, agent_actions=None, robot_action=None, last_state=None):
+    def getGraphState(self, action=None, last_state=None):
+        '''
+        action: (num_nodes, future_step, action_dim)
+        '''
         #NOTE: Enuse nodes are updated before creating graph by calling update_agents()
-        self.update_agents(robot_action=robot_action)
         state = create_graph([self.robot, self.robot_goal] + self.pedestrians_list)
 
-        if agent_actions is None:
+        if action is None:
             return state
 
-        current_distance = self.getGoalDistance()
-        reaching_goal = current_distance < self.goal_threshold
-        too_far = current_distance > self.max_goal_distance
+        curr_goal_distance = self.getGoalDistance()
+        reaching_goal = curr_goal_distance < self.goal_threshold
+        too_far = curr_goal_distance > self.max_goal_distance
 
         # check robot collision
         robot_node = state.nodes()[state.ndata['cid']==node_type_list.index('robot')]
@@ -340,24 +342,27 @@ class Env:
 
         # check collision times between agents
         if self.action_type=='vw':
-            theta = last_state.ndata['yaw'].numpy().flatten() + agent_actions[:, 1]
-            px = last_state.ndata['pos'][:, 0].numpy() + np.cos(theta) * agent_actions[:, 0] * self.time_step
-            py = last_state.ndata['pos'][:, 1].numpy() + np.sin(theta) * agent_actions[:, 0] * self.time_step
+            theta = last_state.ndata['yaw'].numpy().flatten() + action[:, 1]
+            px = last_state.ndata['pos'][:, 0].numpy() + np.cos(theta) * action[:, 0] * self.time_step
+            py = last_state.ndata['pos'][:, 1].numpy() + np.sin(theta) * action[:, 0] * self.time_step
             pred_pos = np.stack([px, py], axis=-1)
         else:
-            pred_pos = last_state.ndata['pos'] + agent_actions * self.time_step
+            pred_pos = last_state.ndata['pos'].unsqueeze(1).numpy() + action.cumsum(axis=1) * self.time_step
         
-        # exluce goal node
-        pred_pos = pred_pos[last_state.ndata['cid']!=node_type_list.index('robot_goal')]
-        distance_matrix = np.linalg.norm(pred_pos[:, None, :]-pred_pos[None, :, :], axis=-1)
-        
-        num_collisions = np.logical_and(distance_matrix>0, distance_matrix<1).sum()/2
-        curr_goal_distance = self.getGoalDistance()
+        # exlude goal node
+        pred_pos = pred_pos[last_state.ndata['cid']!=node_type_list.index('robot_goal')] #[num_nodes-1, future_step, 2]
+        num_agent_collisions = 0
+        for t in range(FUTURE_STEPS):
+            pred_pos_t = pred_pos[:, t, :]
+            dmat = np.linalg.norm(pred_pos_t[:, None, :]-pred_pos_t[None, :, :], axis=-1)
+            num_agent_collisions += np.logical_and(dmat>0, dmat<self.collision_threshold).sum()/2
+        if self.verbose>0:
+            print('Number of colliding agents:', num_agent_collisions)
 
         # compute correct action reward for agents
         # ped_mask = (last_state.ndata['cid']==node_type_list.index('pedestrian')).unsqueeze(1).numpy()
-        # action_error = np.mean(ped_mask*(last_state.ndata['action'].numpy() - agent_actions)**2)
-        action_error = np.mean((last_state.ndata['future'].view(-1, FUTURE_STEPS, 2)[:, 0, :].numpy() - agent_actions)**2)
+        # action_error = np.mean(ped_mask*(last_state.ndata['action'].numpy() - action)**2)
+        action_error = np.mean((last_state.ndata['future'].view(-1, FUTURE_STEPS, 2).numpy() - action)**2)
         self.writer.add_scalar("Common/action_error", action_error, self.global_step)
 
         done=False
@@ -390,13 +395,13 @@ class Env:
 
         self.last_goal_distance = curr_goal_distance
 
-        reward -= num_collisions/last_state.number_of_nodes()
+        reward -= num_agent_collisions/last_state.number_of_nodes()
         reward -= action_error
 
         return state, reward, done, success
 
     def getState(self, action=None):
-        self.update_agents(robot_action=action)
+
         scan = None
         while scan is None:
             try:
@@ -473,7 +478,12 @@ class Env:
 
     def step(self, action, last_state):
 
-        robot_action = action[last_state.ndata['cid']==node_type_list.index('robot')].flatten() if self.graph_state else action
+        if self.graph_state:
+            action = action.reshape(-1, FUTURE_STEPS, 2)
+            robot_action = action[last_state.ndata['cid']==node_type_list.index('robot')][0][0]
+        else:
+            robot_action = action
+
         if self.verbose>0:
             print('Action:', np.round(robot_action, 3))
 
@@ -488,9 +498,9 @@ class Env:
 
         self.set_robot_pose(self.position, self.yaw)
 
+        self.update_agents(robot_action)
         if self.graph_state:
-            
-            state, reward, done, success = self.getGraphState(action, robot_action, last_state)
+            state, reward, done, success = self.getGraphState(action, last_state)
         else:
             state, reward, done, success = self.getState(action)
 
@@ -538,14 +548,12 @@ class Env:
         self.yaw = random.uniform(0, 360)
         self.linear = Vector3(0., 0., 0.)
         self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.gx, self.gy) # goal must be updated before
-
         self.set_robot_pose(self.position, self.yaw)
 
-        if initGoal:
-            self.init_goal()
+        self.update_agents()
 
         if self.graph_state:
-            state = self.getGraphState(robot_action=(0., 0.))
+            state = self.getGraphState()
         else:
             state = self.getState()
 

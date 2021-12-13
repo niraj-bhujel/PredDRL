@@ -20,10 +20,6 @@ from gym.spaces import Box
 
 if './' not in sys.path: 
     sys.path.insert(0, './')
-
-tracker_path = './preddrl_tracker/scripts/'
-if tracker_path not in sys.path:
-    sys.path.insert(0, tracker_path)
         
 td3_path = './preddrl_td3/scripts_torch'
 if not td3_path in sys.path:
@@ -194,16 +190,18 @@ class Trainer:
             if self._verbose>0:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
-            if total_steps < self._policy.n_warmup:
-                action  = self._env.sample_robot_action(self._sampling_method)
+            # if total_steps < self._policy.n_warmup:
+            #     action  = self._env.sample_robot_action(self._sampling_method)
 
-                if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action
-                    action = obs.ndata['action'].numpy()
-                    action[obs.ndata['cid']==node_type_list.index('robot')] = robot_action
+            #     if isinstance(obs, DGLHeteroGraph):
+            #         robot_action = action
+            #         action = obs.ndata['action'].numpy()
+            #         action[obs.ndata['cid']==node_type_list.index('robot')] = robot_action
 
-            else:
-                action = self._policy.get_action(obs)
+            # else:
+            #     action = self._policy.get_action(obs)
+
+            action = self._policy.get_action(obs)
 
             next_obs, reward, done, success = self._env.step(action, obs)          
             
@@ -336,6 +334,7 @@ class Trainer:
             next_scan = torch.Tensor(np.stack(next_scan, 0)).to(device)
             next_graph = dgl.batch(next_graph).to(device)
             next_obs = (next_scan, next_graph)
+
         # graph state 
         elif isinstance(obs[0], DGLHeteroGraph):
             obs = dgl.batch(obs).to(device)
@@ -349,7 +348,7 @@ class Trainer:
         else:
             raise Exception("Data type not known!")
 
-        act = torch.Tensor(np.concatenate(act)).view(-1, 2).to(device)
+        act = torch.Tensor(np.concatenate(act)).to(device)
         rew = torch.Tensor(np.array(rew)).view(-1, 1).to(device)
         done = torch.Tensor(np.array(done)).view(-1, 1).to(device)
 

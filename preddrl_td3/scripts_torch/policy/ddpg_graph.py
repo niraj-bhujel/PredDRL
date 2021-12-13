@@ -17,7 +17,7 @@ from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
 from networks.gated_gcn_net import GatedGCNNet
-from utils.graph_utils import node_type_list, state_dims
+from utils.graph_utils import node_type_list, state_dims, FUTURE_STEPS
 from layers.mlp_layer import MLP
 
 class Actor(nn.Module):
@@ -29,7 +29,6 @@ class Actor(nn.Module):
         net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
         net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
 
-        # net_params['net']['out_dim_node'] = action_dim
         self.net = GatedGCNNet(net_params['net'], 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
@@ -38,7 +37,7 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['net']['hidden_dim'], 2, hidden_size=net_params['mlp']['hidden_size'])
+        self.out = MLP(net_params['net']['hidden_dim'], action_dim*FUTURE_STEPS, hidden_size=net_params['mlp']['hidden_size'])
         
         # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
         # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
@@ -58,7 +57,7 @@ class Actor(nn.Module):
         g, h, e = self.net(g, h, e)
         
         h = self.out(h)
-        h = 2.*torch.tanh(h)
+        # h = self.max_action[0]*torch.tanh(h)
 
         # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
         
@@ -90,7 +89,7 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
         
-        self.out = MLP(net_params['net']['hidden_dim'] + action_dim, 1, hidden_size=net_params['mlp']['hidden_size'])
+        self.out = MLP(net_params['net']['hidden_dim'] + action_dim*FUTURE_STEPS, 1, hidden_size=net_params['mlp']['hidden_size'])
 
         # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0] + action_dim, net_params['mlp']['hidden_size'][0])
         # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
@@ -104,17 +103,15 @@ class Critic(nn.Module):
         g, h, _ = self.net(g, h, e)
 
         # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
-
         # h = torch.cat([h, state, action], dim=-1)
         # h = F.relu(self.l1(h))
         # h = F.relu(self.l2(h))
         # h = self.l3(h)
-
+        
         h = torch.cat([h, action], dim=-1)
-        h = self.out(h)
-        g.ndata['h'] = h
-        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
-
+        g.ndata['h_out'] = self.out(h)
+        h = dgl.readout_nodes(g, 'h_out', op='mean') # (bs, 1)
+        
         return h
 
 
@@ -146,27 +143,3 @@ class GraphDDPG(DDPG):
         # define optimizers
         self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
-
-
-    def _train_body(self, states, actions, next_states, rewards, dones, weights):
-        # Compute critic loss
-
-        td_errors = self._compute_td_error_body(states, actions, next_states, rewards, dones)
-        critic_loss = torch.mean(huber_loss(td_errors, delta=self.max_grad) * weights)
-
-        # Optimize the critic
-        self.optimization_step(self.critic_optimizer, critic_loss)
-
-        # Compute actor loss
-        action = self.actor(states)
-        actor_loss = -self.critic(states, action).mean()
-
-
-        # Optimize the actor 
-        self.optimization_step(self.actor_optimizer, actor_loss)
-
-        # Update target networks
-        self.soft_update_of_target_network(self.actor, self.actor_target)
-        self.soft_update_of_target_network(self.critic, self.critic_target)
-
-        return actor_loss, critic_loss, td_errors

@@ -117,13 +117,13 @@ class DDPG(OffPolicyAgent):
         self.actor.eval()
         with torch.no_grad():
             action = self.actor(state)
-            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
+            action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.actor.train()
         # return torch.clamp(action, -max_action, max_action)
         return action.squeeze(0)
 
     def train(self, states, actions, next_states, rewards, dones, weights):
-        # print('action_batch:', actions.shape, 'reward_batch:', rewards.shape, 'done_batch:', dones.shape, 'weights_batch', weights.shape)
+        # print('states:', states.number_of_nodes(), 'action_batch:', actions.shape, 'reward_batch:', rewards.shape, 'done_batch:', dones.shape, 'weights_batch', weights.shape)
 
         self.iteration +=1 
 
@@ -143,11 +143,11 @@ class DDPG(OffPolicyAgent):
             self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
 
 
-            if self._verbose>1:
-                print('Step:{} - batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
-                                                                                                    rewards.mean().item(),
-                                                                                                    actor_loss,
-                                                                                                    critic_loss,))
+            if self._verbose>0:
+                print('batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
+                                                                                            rewards.mean().item(),
+                                                                                            actor_loss,
+                                                                                            critic_loss,))
             if self._verbose>1:
                 # log the model weights
                 for name, param in self.actor.named_parameters():
@@ -207,6 +207,7 @@ class DDPG(OffPolicyAgent):
 
         with torch.no_grad():
             target_Q = self.critic_target(next_states, self.actor_target(next_states))
+
             target_Q = rewards + (not_dones * self.discount * target_Q)
 
         current_Q = self.critic(states, actions)

@@ -25,7 +25,7 @@ interaction_direction = {
 
 }
 
-FUTURE_STEPS = 2
+FUTURE_STEPS = 4
 state_dims = {
         "pos": 2,
         "vel": 2,
@@ -44,6 +44,7 @@ state_dims = {
         "goal": 2,
         "state":7,
         "future": FUTURE_STEPS*2,
+        "prediction": FUTURE_STEPS*2,
         "spatial_mask": 1,
     }
 
