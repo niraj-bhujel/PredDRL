@@ -298,15 +298,17 @@ class Env:
 
         # future vel
         robot_futures = []
-        px, py = self.position.x, self.position.y
-        for t in range(FUTURE_STEPS):
+        px = self.position.x
+        py = self.position.y
+
+        for t in range(self.future_steps):
             pref_vel = preferred_vel(px, py, self.gx, self.gy, speed=0.4)
             px = px + pref_vel[0] * self.time_step
             py = py + pref_vel[1] * self.time_step
             robot_futures.append(pref_vel)
 
-        print(robot_futures)
-        self.robot.set_futures([self.robot.preferred_vel() for _ in range(self.future_steps)])
+        self.robot.set_futures(robot_futures)
+        # self.robot.set_futures([self.robot.preferred_vel() for _ in range(self.future_steps)])
 
         # goal as a node
         self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
