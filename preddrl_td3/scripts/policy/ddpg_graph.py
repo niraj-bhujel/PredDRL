@@ -46,11 +46,12 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
         g, h, e = self.gcn(g, h, e)
-        
-        h = self.out(h)
-        h = g.ndata['max_action']*torch.tanh(h)
 
-        
+        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+
+        h = self.out(h)
+        h = self.max_action[1]*torch.tanh(h)
+
         return h
 
 class Critic(nn.Module):
@@ -60,7 +61,7 @@ class Critic(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.future_steps
+        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states])
         net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
 
         self.gcn = GatedGCNNet(net_params, 
@@ -71,7 +72,7 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
         
-        self.out = MLP(net_params['hidden_dim'], 1, hidden_size=net_params['mlp'])
+        self.out = MLP(net_params['hidden_dim'] + action_dim*args.future_steps, 1, hidden_size=net_params['mlp'])
 
 
     def forward(self, state, action):
@@ -79,18 +80,11 @@ class Critic(nn.Module):
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
-        h = torch.cat([h, action], dim=-1)
-        
-        g, h, _ = self.gcn(g, h, e)
+        g, h, _ = self.gcn(g, h, e) 
+        h = dgl.readout_nodes(g, 'h', op='mean')# (bs, 1)
 
-        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
-        # h = torch.cat([h, state, action], dim=-1)
-        # h = F.relu(self.l1(h))
-        # h = F.relu(self.l2(h))
-        # h = self.l3(h)
-        
-        g.ndata['h_out'] = self.out(h) # (num_nodes, 1)
-        h = dgl.readout_nodes(g, 'h_out', op='mean') # (bs, 1)
+        h = torch.cat([h, action], dim=-1)
+        h = self.out(h) 
         
         return h
 

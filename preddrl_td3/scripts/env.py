@@ -72,7 +72,7 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 20.
+        self.max_goal_distance = 15.
         self.last_goal_distance = 100.
 
         self.global_step = 0
@@ -167,12 +167,12 @@ class Env:
             
         return curr_peds
 
-    def update_agents(self, robot_action=(0., 0.), agent_actions=None):
+    def update_agents(self, action=(0., 0.)):
 
         # update robot state
         self.robot.update_history(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
-        self.robot.set_action(robot_action)
+        self.robot.set_action(action)
         self.robot.set_history(self.history_steps)
 
         # update robot futures 
@@ -206,20 +206,19 @@ class Env:
 
     def step(self, action, last_state):
 
-        robot_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.future_steps, 2)
-
         reward = 0
         done = False
         success = False
+        future_actions = np.reshape(action, (self.future_steps, 2))
         for t in range(self.future_steps):
-            robot_action = robot_actions[t]
+            curr_action = future_actions[t]
 
             if self.verbose>1:
-                print('Action:', np.round(robot_action, 3))
+                print('Action:', np.round(curr_action, 3))
                 print("Vpref:", self.robot.preferred_vel())
 
             # step robot
-            vx, vy = robot_action
+            vx, vy = curr_action
             self.position.x = self.position.x + vx*self.time_step
             self.position.y = self.position.y + vy*self.time_step
             self.yaw = math.atan2(vy, vx)
@@ -227,7 +226,7 @@ class Env:
             self.linear.y = vy
             self.set_robot_pose(self.position, self.yaw)
 
-            self.update_agents(robot_action)
+            self.update_agents(curr_action)
 
             # compute rewards
             curr_goal_distance = self.getGoalDistance()
@@ -259,8 +258,8 @@ class Env:
                 break
 
         # compute correct action reward for agents
-        gt_states = torch.cat([last_state.ndata[s] for s in self.pred_states], dim=-1).numpy()
-        action_error = np.mean(np.abs(gt_states - action))
+        gt_action = torch.cat([last_state.ndata[s] for s in self.pred_states], -1).numpy()
+        action_error = np.mean(np.abs(gt_action - action))
         self.writer.add_scalar("Common/action_error", action_error, self.global_step)
 
         reward -= action_error

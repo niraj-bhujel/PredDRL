@@ -167,22 +167,14 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                # action = obs.ndata['future_vel'].numpy()
-                action  = self._env.sample_robot_action(self._sampling_method)
-                if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action
-                    action = obs.ndata['future_vel'].numpy()
-                    action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._future_steps)
+                action = self._env.sample_robot_action(self._sampling_method)
+                action = np.tile(action, self._future_steps) # (future_steps,)
 
             else:
                 action = self._policy.get_action(obs)
 
             next_obs, reward, done, success = self._env.step(action, obs)          
             
-            if isinstance(next_obs, DGLHeteroGraph):
-                robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-            else:
-                robot_action = action
 
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
                 obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
@@ -210,14 +202,14 @@ class Trainer:
                 # pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
 
             # update buffer/memory
-            # if not episode_steps==0:
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            if not episode_steps==0:
+                self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             if total_steps==self._policy.n_warmup:                
                 pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
 
-            self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_0", action[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/act_1", action[1], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
 
             episode_steps += 1
@@ -291,14 +283,13 @@ class Trainer:
                 if total_steps % self._save_model_interval == 0:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
-            # self.r.sleep()
             self._env.timer.toc()
             self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
             if self._verbose>1:
                 print('Time per step:', self._env.timer.diff)
 
-        # self.writer.close()
         save_ckpt(self._policy, self._output_dir, total_steps)
+        self.writer.close()
 
     def sample_data(self, batch_size, device):
 
@@ -318,12 +309,12 @@ class Trainer:
             next_graph = dgl.batch(next_graph).to(device)
             next_obs = (next_scan, next_graph)
 
-        # graph state 
+        # graph state  only
         elif isinstance(obs[0], DGLHeteroGraph):
             obs = dgl.batch(obs).to(device)
             next_obs = dgl.batch(next_obs).to(device)
 
-        # laser state
+        # laser state only
         elif isinstance(obs[0], list):
             obs = torch.Tensor(np.stack(obs, 0)).to(device)
             next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
@@ -331,7 +322,7 @@ class Trainer:
         else:
             raise Exception("Data type not known!")
 
-        act = torch.Tensor(np.concatenate(act)).to(device)
+        act = torch.Tensor(np.array(act)).to(device)
         rew = torch.Tensor(np.array(rew)).view(-1, 1).to(device)
         done = torch.Tensor(np.array(done)).view(-1, 1).to(device)
 
@@ -361,13 +352,8 @@ class Trainer:
 
                 next_obs, reward, done, success = self._test_env.step(action, obs)
 
-                if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-                else:
-                    robot_action = action
-
                 print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
-                print('Robot Action:', np.round(robot_action, 2))
+                print('Robot Action:', np.round(action, 2))
                 print('Reward:', np.round(reward, 2))
 
                 episode_return += reward
