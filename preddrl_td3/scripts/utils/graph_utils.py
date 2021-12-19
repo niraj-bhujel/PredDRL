@@ -1,23 +1,23 @@
 import dgl
 import torch
+import random
 from copy import copy, deepcopy
 
 import numpy as np
 from collections import defaultdict
 
-from .vis_graph import network_draw
 
 node_type_list = ['robot', 'pedestrian', 'obstacle', 'robot_goal']
 
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
-    ('robot', 'pedestrian'): 3.0,
-
     ('robot', 'robot_goal'): 1e6,
     ('robot_goal', 'robot'): 1e6,
 
+    ('robot', 'pedestrian'): 5.0,
+    ('pedestrian', 'robot') : 5.0,
+
     ('pedestrian', 'pedestrian'): 3.0,
-    ('pedestrian', 'robot') : 3.0,
 
     ('obstacle', 'pedestrian'): 5.0, # large distance to prevent graph creatiion error due to zero edges
     ('obstacle', 'robot'): 15,
@@ -25,37 +25,19 @@ interaction_direction = {
 
 }
 
-FUTURE_STEPS = 4
-state_dims = {
-        "pos": 2,
-        "vel": 2,
-        "rel_vel": 2,
-        "acc": 2,
-        "rot": 1,
-        "yaw": 1,
-        "hed": 1,
-        "dir": 2,
-        "vpref": 2,
-        "theta": 1, 
-        "gdist": 1,
-        "diff": 2,
-        "dist": 1,
-        "action": 2,
-        "goal": 2,
-        "state":7,
-        "future": FUTURE_STEPS*2,
-        "prediction": FUTURE_STEPS*2,
-        "spatial_mask": 1,
-    }
+def min_neighbor_distance(g):
+    g = deepcopy(g)
+    # goal node
+    goal_node = g.nodes()[g.ndata['cid']==node_type_list.index('robot_goal')]
+    if len(goal_node)>0:
+        g = dgl.remove_nodes(g, goal_node)
 
-def min_neighbor_distance(g, node, mask_nodes=[]):
-    if len(mask_nodes)>0:
-        g = dgl.remove_nodes(deepcopy(g), mask_nodes)
+    robot_node = g.nodes()[g.ndata['cid']==node_type_list.index('robot')]
 
-    in_nodes, nodes = g.in_edges(node)
+    in_nodes, nodes = g.in_edges(robot_node)
     in_eids = g.edge_ids(in_nodes, nodes)
 
-    nodes, out_nodes = g.out_edges(node)
+    nodes, out_nodes = g.out_edges(robot_node)
     out_eids = g.edge_ids(nodes, out_nodes)
 
     node_neibhbors_eids = torch.cat([in_eids, out_eids]).unique()
@@ -86,15 +68,16 @@ def n1_has_n2_in_sight(n1, n2, fov=57):
     
     return abs(angle)<fov*math.pi/180
 
-def create_graph(nodes, bidirectional=False):
+def create_graph(nodes, state_dims):
     '''
         Create a graphs with node representing a pedestrians/robot/obstacle.
     '''
-    global FUTURE_STEPS
 
     nodes_data = defaultdict(list)
     edges_data = defaultdict(list)
-    # N = len(nodes)
+    
+    # shuffle nodes
+    random.shuffle(nodes)
 
     src_nodes = []
     dst_nodes = []
@@ -128,41 +111,44 @@ def create_graph(nodes, bidirectional=False):
 
             edges_data['spatial_mask'].extend([1.0])
 
-            if bidirectional:
-                src_nodes.extend([j])
-                dst_nodes.extend([i])
-                edges_data['dist'].extend([dist])
-                edges_data['diff'].extend([-diff])
-                edges_data['spatial_mask'].extend([1.0])
-
             num_neighbors+=1
 
     robot_node = [node for node in nodes if node.type=='robot'][0]
+
     # prepare node data, discard node without edges
     valid_nodes = np.unique(src_nodes + dst_nodes)
     for n in valid_nodes:
         node = nodes[n]
 
         nodes_data['pos'].append(node.pos)
+        nodes_data['vel'].append(node.vel)
 
         if node.type == 'robot':
-            nodes_data['vel'].append(node.preferred_vel())
+            # nodes_data['vel'].append(node.preferred_vel())
+            nodes_data['max_action'].append(0.7)
         else:
-            nodes_data['vel'].append(node.vel)
+            # 
+            nodes_data['max_action'].append(1.4)
         
         nodes_data['vpref'].append(node.preferred_vel())
-
         nodes_data['theta'].append(node.theta)
+
         nodes_data['dir'].append([node.gx - node.px, node.gy - node.py])
         nodes_data['hed'].append(node.heading)
-
-        nodes_data['action'].append(node.action)
         nodes_data['goal'].append(node.goal)
         
+        nodes_data['action'].append(node.action)
         nodes_data['state'].append(node.state)
 
-        nodes_data['future'].append([s for futures in node.futures for s in futures])
+        nodes_data['history_pos'].append(node.history[:, :2])
+        nodes_data['history_vel'].append(node.history[:, 2:])
+        nodes_data['history_disp'].append(node.history[:, :2]-node.pos)
 
+        nodes_data['future_pos'].append(node.futures[:, :2])
+        nodes_data['future_vel'].append(node.futures[:, 2:])
+        nodes_data['future_disp'].append(node.pos - node.futures[:, :2])
+
+        nodes_data['dt'].append(node.time_step)
         nodes_data['tid'].append(node.id)
         nodes_data['cid'].append(node_type_list.index(node.type))
 
@@ -170,10 +156,8 @@ def create_graph(nodes, bidirectional=False):
     # Construct the DGL graph
     g = dgl.graph((src_nodes, dst_nodes))
     g = dgl.node_subgraph(g, valid_nodes)
-    
-    # Add  features
 
-    
+    # Add  features
     for node_attr, ndata in nodes_data.items():
         if node_attr in ['tid', 'cid']:
             g.ndata[node_attr] = torch.tensor(ndata, dtype=torch.int32)

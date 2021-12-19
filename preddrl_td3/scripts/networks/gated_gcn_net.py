@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from layers.gated_gcn_layer_old import GatedGCNLayer, GatedGCNLayerEdgeFeatOnly, GatedGCNLayerIsotropic, CustomGatedGCNLayer
-from layers.mlp_layer import MLPReadout, MLP
+from .layers.gated_gcn_layer_old import GatedGCNLayer, GatedGCNLayerEdgeFeatOnly, GatedGCNLayerIsotropic, CustomGatedGCNLayer
+from .layers.mlp_layer import MLPReadout, MLP
 
 class GatedGCNNet(nn.Module):
     
@@ -100,21 +100,4 @@ class GatedGCNNet(nn.Module):
             g.ndata['h'] = h
         
         return g, h, e
-
-    def __repr__(self):
-        rep = '{0}(in_dim_node={1}, in_dim_edge={2}, out_dim_node={3}, out_dim_edge={4}, readout_node={5}, readout_edge={6}, \
-        dropout={7}, in_feat_dropout={8}, batch_norm={9}, residual={10}, activation={11}, layer={12}'.format(self.__class__.__name__,
-                                                                                                             self.in_dim_node,
-                                                                                                            self.in_dim_edge, 
-                                                                                                            self.out_dim_node,
-                                                                                                            self.out_dim_edge,
-                                                                                                            self.mlp_readout_node,
-                                                                                                            self.mlp_readout_edge,
-                                                                                                            self.in_feat_dropout,
-                                                                                                            self.dropout,
-                                                                                                            self.batch_norm,
-                                                                                                            self.residual,
-                                                                                                            self.activation,
-                                                                                                            self.layer)
-        return rep
 

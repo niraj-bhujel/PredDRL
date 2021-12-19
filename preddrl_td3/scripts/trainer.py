@@ -6,6 +6,8 @@ import shutil
 import random
 import numpy as np
 from collections import deque
+import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 import pickle
 
 import torch
@@ -20,23 +22,20 @@ from gym.spaces import Box
 
 if './' not in sys.path: 
     sys.path.insert(0, './')
-        
-td3_path = './preddrl_td3/scripts_torch'
-if not td3_path in sys.path:
-    sys.path.insert(0, td3_path)
     
 from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 from utils.normalizer import EmpiricalNormalizer
-from utils.utils import save_path, frames_to_gif, save_ckpt, load_ckpt, copy_src, create_new_dir
+from utils.utils import save_ckpt, load_ckpt, copy_src, create_new_dir
 from utils.graph_utils import node_type_list
-from utils.vis_graph import network_draw, data_stats
+from vis.vis_graph import network_draw, data_stats
+from vis.vis_traj import plot_traj, data_stats
 from utils.timer import Timer
-from replay_buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 
 class Trainer:
-    def __init__(self, policy, env, args, net_params=None, test_env=None, **kwargs):
+    def __init__(self, policy, env, args, output_dir, phase='train', test_env=None, **kwargs):
 
         # experiment settings
         self._max_steps = args.max_steps
@@ -47,7 +46,8 @@ class Trainer:
         self._save_summary_interval = args.save_summary_interval
         self._normalize_obs = args.normalize_obs
         self._logdir = args.logdir
-
+        self._future_steps = args.future_steps
+        self._history_steps = args.history_steps
         # replay buffer
         self._buffer_size = args.buffer_size
         self._use_prioritized_rb = args.use_prioritized_rb
@@ -73,6 +73,13 @@ class Trainer:
         self._test_env = self._env if test_env is None else test_env
         self._verbose = args.verbose
         self._dataset = args.dataset
+
+        self._vis_graph = args.vis_graph
+        self._vis_traj = args.vis_traj
+        self._vis_traj_interval = args.vis_traj_interval
+
+        self._output_dir = output_dir
+
         # self.timer = Timer()
         # self.r = rospy.Rate(1/self._env.time_step)
 
@@ -80,36 +87,8 @@ class Trainer:
             assert isinstance(env.observation_space, Box)
             self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
-        # prepare log directory
-        suffix = '_'.join(['run%d'%args.run,
-                          '%s'%policy.policy_name,
-                        'warmup_%d'%policy.n_warmup,
-                        'bs%d'%policy.batch_size,
-                        # 'seed_%d'%args.seed,
-                        # 'stage_%d'%args.stage,
-                        # 'episode_step%d'%args.episode_max_steps,
-                        'sampling_%s'%args.sampling_method,
-                        'input_%s'%'_'.join(args.input_states),
-                        'h%d'%net_params['net']['hidden_dim'],
-                        'l%d'%net_params['net']['num_layers'],
-                        ])
 
-        if self._use_prioritized_rb:
-            suffix += '_use_prioritized_rb'
-        if self._use_nstep_rb:
-            suffix += '_use_nstep_rb'
 
-        if args.prefix is not None:
-            suffix += '_%s'%args.prefix
-
-        self._output_dir = prepare_output_dir(args=args, 
-                                              user_specified_dir=self._logdir, 
-                                              # time_format='%Y_%m_%d_%H-%M-%S',
-                                              time_format='%Y_%m_%d',
-                                              suffix=suffix
-                                              )
-        # backup scripts
-        copy_src('./preddrl_td3/scripts_torch', self._output_dir + '/scripts')
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
                                         output_dir=self._output_dir)
 
@@ -128,20 +107,17 @@ class Trainer:
                                                                          args.stage, 
                                                                          policy.n_warmup, 
                                                                          args.sampling_method)
-
         # graph visualization
-        self._vis_graph = args.vis_graph
-        self._vis_graph_dir = self._output_dir + '/graphs/'
-        shutil.rmtree(self._vis_graph_dir, ignore_errors=True)
-        create_new_dir(self._vis_graph_dir)
+        if self._vis_graph:
+            self._vis_graph_dir = create_new_dir(self._output_dir + '/vis_graphs/{}/'.format(phase), clean=True)
 
+        if self._vis_traj:
+            self._plot_dir = create_new_dir(self._output_dir + '/vis_traj/{}/'.format(phase), clean=True)
+        
 
-        # prepare TensorBoard output
-        summary_dir = self._output_dir + '/summary'
-        shutil.rmtree(summary_dir, ignore_errors=True)
-        create_new_dir(summary_dir)
-
-        self.writer = SummaryWriter(summary_dir)
+        # prepare TensorBoard writer
+        self._summary_dir = create_new_dir(self._output_dir + '/summary/{}'.format(phase), clean=True)
+        self.writer = SummaryWriter(self._summary_dir)
         self._env.writer = self.writer
         self._policy.writer = self.writer
         self._policy._verbose = self._verbose
@@ -170,7 +146,7 @@ class Trainer:
         
 
         if self._load_memory:
-            print('Loading memory ...')
+            print('Loading memory ...', self._memory_path)
             try:
                 with open(self._memory_path + '.pkl', 'rb') as f:
                     self.replay_buffer = pickle.load(f)
@@ -181,7 +157,7 @@ class Trainer:
         if self._resume_training:
             total_steps = self._policy.iteration
 
-        obs = self._env.reset(initGoal=True) # add initGoal arg by niraj
+        obs = self._env.reset()
 
         ##### Begin Training ###########
         while total_steps < self._max_steps:
@@ -190,18 +166,16 @@ class Trainer:
             if self._verbose>0:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
-            # if total_steps < self._policy.n_warmup:
-            #     action  = self._env.sample_robot_action(self._sampling_method)
+            if total_steps < self._policy.n_warmup:
+                # action = obs.ndata['future_vel'].numpy()
+                action  = self._env.sample_robot_action(self._sampling_method)
+                if isinstance(obs, DGLHeteroGraph):
+                    robot_action = action
+                    action = obs.ndata['future_vel'].numpy()
+                    action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._future_steps)
 
-            #     if isinstance(obs, DGLHeteroGraph):
-            #         robot_action = action
-            #         action = obs.ndata['action'].numpy()
-            #         action[obs.ndata['cid']==node_type_list.index('robot')] = robot_action
-
-            # else:
-            #     action = self._policy.get_action(obs)
-
-            action = self._policy.get_action(obs)
+            else:
+                action = self._policy.get_action(obs)
 
             next_obs, reward, done, success = self._env.step(action, obs)          
             
@@ -210,10 +184,20 @@ class Trainer:
             else:
                 robot_action = action
 
+            if self._vis_traj and total_steps%self._vis_traj_interval==0:
+                obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
+                gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()
+                pred_pos = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+                pred_traj = [pos[None, :, :] for pos in pred_pos]
+                plot_traj(obs_traj, gt_traj, pred_traj, ped_ids=obs.ndata['tid'].numpy(), 
+                          extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
+                          limit_axes=True, legend=True, 
+                          counter=total_steps, 
+                          save_dir=self._plot_dir)
 
-            # plot graph, 
+
             if self._vis_graph and total_steps<100:
-                network_draw(obs,
+                network_draw(next_obs,
                              show_node_label=True, node_labels=['tid'],
                              show_edge_labels=False, edge_labels=['dist'],
                              show_legend=False,
@@ -260,18 +244,17 @@ class Trainer:
                 if time_out:
                     n_timeout += 1
 
-                if done or success or episode_steps==0: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
+                if done or success or time_out: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
                     n_episode += 1
 
-                    self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, success_rate))
-
-
-                success_rate = n_success/n_episode
+                    self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, n_success/n_episode))
 
                 self.writer.add_scalar("Common/episode_return", episode_return, total_steps)
-                self.writer.add_scalar("Common/success_rate", success_rate, total_steps)
-                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
+                self.writer.add_scalar("Common/success_rate", n_success/n_episode, total_steps)
                 self.writer.add_scalar("Common/timeout_rate", n_timeout/n_episode, total_steps)
+                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
+                self.writer.add_scalar("Common/discomforts", self._env.discomforts, total_steps)
+                self.writer.add_scalar("Common/dones", int(done), total_steps)
 
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
@@ -359,7 +342,7 @@ class Trainer:
 
         return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
         
-    def evaluate_policy(self, total_steps):
+    def evaluate_policy(self, ):
         
         if self._normalize_obs:
             self._test_env.normalizer.set_params(*self._env.normalizer.get_params())
@@ -382,13 +365,10 @@ class Trainer:
                     robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
                 else:
                     robot_action = action
+
                 print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
                 print('Robot Action:', np.round(robot_action, 2))
                 print('Reward:', np.round(reward, 2))
-
-                # print('Agent Action (P):', np.round(action, 2))
-                # print('Agent Action (GT):', np.round(obs.ndata['action'].numpy(), 2))
-                # print('Agent Vel (GT):', np.round(obs.ndata['vel'].numpy(), 2))
 
                 episode_return += reward
 
@@ -408,37 +388,82 @@ if __name__ == '__main__':
     import yaml
 
     from utils.utils import *
+    from utils.state_utils import state_dims
 
     from policy.td3 import TD3
     from policy.ddpg import DDPG
     from policy.ddpg_graph import GraphDDPG
     from policy.td3_graph import GraphTD3
-    from policy.gcn import GatedGCN
 
-    from env.environment import Env
+    from env import Env
 
     from gazebo_msgs.srv import DeleteModel
     from gazebo_msgs.msg import ModelStates
 
-    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'gcn':GatedGCN}
-
-    parser = args.get_argument()
-    args = parser.parse_args()
-    # print({val[0]:val[1] for val in sorted(vars(args).items())})
-
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(args.debug)
+    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3}
 
     rospy.init_node('pred_drl', disable_signals=True)
 
-    graph_state=True if 'graph' in args.policy else False
+    parser = args.get_argument()
+    args = parser.parse_args()
 
-    env = Env(test=False, stage=args.stage, graph_state=graph_state, dataset=args.dataset)
-    # test_env = Env(test=True, stage=args.stage, graph_state=graph_state, dataset=args.dataset)
 
-    # args.seed = _s._int_list_from_bigint(_s.hash_seed(_s.create_seed()))[0]
-    with open("./preddrl_td3/scripts_torch/net_params.yaml", 'r') as f:
+    # update state dim
+    state_dims['history_pos'] = args.history_steps * state_dims['pos']
+    state_dims['history_vel'] = args.history_steps * state_dims['vel']
+    state_dims['history_disp'] = args.history_steps * state_dims['pos']
+    state_dims['future_pos'] = args.future_steps * state_dims['pos']
+    state_dims['future_vel'] = args.future_steps * state_dims['vel']
+    state_dims['future_disp'] = args.future_steps * state_dims['pos']
+    args.state_dims = state_dims
+
+    # load net params
+    with open("./preddrl_td3/scripts/net_params.yaml", 'r') as f:
         net_params = yaml.load(f, Loader = yaml.FullLoader)
+
     print(net_params)
+
+
+    # prepare output dir
+    if not args.evaluate:
+        # prepare log directory
+        suffix = '_'.join(['run%d'%args.run,
+                          '%s'%args.policy,
+                        'warmup_%d'%args.n_warmup,
+                        'bs%d'%args.batch_size,
+                        # 'seed_%d'%args.seed,
+                        # 'stage_%d'%args.stage,
+                        # 'episode_step%d'%args.episode_max_steps,
+                        # 'sampling_%s'%args.sampling_method,
+                        'ht%d'%args.history_steps,
+                        'ft%d'%args.future_steps,
+                        'input_%s'%'_'.join(args.input_states),
+                        'h%d'%net_params['hidden_dim'],
+                        'l%d'%net_params['num_layers'],
+                        ])
+
+        if args.prefix is not None:
+            suffix += '_%s'%args.prefix
+
+        output_dir = prepare_output_dir(args=args, 
+                                        user_specified_dir=args.logdir, 
+                                        # time_format='%Y_%m_%d_%H-%M-%S',
+                                        time_format='%Y_%m_%d',
+                                        suffix=suffix
+                                        )
+        # backup scripts
+        copy_src('./preddrl_td3/scripts_torch', output_dir + '/scripts')
+        pickle.dump(args, open(output_dir + '/args.pkl', 'wb'))
+
+    elif args.evaluate:
+        output_dir = './preddrl_td3/results/'
+        output_dir += '2021_12_16_run0_ddpg_graph_warmup_2000_bs100_input_history_disp_vel_vpref_h256_l2_pred_future'
+        # output_dir = trainer._output_dir
+        
+
+    # create enviornment
+    env = Env(args, graph_state=True if 'graph' in args.policy else False)
+
     print('Creating policy ... ')
     policy = policies[args.policy](state_shape=env.observation_space.shape,
                                     action_dim=env.action_space.high.size,
@@ -457,20 +482,16 @@ if __name__ == '__main__':
     print('Critic Paramaters:', model_parameters(policy.critic))
     print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
-    trainer = Trainer(policy, env, args, net_params)
+    trainer = Trainer(policy, env, args, output_dir, phase='train' if not args.evaluate else 'test')
     trainer.set_seed(args.seed)
 
-    if args.resume_training or args.evaluate:
-        # eval_path = './preddrl_td3/results/'
-        # model_path = '2021_11_11_GraphDDPG_warmup_1000_bs100_stage_7_episode_step1000_sampling_orca_node_prediction'
-        output_dir = trainer._output_dir
-        policy = load_ckpt(policy, trainer._output_dir)
 
     try:
         if args.evaluate:
             print('-' * 89)
-            print('Evaluating ...', trainer._output_dir)
-            trainer.evaluate_policy(1000)  # 每次测试都会在生成临时文件，要定期处理
+            print('Evaluating ...', output_dir)
+            policy = load_ckpt(policy, output_dir)
+            trainer.evaluate_policy()  # 每次测试都会在生成临时文件，要定期处理
 
         else:
 

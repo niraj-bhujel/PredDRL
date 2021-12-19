@@ -13,7 +13,7 @@ def get_argument(parser=None):
     parser.add_argument('--memory_capacity', type=int, default=int(1e6))
 
     # experiment settings
-    parser.add_argument('--max_steps', type=int, default=int(1e6),
+    parser.add_argument('--max_steps', type=int, default=int(50000),
                         help='Maximum number steps to interact with env.')
     parser.add_argument('--episode_max_steps', type=int, default=int(1e3),
                         help='Maximum steps in an episode')
@@ -37,6 +37,10 @@ def get_argument(parser=None):
                         help='Overwrite existing experiments')
     parser.add_argument('--dataset', type=str, default='zara1',
                         help='Dataset to use')    
+    parser.add_argument('--future_steps', type=int, default=6,
+                        help='Number of future steps to predict')
+    parser.add_argument('--history_steps', type=int, default=4,
+                        help='Number of past observations')
 
     # test settings
     parser.add_argument('--evaluate', action='store_true',
@@ -70,9 +74,9 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['vpref'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'vel', 'vpref'],
                         help='Input states for nodes')
-    parser.add_argument('--pred_states', nargs='+', default=['action'],
+    parser.add_argument('--pred_states', nargs='+', default=['future_vel'],
                         help='Prediction states of the nodes')
     parser.add_argument('--input_edges', nargs='+', default=['diff', 'dist'], 
                         help='Inter node disances, dist (l2norm) or diff (l1norm)')
@@ -80,8 +84,10 @@ def get_argument(parser=None):
                         help='Inter node disances, dist (l2norm) or diff (l1norm)')
     parser.add_argument('--vis_graph', action='store_true', default=False,
                         help='Plot graph during training step. Plot in output_dir/graphs/')
-    parser.add_argument('--future_steps', default=4., type=float,
-                        help='Apply dropout to input features')
+    parser.add_argument('--vis_traj', action='store_true', default=False,
+                        help='Plot trajectory during training step. Plot in output_dir/plots/') 
+    parser.add_argument('--vis_traj_interval', type=int, default=100,
+                        help='Plot trajectory every interval')  
     # gcn
     parser.add_argument('--in_feat_dropout', default=0., type=float,
                         help='Apply dropout to input features')
@@ -93,7 +99,7 @@ def get_argument(parser=None):
                         help='Apply batch norm between layer')
     parser.add_argument('--activation', default='ReLU',
                         help='Activation function')
-    parser.add_argument('--layer', default='gated_gcn',
+    parser.add_argument('--layer', default='gcn',
                         help='One of [gcn, edge_gcn, gated_gcn, custom_gcn]')
 
     # added by niraj

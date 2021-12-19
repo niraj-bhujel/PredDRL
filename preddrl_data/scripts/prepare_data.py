@@ -7,7 +7,7 @@ import math
 import numpy as np
 
 from scipy.interpolate import interp1d
-from preddrl_td3.scripts_torch.utils.agent import Agent
+from preddrl_td3.scripts.utils.agent import Agent
 
 def interpolate(pos, method='quadratic', num_points=1):
 

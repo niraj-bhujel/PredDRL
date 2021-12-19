@@ -11,8 +11,7 @@ import dgl
 from misc.huber_loss import huber_loss
 from policy.td3 import TD3
 from networks.gated_gcn_net import GatedGCNNet
-from utils.graph_utils import node_type_list, state_dims
-from layers.mlp_layer import MLP
+from networks.layers.mlp_layer import MLP
 
 class Actor(nn.Module):
     def __init__(self, net_params, args, action_dim, max_action, **kwargs):

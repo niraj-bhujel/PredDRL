@@ -7,7 +7,7 @@ from gazebo_msgs.msg import ModelStates
 from geometry_msgs.msg import Pose
 
 
-class Respawn():
+class RespawnGoal():
     def __init__(self, stage=0):
 
         self.stage = stage
@@ -65,7 +65,7 @@ class Respawn():
                 self.check_model = True
                 self.num_existing_model+=1
 
-    def respawnModel(self): # nb-> this function should be respawnGoalModel ??
+    def spawnGoal(self): # nb-> this function should be respawnGoalModel ??
 
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
@@ -73,7 +73,7 @@ class Respawn():
         # rospy.loginfo("New goal ( %.1f, %.1f) respawnned ", self.goal_position.position.x, self.goal_position.position.y)
 
 
-    def deleteModel(self):
+    def deleteGoal(self):
 
         rospy.wait_for_service('gazebo/delete_model')
         del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
@@ -284,7 +284,7 @@ class Respawn():
 
         elif self.stage == 7:
             # social context
-            data_stat = {'x_min': 1, 'x_max': 15, 'y_min': 1, 'y_max': 10}
+            data_stat = {'x_min': 1, 'x_max': 14, 'y_min': 3, 'y_max': 9}
             x = random.uniform(data_stat['x_min'], data_stat['x_max'])
             y = random.uniform(data_stat['y_min'], data_stat['y_max'])
             self.goal_position.position.x = x

@@ -14,7 +14,7 @@ from misc.huber_loss import huber_loss
 
 # from exploration_strategies.OU_Noise_Exploration import OU_Noise_Exploration
 
-class Actor(torch.nn.Module):
+class Actor(nn.Module):
     def __init__(self, state_shape, action_dim, max_action, units=[256, 256], name="Actor"):
         super(Actor, self).__init__()
 
@@ -137,29 +137,12 @@ class DDPG(OffPolicyAgent):
 
             self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.iteration)
             self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
-            self.writer.add_scalar(self.policy_name + "/td_error", np.mean(td_errors), self.iteration)
-
-            self.writer.add_histogram(self.policy_name + "/avg_actions", actions.cpu().numpy(), self.iteration)
-            self.writer.add_histogram(self.policy_name + "/avg_rewards", rewards.cpu().numpy(), self.iteration)
-
 
             if self._verbose>0:
                 print('batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
                                                                                             rewards.mean().item(),
                                                                                             actor_loss,
                                                                                             critic_loss,))
-            if self._verbose>1:
-                # log the model weights
-                for name, param in self.actor.named_parameters():
-                    if 'weight' in name and param.grad is not None:
-                        self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
-                        self.writer.add_histogram(self.policy_name + '/actor/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
-                for name, param in self.critic.named_parameters():
-                    if 'weight' in name and param.grad is not None:
-                        self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/data', param.data.cpu().numpy(), self.iteration)
-                        self.writer.add_histogram(self.policy_name + '/critic/' + name.replace('.', '_') + '/grad', param.grad.detach().cpu().numpy(), self.iteration)
-
 
         return actor_loss, critic_loss, td_errors
 
@@ -182,8 +165,7 @@ class DDPG(OffPolicyAgent):
         self.optimization_step(self.critic_optimizer, critic_loss)
 
         # Compute actor loss
-        action = self.actor(states)
-        actor_loss = -self.critic(states, action).mean()
+        actor_loss = -self.critic(states, self.actor(states)).mean()
 
         # Optimize the actor 
         self.optimization_step(self.actor_optimizer, actor_loss)

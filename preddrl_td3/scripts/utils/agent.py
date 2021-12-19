@@ -8,20 +8,8 @@ from collections import deque, namedtuple
 
 State = namedtuple('State', ['px', 'py', 'vx', 'vy', 'gx', 'gy', 'theta'])
 
-def euler_from_quaternion(orientation_list):
-    '''
-    orientation_list: [w, x, y, z]
-    '''
-    w, x, y, z = orientation_list
-    r = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
-    p = math.asin(2 * (w * y - z * x))
-    y = math.atan2(2 * (w * z + x * y), 1 - 2 * (z * z + y * y))
-
-    return r, p, y
-
-
 class Agent(object):
-    def __init__(self, node_id, node_type='robot', first_timestep=0, time_step=0.1, vpref=0.4, radius=0.2, history_len=100):
+    def __init__(self, node_id, node_type='robot', first_timestep=0, time_step=0.1, vpref=0.4, radius=0.2, history_len=1000):
 
         self.first_timestep = int(first_timestep)
         self.id = int(node_id)
@@ -29,6 +17,7 @@ class Agent(object):
         self.time_step = time_step
         self.radius = radius
         self.vpref = vpref # speed
+        self.history_len = history_len
 
         self.px = None
         self.py = None
@@ -40,10 +29,12 @@ class Agent(object):
         self.vy = None
 
         self.theta = None
+
         self.action = (0., 0.)
 
         self.state_history = []
         self.futures = None
+        self.history=None
 
     def __len__(self):
         return len(self.state_history)
@@ -55,16 +46,31 @@ class Agent(object):
         self.gx = gx
         self.gy = gy
 
-    def set_futures(self, futures):
-        self.futures = futures
+    def set_history(self, history_steps=4):
+        self.history = np.zeros((history_steps, 4))
+        for t in range(-1, max(-history_steps, -len(self.state_history))-1, -1):
+            _s = self.state_history[t]
+            self.history[t] = (_s.px, _s.py, _s.vx, _s.vy)
+
+    def set_futures(self, future_steps=4):
+        self.futures = np.zeros((future_steps, 4))
+        for t in range(future_steps):
+            _s = self.state_history[-1] # asume constant velocity
+            self.futures[t] = (_s.px, _s.py, _s.vx, _s.vy) 
+
+    def set_futures_at(self, t, future_steps=4):
+        self.futures = np.zeros((future_steps, 4))
+        for i, ts in enumerate(range(t+1, min(t+future_steps+1, self.last_timestep))):
+            _s = self.get_state_at(ts)
+            self.futures[i] = (_s.px, _s.py, _s.vx, _s.vy)
+    
+    def set_history_at(self, t, history_steps=4):
+        self.history = np.zeros((history_steps, 4))
+        for i, ts in enumerate(range(t, max(self.first_timestep, t - history_steps), -1)):
+            _s = self.get_state_at(ts)
+            self.history[history_steps-i-1] = (_s.px, _s.py, _s.vx, _s.vy)
 
     def set_state(self, px, py, vx, vy, gx, gy, theta):
-
-        # if self.px is not None:
-        #     self.ax = (vx - self.vx)/self.time_step
-        #     self.ay = (vy - self.vy)/self.time_step
-        # else:
-        #     self.ax, self.ay = 0., 0.
 
         self.px = px
         self.py = py
@@ -79,6 +85,8 @@ class Agent(object):
 
     def update_history(self, px, py, vx, vy, gx, gy, theta):
         self.state_history.append(State(px, py, vx, vy, gx, gy, theta))
+        if len(self.state_history)>self.history_len:
+            del self.state_history[0]
 
     def get_state(self, ):
         return State(self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
@@ -86,11 +94,6 @@ class Agent(object):
     def get_state_at(self, t):
         _idx = t - self.first_timestep
         return self.state_history[_idx]
-
-    def get_futures_at(self, t, future_steps=4):
-        _idx = t - self.first_timestep
-        future_states = [self.state_history[i] for i in range(_idx, min(_idx+future_steps, self.timesteps))]
-        return future_states
 
     def cv_prediction(self, pred_steps=4):
 
@@ -137,14 +140,32 @@ class Agent(object):
     def preferred_vel(self, ):
         goal_vec = np.array((self.gx - self.px, self.gy - self.py))
         norm = np.linalg.norm(goal_vec)
-        pref_vel = goal_vec/norm if norm>1 else goal_vec
-        return pref_vel * self.vpref
+        if norm>1:
+            return goal_vec/norm * self.vpref
+        else:
+            return goal_vec
 
     def serialize_state(self, s):
         return State(s)
 
     def deserialize_state(self, s):
         return (s.px, s.py, s.vx, s.vy, s.gx, s.gy, s.theta)
+
+    def reset(self, ):
+        self.px = None
+        self.py = None
+
+        self.gx = None
+        self.gy = None
+
+        self.vx = None
+        self.vy = None
+
+        self.theta = None
+
+        self.state_history = []
+        self.futures = None
+        self.history = None
 
     @property
     def state(self, ):

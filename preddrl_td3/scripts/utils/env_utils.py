@@ -64,3 +64,6 @@ def preferred_vel(px, py, gx, gy, speed=0.4):
     norm = np.linalg.norm(goal_vec)
     pref_vel = goal_vec/norm if norm>1 else goal_vec
     return pref_vel * speed
+
+def l2norm(p1, p2):
+    return np.linalg.norm((p1[0] - p2[0], p1[1]-p2[1]))

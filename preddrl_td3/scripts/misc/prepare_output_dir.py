@@ -93,9 +93,9 @@ def prepare_output_dir(args, user_specified_dir=None, argv=None,
     if suffix is not None:
         path_str = "_" + suffix
 
-    if is_under_git_control():
-        head = subprocess.check_output('git rev-parse HEAD'.split())
-        path_str += '_' + str(head, 'utf-8')[:7]
+    # if is_under_git_control():
+    #     head = subprocess.check_output('git rev-parse HEAD'.split())
+    #     path_str += '_' + str(head, 'utf-8')[:7]
 
     if time_format is not None:
         path_str = datetime.datetime.now().strftime(time_format) + path_str

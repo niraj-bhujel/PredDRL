@@ -14,7 +14,7 @@ from rospkg import RosPack
 from gazebo_msgs.srv import SpawnModel, DeleteModel, SetModelState
 from gazebo_msgs.msg import ModelStates, ModelState
 
-from .env_utils import euler_to_quaternion
+from utils.env_utils import euler_to_quaternion
 
 class RespawnPedestrians:
     def __init__(self, ):

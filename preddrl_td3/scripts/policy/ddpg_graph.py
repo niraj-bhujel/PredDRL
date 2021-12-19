@@ -17,19 +17,16 @@ from policy.policy_base import OffPolicyAgent
 from misc.huber_loss import huber_loss
 
 from networks.gated_gcn_net import GatedGCNNet
-from utils.graph_utils import node_type_list, state_dims, FUTURE_STEPS
-from layers.mlp_layer import MLP
+from networks.layers.mlp_layer import MLP
 
 class Actor(nn.Module):
     def __init__(self, net_params, args, state_shape, action_dim, max_action, **kwargs):
-        # super(Actor, self).__init__()
         super(Actor, self).__init__()
-        pred_len = kwargs.get('pred_len')
-        
-        net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
-        net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
 
-        self.net = GatedGCNNet(net_params['net'], 
+        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states])
+        net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
+
+        self.gcn = GatedGCNNet(net_params, 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -37,14 +34,8 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['net']['hidden_dim'], action_dim*FUTURE_STEPS, hidden_size=net_params['mlp']['hidden_size'])
+        self.out = MLP(net_params['hidden_dim'], action_dim*args.future_steps, hidden_size=net_params['mlp'])
         
-        # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
-        # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
-
-        # self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
-        # self.l4 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
-
         self.max_action = max_action
         self.input_states = args.input_states
         self.input_edges = args.input_edges
@@ -54,20 +45,11 @@ class Actor(nn.Module):
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
-        g, h, e = self.net(g, h, e)
+        g, h, e = self.gcn(g, h, e)
         
         h = self.out(h)
-        # h = self.max_action[0]*torch.tanh(h)
+        h = g.ndata['max_action']*torch.tanh(h)
 
-        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
-        
-        # h = torch.cat([h, state], dim=-1)
-        # h = F.relu(self.l1(h))
-        # h = F.relu(self.l2(h))
-
-        # v = self.max_action[0]*torch.sigmoid(self.l3(h))
-        # w = self.max_action[1]*torch.tanh(self.l4(h))
-        # h = torch.cat([v, w], dim=-1)
         
         return h
 
@@ -78,10 +60,10 @@ class Critic(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
-        net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
-        # net_params['net']['out_dim_node'] = 1
-        self.net = GatedGCNNet(net_params['net'], 
+        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.future_steps
+        net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
+
+        self.gcn = GatedGCNNet(net_params, 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -89,18 +71,17 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
         
-        self.out = MLP(net_params['net']['hidden_dim'] + action_dim*FUTURE_STEPS, 1, hidden_size=net_params['mlp']['hidden_size'])
+        self.out = MLP(net_params['hidden_dim'], 1, hidden_size=net_params['mlp'])
 
-        # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0] + action_dim, net_params['mlp']['hidden_size'][0])
-        # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
-        # self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 1)
 
     def forward(self, state, action):
         g = state
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
+
+        h = torch.cat([h, action], dim=-1)
         
-        g, h, _ = self.net(g, h, e)
+        g, h, _ = self.gcn(g, h, e)
 
         # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
         # h = torch.cat([h, state, action], dim=-1)
@@ -108,8 +89,7 @@ class Critic(nn.Module):
         # h = F.relu(self.l2(h))
         # h = self.l3(h)
         
-        h = torch.cat([h, action], dim=-1)
-        g.ndata['h_out'] = self.out(h)
+        g.ndata['h_out'] = self.out(h) # (num_nodes, 1)
         h = dgl.readout_nodes(g, 'h_out', op='mean') # (bs, 1)
         
         return h
@@ -131,7 +111,7 @@ class GraphDDPG(DDPG):
         super().__init__(state_shape, action_dim, name=name, **kwargs)
 
         # Define and initialize Actor network
-        self.actor = Actor(net_params,  args, state_shape, action_dim, max_action, **kwargs)
+        self.actor = Actor(net_params, args, state_shape, action_dim, max_action, **kwargs)
         self.actor_target = Actor(net_params, args, state_shape, action_dim, max_action, **kwargs)
         self.soft_update_of_target_network(self.actor, self.actor_target)
 
