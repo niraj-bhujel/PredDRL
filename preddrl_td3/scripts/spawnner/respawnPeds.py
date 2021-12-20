@@ -25,7 +25,7 @@ class RespawnPedestrians:
     
         actor_model_file = rospy.get_param('~actor_model_file', default_actor_model_file)
         with open(actor_model_file) as file_xml:
-            self.xml_string = file_xml.read()
+            self.ped_model = file_xml.read()
     
         rospy.wait_for_service("gazebo/spawn_sdf_model")
         self.spawn_model = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel)
@@ -38,11 +38,16 @@ class RespawnPedestrians:
         
         self.spawnned_models = []
         
+        model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        for model_name in model_states.name:
+            if 'pedestrian' in model_name:
+                self.delete_model(model_name)
+
     def respawn(self, ped_states, model_states=None, verbose=0, t=0, reference_frame='world'):
 
 
         if model_states is None:
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
+            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
 
         # print(model_states.name)
         # print(self.spawnned_ped_list)
@@ -62,7 +67,7 @@ class RespawnPedestrians:
                 if verbose>0:
                     rospy.loginfo("[Frame-%d] Spawning %s"%(t, model_name))
 
-                self.spawn_model(model_name, self.xml_string, "", model_pose, reference_frame)
+                self.spawn_model(model_name, self.ped_model, "", model_pose, reference_frame)
                 
                 self.spawnned_models.append(model_name)
                 

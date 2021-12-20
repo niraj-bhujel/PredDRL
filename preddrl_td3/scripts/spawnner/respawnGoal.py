@@ -8,12 +8,12 @@ from geometry_msgs.msg import Pose
 
 
 class RespawnGoal():
-    def __init__(self, stage=0):
+    def __init__(self, stage=0, gx=0, gy=0):
 
         self.stage = stage
         self.goal_position = Pose()
-        self.init_goal_x = 0#1.5#0.5 1.5 0
-        self.init_goal_y = 1#0.2#-1.5 0 -1
+        self.init_goal_x = gx
+        self.init_goal_y = gy
         self.goal_position.position.x = self.init_goal_x
         self.goal_position.position. y = self.init_goal_y
         self.modelName = 'goal'
@@ -55,12 +55,20 @@ class RespawnGoal():
         with open(modelPath, 'r') as f:
             self.model = f.read()
 
+        self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
+        self.check_model = False # nb-> repeating flag , flag used to show if model goal already exists in the env
+
+        # model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        # if self.modelName in model_states.name:
+        #     self.goal_spawnner.deleteGoal()
+
+
     def checkModel(self, model):
         self.check_model = False
+        self.num_existing_model = 0
         for i in range(len(model.name)):
-            if model.name[i] == self.modelName:
+            if model.name[i] == "goal":
                 self.check_model = True
-                break
 
     def spawnGoal(self): # nb-> this function should be respawnGoalModel ??
 
@@ -68,14 +76,14 @@ class RespawnGoal():
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
         spawn_model_prox(self.modelName, self.model, 'robotos_name_space', self.goal_position, "world")
         # rospy.loginfo("New goal ( %.1f, %.1f) respawnned ", self.goal_position.position.x, self.goal_position.position.y)
-
+        self.goal_exists = True
 
     def deleteGoal(self):
 
         rospy.wait_for_service('gazebo/delete_model')
         del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
         del_model_prox(self.modelName)
-        # rospy.loginfo("Goal ( %.1f, %.1f) deleted ", self.goal_position.position.x, self.goal_position.position.y)
+        self.goal_exists = False
 
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag

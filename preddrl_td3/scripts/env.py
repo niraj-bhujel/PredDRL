@@ -81,9 +81,8 @@ class Env:
         self.collision_times = 0
         self.discomforts = 0
 
-        self.goal_spawnner = RespawnGoal(self.stage)
+        self.goal_spawnner = RespawnGoal(self.stage, self.gx, self.gy)
 
-        # init_goal relies on gazebo model_states to check of goal already exists
         self.init_goal()
 
         self.initialize_agents()
@@ -105,6 +104,7 @@ class Env:
             # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
             self.pedestrian_spawnner = RespawnPedestrians()
+
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -289,10 +289,11 @@ class Env:
     def init_goal(self, position_check=False, test=False):
 
         self.gx, self.gy = self.goal_spawnner.getPosition(position_check, test)
-        
-        model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
 
-        if self.goal_spawnner.modelName in list(model_states.name):
+        # model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
+        # if self.goal_spawnner.modelName in model_states.name:
+        # if self.goal_spawnner.goal_exists:
+        if self.goal_spawnner.check_model:
             self.goal_spawnner.deleteGoal()
         
         self.goal_spawnner.spawnGoal()
@@ -309,7 +310,7 @@ class Env:
         set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
         set_model_state(tmp_state)
 
-        if self.verbose>1:
+        if self.verbose>0:
             print('Robot pos set to:', round(position.x, 2), round(position.y, 2))
 
     def reset(self, initGoal=False):

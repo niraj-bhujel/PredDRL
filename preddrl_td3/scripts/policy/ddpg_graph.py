@@ -48,7 +48,7 @@ class Actor(nn.Module):
         g, h, e = self.gcn(g, h, e)
 
         h = self.out(h)
-        h = self.max_action[1]*torch.tanh(h)
+        h = g.ndata['max_action']*torch.tanh(h)
 
         return h
 
@@ -94,7 +94,7 @@ class GraphDDPG(DDPG):
             state_shape,
             action_dim,
             name="GraphDDPG",
-            max_action=(1., 1.),
+            max_action=1.0,
             lr_actor=1e-4,
             lr_critic=1e-4,
             net_params=None,
@@ -102,6 +102,10 @@ class GraphDDPG(DDPG):
             **kwargs):
 
         super().__init__(state_shape, action_dim, name=name, **kwargs)
+
+        # Set hyperparameters
+        self.action_dim = action_dim
+        self.state_shape = state_shape
 
         # Define and initialize Actor network
         self.actor = Actor(net_params, args, state_shape, action_dim, max_action, **kwargs)
