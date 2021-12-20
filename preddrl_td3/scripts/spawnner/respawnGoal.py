@@ -48,8 +48,6 @@ class RespawnGoal():
         self.last_goal_x = self.init_goal_x
         self.last_goal_y = self.init_goal_y
         self.last_index = 0
-        self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
-        self.check_model = False, # nb-> repeating flag , flag used to show if model goal already exists in the env
         self.index = 0
 
         # load goal model
@@ -59,11 +57,10 @@ class RespawnGoal():
 
     def checkModel(self, model):
         self.check_model = False
-        self.num_existing_model = 0
         for i in range(len(model.name)):
-            if model.name[i] == "goal":
+            if model.name[i] == self.modelName:
                 self.check_model = True
-                self.num_existing_model+=1
+                break
 
     def spawnGoal(self): # nb-> this function should be respawnGoalModel ??
 

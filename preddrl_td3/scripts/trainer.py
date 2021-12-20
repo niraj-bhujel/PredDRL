@@ -150,7 +150,7 @@ class Trainer:
             try:
                 with open(self._memory_path + '.pkl', 'rb') as f:
                     self.replay_buffer = pickle.load(f)
-                total_steps=self._policy.n_warmup + 1
+                total_steps=self._policy.n_warmup
             except Exception as e:
                 print('Unable to load memory!', e)
 
@@ -167,18 +167,15 @@ class Trainer:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
             if total_steps < self._policy.n_warmup:
-                # action = obs.ndata['future_vel'].numpy()
-                action  = self._env.sample_robot_action(self._sampling_method)
-                if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action
-                    action = obs.ndata['future_vel'].numpy()
-                    action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._future_steps)
+                robot_action = self._env.sample_robot_action(self._sampling_method)
+                action = obs.ndata['future_vel'].numpy()
+                action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._future_steps)
 
             else:
-                action = self._policy.get_action(obs)
+                action = self._policy.get_action(obs) #(num_nodes, future*2)
 
             next_obs, reward, done, success = self._env.step(action, obs)          
-            
+
             if isinstance(next_obs, DGLHeteroGraph):
                 robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
             else:
@@ -187,12 +184,11 @@ class Trainer:
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
                 obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
                 gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()
-                pred_pos = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
-                pred_traj = [pos[None, :, :] for pos in pred_pos]
-                plot_traj(obs_traj, gt_traj, pred_traj, ped_ids=obs.ndata['tid'].numpy(), 
+                pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+                plot_traj(obs_traj, gt_traj, pred_traj[:, None, :, :], 
+                          ped_ids=obs.ndata['tid'].numpy(), 
                           extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
-                          limit_axes=True, legend=True, 
-                          counter=total_steps, 
+                          limit_axes=True, legend=True, counter=total_steps, 
                           save_dir=self._plot_dir)
 
 
@@ -210,10 +206,9 @@ class Trainer:
                 # pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
 
             # update buffer/memory
-            # if not episode_steps==0:
             self.replay_buffer.add([obs, action, reward, next_obs, done])
 
-            if total_steps==self._policy.n_warmup:                
+            if total_steps==self._policy.n_warmup-1:                
                 pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
 
             self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
@@ -244,7 +239,7 @@ class Trainer:
                 if time_out:
                     n_timeout += 1
 
-                if done or success or time_out: # episode_steps 0 means episode_steps == self._episode_max_steps see line 271
+                if done or success or time_out:
                     n_episode += 1
 
                     self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, n_success/n_episode))
@@ -291,14 +286,13 @@ class Trainer:
                 if total_steps % self._save_model_interval == 0:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
-            # self.r.sleep()
             self._env.timer.toc()
             self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
             if self._verbose>1:
                 print('Time per step:', self._env.timer.diff)
 
-        # self.writer.close()
         save_ckpt(self._policy, self._output_dir, total_steps)
+        self.writer.close()
 
     def sample_data(self, batch_size, device):
 
@@ -318,12 +312,12 @@ class Trainer:
             next_graph = dgl.batch(next_graph).to(device)
             next_obs = (next_scan, next_graph)
 
-        # graph state 
+        # graph state  only
         elif isinstance(obs[0], DGLHeteroGraph):
             obs = dgl.batch(obs).to(device)
             next_obs = dgl.batch(next_obs).to(device)
 
-        # laser state
+        # laser state only
         elif isinstance(obs[0], list):
             obs = torch.Tensor(np.stack(obs, 0)).to(device)
             next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
@@ -361,13 +355,8 @@ class Trainer:
 
                 next_obs, reward, done, success = self._test_env.step(action, obs)
 
-                if isinstance(obs, DGLHeteroGraph):
-                    robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-                else:
-                    robot_action = action
-
                 print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
-                print('Robot Action:', np.round(robot_action, 2))
+                print('Robot Action:', np.round(action, 2))
                 print('Reward:', np.round(reward, 2))
 
                 episode_return += reward
@@ -431,10 +420,6 @@ if __name__ == '__main__':
                           '%s'%args.policy,
                         'warmup_%d'%args.n_warmup,
                         'bs%d'%args.batch_size,
-                        # 'seed_%d'%args.seed,
-                        # 'stage_%d'%args.stage,
-                        # 'episode_step%d'%args.episode_max_steps,
-                        # 'sampling_%s'%args.sampling_method,
                         'ht%d'%args.history_steps,
                         'ft%d'%args.future_steps,
                         'input_%s'%'_'.join(args.input_states),
@@ -452,7 +437,7 @@ if __name__ == '__main__':
                                         suffix=suffix
                                         )
         # backup scripts
-        copy_src('./preddrl_td3/scripts_torch', output_dir + '/scripts')
+        copy_src('./preddrl_td3/scripts', output_dir + '/scripts')
         pickle.dump(args, open(output_dir + '/args.pkl', 'wb'))
 
     elif args.evaluate:

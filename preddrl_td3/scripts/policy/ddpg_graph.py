@@ -46,11 +46,10 @@ class Actor(nn.Module):
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
         g, h, e = self.gcn(g, h, e)
-        
-        h = self.out(h)
-        h = g.ndata['max_action']*torch.tanh(h)
 
-        
+        h = self.out(h)
+        h = self.max_action[1]*torch.tanh(h)
+
         return h
 
 class Critic(nn.Module):
@@ -78,19 +77,13 @@ class Critic(nn.Module):
         g = state
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
-
-        h = torch.cat([h, action], dim=-1)
         
+        h = torch.cat([h, action], dim=-1)
         g, h, _ = self.gcn(g, h, e)
 
-        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
-        # h = torch.cat([h, state, action], dim=-1)
-        # h = F.relu(self.l1(h))
-        # h = F.relu(self.l2(h))
-        # h = self.l3(h)
-        
-        g.ndata['h_out'] = self.out(h) # (num_nodes, 1)
-        h = dgl.readout_nodes(g, 'h_out', op='mean') # (bs, 1)
+        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+
+        h = self.out(h) 
         
         return h
 

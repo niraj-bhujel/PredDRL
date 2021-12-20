@@ -104,10 +104,6 @@ def plot_traj(obsv_traj, trgt_traj, pred_traj=None, ped_ids=None, K=1, extent=No
         if ped_ids is not None:
             color = matplotlib.colors.to_rgba(get_color(ped_ids[p]))
 
-        # quiver requires at least two steps
-        if len(trgt_traj[p])<2:
-            continue
-
         # obsv tracks
         xs, ys = obsv_traj[p][:, 0], obsv_traj[p][:, 1]
         
@@ -124,15 +120,13 @@ def plot_traj(obsv_traj, trgt_traj, pred_traj=None, ped_ids=None, K=1, extent=No
         target_line, = ax.plot(xs, ys, color=color, label='Target', linestyle='solid', linewidth=lw, zorder=3,
                                marker=lm, markersize=ms, fillstyle='full', mfc='w', mec=color, mew=mw,
                                )
-        
-        if arrow:
+        # quiver requires at least two points
+        if arrow and len(trgt_traj[p])>1:
             # end marker
             ax.quiver(xs[-2], ys[-2], (xs[-1]-xs[-2])+0.001, (ys[-1]-ys[-2])+0.001, color=color, zorder=3, 
                         angles='xy', scale_units='xy', scale=1, width=0.02*(ys[-1]-y_min)/(y_max-y_min),
                         # headwidth=3, headlength=4, headaxislength=3,
                         )
-        if ped_ids is not None and ped_ids[p]==2:
-            continue
         
         if pred_traj is not None:
             preds = pred_traj[p][:, :len(trgt_traj[p]), :]
@@ -142,7 +136,7 @@ def plot_traj(obsv_traj, trgt_traj, pred_traj=None, ped_ids=None, K=1, extent=No
                 pred_line, = ax.plot(xs, ys, color=color, label='Predictions', linestyle='--', linewidth=lw, zorder=10,
                                      marker=lm, markersize=ms, fillstyle='full', mfc=color, mec=color, mew=mw,
                                      )
-                if arrow:
+                if arrow and len(trgt_traj[p])>1:
                     # end arrow
                     ax.quiver(xs[-2], ys[-2], (xs[-1]-xs[-2])+0.001, (ys[-1]-ys[-2])+0.001, color=color, zorder=10,
                               # angles='xy', scale_units='xy', scale=2, width=0.015*(ys[-1]-y_min)/(y_max-y_min),
@@ -150,12 +144,16 @@ def plot_traj(obsv_traj, trgt_traj, pred_traj=None, ped_ids=None, K=1, extent=No
                               )
                     
         if ped_ids is not None:
-            legend_handles.append(pred_line)
+            legend_handles.append(target_line)
             legend_labels.append('{}:ID{}'.format(p, int(ped_ids[p])))
             
     if legend:
-        legend_handles.extend([start_mark, target_line, pred_line])
-        legend_labels.extend(['Start', 'GT', 'Pred'])
+        legend_handles.extend([start_mark, target_line])
+        legend_labels.extend(['Start', 'GT'])
+
+        if pred_traj is not None:
+            legend_handles.extend([pred_line])
+            legend_labels.extend(['Pred'])
         
         ax.legend(legend_handles, legend_labels, handlelength=4)
         

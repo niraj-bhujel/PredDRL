@@ -72,7 +72,7 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 20.
+        self.max_goal_distance = 15.
         self.last_goal_distance = 100.
 
         self.global_step = 0
@@ -81,10 +81,12 @@ class Env:
         self.collision_times = 0
         self.discomforts = 0
 
-        self.initialize_agents()
+        self.goal_spawnner = RespawnGoal(self.stage)
 
-        self.goal_spawnner = RespawnGoal(self.stage) 
+        # init_goal relies on gazebo model_states to check of goal already exists
         self.init_goal()
+
+        self.initialize_agents()
 
     def initialize_agents(self, ):
 
@@ -131,7 +133,7 @@ class Env:
         return action
 
 
-    def updatePedestrians(self, model_states=None):
+    def updatePedestrians(self, ):
         '''
         Get pedestrians at current step, update and return pedestrian states, 
         Meanwhile spawn the current pedestrians to gazebo
@@ -163,31 +165,30 @@ class Env:
 
             ped_states[ped.id] = ped.deserialize_state(state)
 
-        self.pedestrian_spawnner.respawn(ped_states, model_states)
+        self.pedestrian_spawnner.respawn(ped_states)
             
         return curr_peds
 
-    def update_agents(self, robot_action=(0., 0.), agent_actions=None):
+    def update_agents(self, action=(0., 0.)):
 
         # update robot state
         self.robot.update_history(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
-        self.robot.set_action(robot_action)
-        self.robot.set_history(self.history_steps)
+        self.robot.set_action(action)
 
-        # update robot futures 
-        robot_futures = np.zeros((self.future_steps, 4))
-        px = self.position.x
-        py = self.position.y
-        for t in range(self.future_steps):
-            pref_vel = preferred_vel(px, py, self.gx, self.gy, speed=0.4)
-            px = px + pref_vel[0] * self.time_step
-            py = py + pref_vel[1] * self.time_step
-            robot_futures[t] = (px, py, pref_vel[0], pref_vel[1])
-        self.robot.futures = robot_futures
+        # update robot history
+        self.robot.history = np.zeros((self.history_steps, 4))
+        for t in range(-1, max(-self.history_steps, -len(self.robot.state_history))-1, -1):
+            _s = self.robot.state_history[t]
+            self.robot.history[t] = (_s.px, _s.py, _s.vx, _s.vy)
+
+        # update robot futures
+        future_vel = np.tile(self.robot.preferred_vel(), self.future_steps).reshape(-1, 2) # (future, 2)
+        future_pos = np.array(self.robot.pos).reshape(-1, 2) + future_vel.cumsum(0)
+        self.robot.futures = np.concatenate([future_pos, future_vel], axis=-1)
 
         # update robot goal node
-        self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
+        # self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
         self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
         self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0.) for _ in range(self.future_steps)])
         self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0.) for _ in range(self.history_steps)])
@@ -206,20 +207,21 @@ class Env:
 
     def step(self, action, last_state):
 
-        robot_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.future_steps, 2)
-
         reward = 0
         done = False
         success = False
+
+        future_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.future_steps, 2)
+
+        if self.verbose>0:
+            print('Action:', np.round(future_actions, 3))
+            print("Vpref:", np.round(self.robot.preferred_vel(), 3))
+
+
         for t in range(self.future_steps):
-            robot_action = robot_actions[t]
-
-            if self.verbose>1:
-                print('Action:', np.round(robot_action, 3))
-                print("Vpref:", self.robot.preferred_vel())
-
+            curr_action = future_actions[t]
             # step robot
-            vx, vy = robot_action
+            vx, vy = curr_action
             self.position.x = self.position.x + vx*self.time_step
             self.position.y = self.position.y + vy*self.time_step
             self.yaw = math.atan2(vy, vx)
@@ -227,7 +229,7 @@ class Env:
             self.linear.y = vy
             self.set_robot_pose(self.position, self.yaw)
 
-            self.update_agents(robot_action)
+            self.update_agents(curr_action)
 
             # compute rewards
             curr_goal_distance = self.getGoalDistance()
@@ -253,14 +255,21 @@ class Env:
                 reward = -100
                 rospy.loginfo('TOO FAR !!')
 
+
+            if self.last_goal_distance - curr_goal_distance>0.01:
+                reward += 1
+            else:
+                reward -= 1
+
+            self.last_goal_distance = curr_goal_distance
             self.frame_num += 1
 
             if success or done:
                 break
 
         # compute correct action reward for agents
-        gt_states = torch.cat([last_state.ndata[s] for s in self.pred_states], dim=-1).numpy()
-        action_error = np.mean(np.abs(gt_states - action))
+        gt_action = torch.cat([last_state.ndata[s] for s in self.pred_states], -1).numpy()
+        action_error = np.mean(np.abs(gt_action - action))
         self.writer.add_scalar("Common/action_error", action_error, self.global_step)
 
         reward -= action_error
@@ -278,11 +287,13 @@ class Env:
         return state, reward, done, success
 
     def init_goal(self, position_check=False, test=False):
-        self.robot_goal.reset()
 
         self.gx, self.gy = self.goal_spawnner.getPosition(position_check, test)
         
-        if self.goal_spawnner.check_model: self.goal_spawnner.deleteGoal()
+        model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
+
+        if self.goal_spawnner.modelName in list(model_states.name):
+            self.goal_spawnner.deleteGoal()
         
         self.goal_spawnner.spawnGoal()
 
