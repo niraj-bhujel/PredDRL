@@ -55,12 +55,13 @@ class RespawnGoal():
         with open(modelPath, 'r') as f:
             self.model = f.read()
 
-        self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
-        self.check_model = False # nb-> repeating flag , flag used to show if model goal already exists in the env
+        # clear existing goal if any, this wil create time out
+        model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
+        if self.modelName in model_states.name:
+            self.deleteGoal()
 
-        # model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
-        # if self.modelName in model_states.name:
-        #     self.goal_spawnner.deleteGoal()
+        self.check_model=False
+        self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
 
 
     def checkModel(self, model):

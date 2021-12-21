@@ -261,6 +261,8 @@ class Env:
             else:
                 reward -= 1
 
+            self.discomforts += sum([d<self.discomfort_zone for d in robot_ped_dist])
+
             self.last_goal_distance = curr_goal_distance
             self.frame_num += 1
 
@@ -290,9 +292,6 @@ class Env:
 
         self.gx, self.gy = self.goal_spawnner.getPosition(position_check, test)
 
-        # model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=1000)
-        # if self.goal_spawnner.modelName in model_states.name:
-        # if self.goal_spawnner.goal_exists:
         if self.goal_spawnner.check_model:
             self.goal_spawnner.deleteGoal()
         

@@ -43,14 +43,8 @@ class RespawnPedestrians:
             if 'pedestrian' in model_name:
                 self.delete_model(model_name)
 
-    def respawn(self, ped_states, model_states=None, verbose=0, t=0, reference_frame='world'):
+    def respawn(self, ped_states, verbose=0, t=0, reference_frame='world'):
 
-
-        if model_states is None:
-            model_states = rospy.wait_for_message('gazebo/model_states', ModelStates, timeout=100)
-
-        # print(model_states.name)
-        # print(self.spawnned_ped_list)
         current_models = []
         for pid, ped_state in ped_states.items():
             
@@ -84,10 +78,8 @@ class RespawnPedestrians:
 
             current_models.append(model_name)
 
-        # print("spawnned_models:", self.spawnned_models)
         # remove model that are not in the current pedestrian list
         models_to_remove = [model for model in self.spawnned_models if model not in current_models]
-        # print("models to remove:", models_to_remove)
         for model_name in models_to_remove:
             if verbose>0:
                 rospy.loginfo("[Frame-%d] Deleting %s"%(t, model_name))
