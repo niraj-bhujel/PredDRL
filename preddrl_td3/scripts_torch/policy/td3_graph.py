@@ -15,10 +15,11 @@ from utils.graph_utils import node_type_list, state_dims
 from layers.mlp_layer import MLP
 
 class Actor(nn.Module):
-    def __init__(self, net_params, args, action_dim, max_action, **kwargs):
+    def __init__(self, net_params, args, state_shape, action_dim, max_action, **kwargs):
         # super(Actor, self).__init__()
         super(Actor, self).__init__()
-
+        pred_len = kwargs.get('pred_len')
+        
         net_params['net']['in_dim_node'] = sum([state_dims[s] for s in args.input_states])
         net_params['net']['in_dim_edge'] = sum([state_dims[s] for s in args.input_edges])
         # net_params['net']['out_dim_node'] = action_dim
@@ -30,27 +31,35 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['net']['hidden_dim'], action_dim, hidden_size=net_params['mlp']['hidden_size'])
+        self.out = MLP(net_params['net']['hidden_dim'] + state_shape[0], 2, hidden_size=net_params['mlp']['hidden_size'])
+        # self.l1 = nn.Linear(net_params['net']['hidden_dim'] + state_shape[0], net_params['mlp']['hidden_size'][0])
+        # self.l2 = nn.Linear(net_params['mlp']['hidden_size'][0], net_params['mlp']['hidden_size'][1])
+        # self.l3 = nn.Linear(net_params['mlp']['hidden_size'][1], 2)
+
 
         self.max_action = max_action
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        self.relu = nn.ReLU()
+    def forward(self, state):
+        state, g = state
 
-    def forward(self, g):
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
 
         g, h, e = self.net(g, h, e)
         h = dgl.readout_nodes(g, 'h', op='mean') # (bs, hdim)
+        
+        h = torch.cat([h, state], dim=-1)
+
         h = self.out(h)
 
-        h = self.max_action * torch.tanh(h)
+        h = self.max_action[1] * torch.tanh(h)
+        
         return h
 
 class Critic(nn.Module):
-    def __init__(self, net_params, args, action_dim, **kwargs):
+    def __init__(self, net_params, args, state_shape, action_dim, **kwargs):
         super(Critic, self).__init__()
 
         self.input_states = args.input_states
@@ -78,9 +87,10 @@ class Critic(nn.Module):
         self.out1 = MLP(net_params['net']['hidden_dim'] + action_dim, 1, hidden_size=net_params['mlp']['hidden_size'])
         self.out2 = MLP(net_params['net']['hidden_dim'] + action_dim, 1, hidden_size=net_params['mlp']['hidden_size'])
 
-    def forward(self, g, a):
+    def forward(self, state, a):
         '''a: (bs, 1)'''
-
+        state, g = state
+        
         h = torch.cat([g.ndata[s] for s in self.input_states], dim=-1)
         e = torch.cat([g.edata[s] for s in self.input_edges], dim=-1)
         
@@ -124,19 +134,48 @@ class GraphTD3(TD3):
         super().__init__(state_shape, action_dim, name=name, actor_update_freq=actor_update_freq, **kwargs)
 
         # Define and initialize Actor network
-        self.actor = Actor(net_params,  args, action_dim, max_action, **kwargs)
-        self.actor_target = Actor(net_params, args, action_dim, max_action, **kwargs)
+        self.actor = Actor(net_params,  args, state_shape, action_dim, max_action, **kwargs)
+        self.actor_target = Actor(net_params, args, state_shape, action_dim, max_action, **kwargs)
         self.soft_update_of_target_network(self.actor, self.actor_target)
 
         # Define and initialize Critic network
-        self.critic = Critic(net_params, args, action_dim, **kwargs)
-        self.critic_target = Critic(net_params, args, action_dim, **kwargs)
+        self.critic = Critic(net_params, args, state_shape, action_dim, **kwargs)
+        self.critic_target = Critic(net_params, args, state_shape, action_dim, **kwargs)
         self.soft_update_of_target_network(self.critic, self.critic_target)
 
         # define optimizers
+        self.actor_optimizer = optim.Adam(params=self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(params=self.critic.parameters(), lr=lr_critic, eps=1e-4)
 
+
         self._actor_update_freq = actor_update_freq
+
+    def get_action(self, state, test=False, tensor=False):
+        
+        state, g = state
+
+        state = torch.Tensor(state).view(1, -1).to(self.device)
+        g = dgl.batch([g]).to(self.device)
+
+        action = self._get_action_body([state, g], 
+                                       self.sigma * (1. - test), 
+                                       self.actor.max_action)
+        if tensor:
+            return action
+        else:
+            return action.cpu().numpy()
+
+
+    def _get_action_body(self, state, sigma, max_action):
+
+        self.actor.eval()
+        with torch.no_grad():
+            action = self.actor(state)
+            # action += torch.empty_like(action).normal_(mean=0,std=sigma)
+        self.actor.train()
+
+        # action = torch.clamp(action, -max_action, max_action)
+        return action.squeeze(0)
 
 
 

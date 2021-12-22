@@ -127,7 +127,7 @@ class TD3(DDPG):
 
             # Get noisy action
             next_actions = self.actor_target(next_states) + noise
-            next_actions = next_actions.clamp(-self.actor_target.max_action, self.actor_target.max_action)
+            next_actions = next_actions.clamp(-self.actor_target.max_action[1], self.actor_target.max_action[1])
 
             # Compute the target Q value
             target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
