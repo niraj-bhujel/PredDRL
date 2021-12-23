@@ -60,31 +60,18 @@ class RespawnGoal():
         if self.modelName in model_states.name:
             self.deleteGoal()
 
-        self.check_model=False
-        self.sub_model = rospy.Subscriber('gazebo/model_states', ModelStates, self.checkModel)
-
-
-    def checkModel(self, model):
-        self.check_model = False
-        self.num_existing_model = 0
-        for i in range(len(model.name)):
-            if model.name[i] == "goal":
-                self.check_model = True
-
-    def spawnGoal(self): # nb-> this function should be respawnGoalModel ??
+    def spawnGoal(self):
 
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
         spawn_model_prox(self.modelName, self.model, 'robotos_name_space', self.goal_position, "world")
         # rospy.loginfo("New goal ( %.1f, %.1f) respawnned ", self.goal_position.position.x, self.goal_position.position.y)
-        self.goal_exists = True
 
     def deleteGoal(self):
 
         rospy.wait_for_service('gazebo/delete_model')
         del_model_prox = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
         del_model_prox(self.modelName)
-        self.goal_exists = False
 
     # def getPosition(self, position_check=False, delete=False, test=False):
     def getPosition(self, position_check=False, test=False): # niraj-> removed delete flag

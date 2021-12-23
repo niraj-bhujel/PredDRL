@@ -138,11 +138,10 @@ class DDPG(OffPolicyAgent):
             self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.iteration)
             self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
 
-            if self._verbose>0:
-                print('batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
-                                                                                            rewards.mean().item(),
-                                                                                            actor_loss,
-                                                                                            critic_loss,))
+            print('batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
+                                                                                        rewards.mean().item(),
+                                                                                        actor_loss,
+                                                                                        critic_loss,))
 
         return actor_loss, critic_loss, td_errors
 

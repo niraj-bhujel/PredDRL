@@ -41,8 +41,12 @@ class Env:
         self.stage = args.stage
         self.dataset = args.dataset
         self.verbose = args.verbose
+        self.spawn_pedestrians = args.spawn_pedestrians
+
+        self.pred_steps = args.pred_steps
         self.future_steps = args.future_steps
         self.history_steps = args.history_steps
+
         self.state_dims = args.state_dims
         self.pred_states = args.pred_states
 
@@ -83,9 +87,12 @@ class Env:
 
         self.goal_spawnner = RespawnGoal(self.stage, self.gx, self.gy)
 
-        self.init_goal()
+        self.pedestrian_spawnner = RespawnPedestrians()
 
-        self.initialize_agents()
+        rospy.Subscriber('gazebo/model_states', ModelStates, self.model_states_cbk)
+
+    def model_states_cbk(self, model_states):
+        self.model_states = model_states
 
     def initialize_agents(self, ):
 
@@ -95,16 +102,14 @@ class Env:
 
         self.robot_goal = Agent(node_id=98, node_type='robot_goal', time_step=self.time_step)
 
-        self.obstacles = dict()
-
         if self.stage==7:
             self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
                                                             target_frame_rate=2*1/self.time_step,
                                                             max_peds=40)
-            # self.ped_frames = self.ped_frames[:50]# use only first 50 frames
             print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
-            self.pedestrian_spawnner = RespawnPedestrians()
-
+        
+        self.init_goal()
+            
 
     def seed(self, seed=None):
         # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
@@ -126,8 +131,7 @@ class Env:
             print("V_pref(sampled):", action)
 
         else:
-            obstacle_pos = [tuple(o.pos) for _, o in self.obstacles.items()]
-            action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list, obstacles=obstacle_pos)
+            action, _ = self.orca.predict(self.robot, humans=self.pedestrians_list)
             print('ORCA Vel:', np.round(action, 3))
 
         return action
@@ -150,9 +154,8 @@ class Env:
         for ped in curr_peds:
 
             # history
-            ped.set_history_at(t, self.history_steps)
-
-            ped.set_futures_at(t, self.future_steps)
+            ped.history = ped.get_history_at(t, self.history_steps)
+            ped.futures = ped.get_futures_at(t, self.future_steps)
 
             # current state
             state = ped.get_state_at(t) 
@@ -165,7 +168,8 @@ class Env:
 
             ped_states[ped.id] = ped.deserialize_state(state)
 
-        self.pedestrian_spawnner.respawn(ped_states)
+        if self.spawn_pedestrians:
+                self.pedestrian_spawnner.respawn(ped_states)
             
         return curr_peds
 
@@ -177,21 +181,24 @@ class Env:
         self.robot.set_action(action)
 
         # update robot history
-        self.robot.history = np.zeros((self.history_steps, 4))
-        for t in range(-1, max(-self.history_steps, -len(self.robot.state_history))-1, -1):
-            _s = self.robot.state_history[t]
-            self.robot.history[t] = (_s.px, _s.py, _s.vx, _s.vy)
+        self.robot.set_history(self.robot.get_history(self.history_steps))
 
         # update robot futures
-        future_vel = np.tile(self.robot.preferred_vel(), self.future_steps).reshape(-1, 2) # (future, 2)
-        future_pos = np.array(self.robot.pos).reshape(-1, 2) + future_vel.cumsum(0)
-        self.robot.futures = np.concatenate([future_pos, future_vel], axis=-1)
+        self.robot.futures = np.zeros((self.future_steps, 7))
+        px, py = self.robot.pos
+        vx, vy = self.robot.preferred_vel()
+        for t in range(self.future_steps):
+            px = px + vx * self.time_step
+            py = py + vy * self.time_step
+            self.robot.futures[t] = (px, py, vx, vy, self.gx, self.gy, math.atan2(vy, vx))
 
         # update robot goal node
-        # self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
+        self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
         self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
-        self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0.) for _ in range(self.future_steps)])
-        self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0.) for _ in range(self.history_steps)])
+        # self.robot_goal.history = self.robot_goal.get_history(self.history_steps)
+        # self.robot_goal.futures = self.robot_goal.get_futures(self.future_steps)
+        self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.future_steps)])
+        self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.history_steps)])
         
         # update pedestrians
         self.pedestrians_list = self.updatePedestrians()
@@ -211,14 +218,14 @@ class Env:
         done = False
         success = False
 
-        future_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.future_steps, 2)
+        future_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.pred_steps, 2)
 
         if self.verbose>0:
             print('Action:', np.round(future_actions, 3))
             print("Vpref:", np.round(self.robot.preferred_vel(), 3))
 
 
-        for t in range(self.future_steps):
+        for t in range(self.pred_steps):
             curr_action = future_actions[t]
             # step robot
             vx, vy = curr_action
@@ -269,11 +276,10 @@ class Env:
             if success or done:
                 break
 
-        # compute correct action reward for agents
-        gt_action = torch.cat([last_state.ndata[s] for s in self.pred_states], -1).numpy()
-        action_error = np.mean(np.abs(gt_action - action))
+        # # compute correct action reward for agents
+        gt_action = last_state.ndata['future_vel'].view(-1, self.future_steps, 2).numpy()
+        action_error = np.mean(np.abs(gt_action[:, :self.pred_steps, :] - action.reshape(-1, self.pred_steps, 2)))
         self.writer.add_scalar("Common/action_error", action_error, self.global_step)
-
         reward -= action_error
 
         if self.verbose>0:
@@ -289,10 +295,11 @@ class Env:
         return state, reward, done, success
 
     def init_goal(self, position_check=False, test=False):
-
+        self.robot_goal.reset()
         self.gx, self.gy = self.goal_spawnner.getPosition(position_check, test)
 
-        if self.goal_spawnner.check_model:
+        if self.goal_spawnner.modelName in self.model_states.name:
+        # if self.goal_spawnner.check_model:
             self.goal_spawnner.deleteGoal()
         
         self.goal_spawnner.spawnGoal()

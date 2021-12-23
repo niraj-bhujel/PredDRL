@@ -37,10 +37,14 @@ def get_argument(parser=None):
                         help='Overwrite existing experiments')
     parser.add_argument('--dataset', type=str, default='zara1',
                         help='Dataset to use')    
-    parser.add_argument('--future_steps', type=int, default=6,
-                        help='Number of future steps to predict')
+    parser.add_argument('--future_steps', type=int, default=4,
+                        help='Number of future steps to consider')
     parser.add_argument('--history_steps', type=int, default=4,
-                        help='Number of past observations')
+                        help='Number of observation steps')
+    parser.add_argument('--pred_steps', type=int, default=1,
+                        help='Number of prediction steps')
+    parser.add_argument('--spawn_pedestrians', action='store_true', default=False,
+                        help='Wether to spawn pedestrians in gazebo for visualization')
 
     # test settings
     parser.add_argument('--evaluate', action='store_true',
@@ -74,9 +78,9 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref', 'future_vel'],
                         help='Input states for nodes')
-    parser.add_argument('--pred_states', nargs='+', default=['future_vel'],
+    parser.add_argument('--pred_states', nargs='+', default=['vel'],
                         help='Prediction states of the nodes')
     parser.add_argument('--input_edges', nargs='+', default=['diff', 'dist'], 
                         help='Inter node disances, dist (l2norm) or diff (l1norm)')

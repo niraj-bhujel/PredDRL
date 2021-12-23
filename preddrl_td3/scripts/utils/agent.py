@@ -39,36 +39,17 @@ class Agent(object):
     def __len__(self):
         return len(self.state_history)
 
+    def update_history(self, px, py, vx, vy, gx, gy, theta):
+        self.state_history.append(State(px, py, vx, vy, gx, gy, theta))
+        if len(self.state_history)>self.history_len:
+            del self.state_history[0]
+
     def set_action(self, action):
         self.action = action
 
     def set_goal(self, gx, gy):
         self.gx = gx
         self.gy = gy
-
-    def set_history(self, history_steps=4):
-        self.history = np.zeros((history_steps, 4))
-        for t in range(-1, max(-history_steps, -len(self.state_history))-1, -1):
-            _s = self.state_history[t]
-            self.history[t] = (_s.px, _s.py, _s.vx, _s.vy)
-
-    def set_futures(self, future_steps=4):
-        self.futures = np.zeros((future_steps, 4))
-        for t in range(future_steps):
-            _s = self.state_history[-1] # asume constant velocity
-            self.futures[t] = (_s.px, _s.py, _s.vx, _s.vy) 
-
-    def set_futures_at(self, t, future_steps=4):
-        self.futures = np.zeros((future_steps, 4))
-        for i, ts in enumerate(range(t+1, min(t+future_steps+1, self.last_timestep))):
-            _s = self.get_state_at(ts)
-            self.futures[i] = (_s.px, _s.py, _s.vx, _s.vy)
-    
-    def set_history_at(self, t, history_steps=4):
-        self.history = np.zeros((history_steps, 4))
-        for i, ts in enumerate(range(t, max(self.first_timestep, t - history_steps), -1)):
-            _s = self.get_state_at(ts)
-            self.history[history_steps-i-1] = (_s.px, _s.py, _s.vx, _s.vy)
 
     def set_state(self, px, py, vx, vy, gx, gy, theta):
 
@@ -83,10 +64,11 @@ class Agent(object):
         
         self.theta = theta
 
-    def update_history(self, px, py, vx, vy, gx, gy, theta):
-        self.state_history.append(State(px, py, vx, vy, gx, gy, theta))
-        if len(self.state_history)>self.history_len:
-            del self.state_history[0]
+    def set_history(self, history):
+        self.history = history
+
+    def set_futures(self, futures):
+        self.futures = futures
 
     def get_state(self, ):
         return State(self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
@@ -94,6 +76,30 @@ class Agent(object):
     def get_state_at(self, t):
         _idx = t - self.first_timestep
         return self.state_history[_idx]
+
+    def get_history(self, history_steps=4):
+        history = np.zeros((history_steps, 7))
+        for t in range(-1, max(-history_steps, -len(self.state_history))-1, -1):
+            history[t] = self.deserialize_state(self.state_history[t])
+        return history
+
+    def get_futures(self, future_steps=4):
+        futures = np.zeros((future_steps, 7))
+        for t in range(future_steps):
+            self.futures[t] = self.deserialize_state(self.state_history[t])
+        return futures
+
+    def get_history_at(self, t, history_steps=4):
+        history = np.zeros((history_steps, 7))
+        for i, ts in enumerate(range(t, max(self.first_timestep, t - history_steps), -1)):
+            history[history_steps-i-1] = self.deserialize_state(self.get_state_at(ts))
+        return history
+
+    def get_futures_at(self, t, future_steps=4):
+        futures = np.zeros((future_steps, 7))
+        for i, ts in enumerate(range(t+1, min(t+future_steps+1, self.last_timestep))):
+            futures[i] = self.deserialize_state(self.get_state_at(ts))
+        return futures
 
     def cv_prediction(self, pred_steps=4):
 

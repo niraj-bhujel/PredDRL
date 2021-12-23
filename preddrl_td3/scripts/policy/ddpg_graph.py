@@ -25,7 +25,7 @@ class Actor(nn.Module):
 
         net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states])
         net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
-
+        
         self.gcn = GatedGCNNet(net_params, 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
@@ -34,7 +34,7 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['hidden_dim'], action_dim*args.future_steps, hidden_size=net_params['mlp'])
+        self.out = MLP(net_params['hidden_dim'], action_dim*args.pred_steps, hidden_size=net_params['mlp'])
         
         self.max_action = max_action
         self.input_states = args.input_states
@@ -59,7 +59,7 @@ class Critic(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.future_steps
+        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.pred_steps
         net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
 
         self.gcn = GatedGCNNet(net_params, 

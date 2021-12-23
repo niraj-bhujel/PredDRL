@@ -46,8 +46,13 @@ class Trainer:
         self._save_summary_interval = args.save_summary_interval
         self._normalize_obs = args.normalize_obs
         self._logdir = args.logdir
+
+        self._input_states = args.input_states
+        self._pred_states = args.pred_states
         self._future_steps = args.future_steps
         self._history_steps = args.history_steps
+        self._pred_steps = args.pred_steps
+        
         # replay buffer
         self._buffer_size = args.buffer_size
         self._use_prioritized_rb = args.use_prioritized_rb
@@ -157,6 +162,8 @@ class Trainer:
         if self._resume_training:
             total_steps = self._policy.iteration
 
+        self._env.initialize_agents()
+        
         obs = self._env.reset()
 
         ##### Begin Training ###########
@@ -169,7 +176,8 @@ class Trainer:
             if total_steps < self._policy.n_warmup:
                 robot_action = self._env.sample_robot_action(self._sampling_method)
                 action = obs.ndata['future_vel'].numpy()
-                action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._future_steps)
+                action = action.reshape(-1, self._future_steps, 2)[:, :self._pred_steps, :].reshape(-1, self._pred_steps*2)
+                action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._pred_steps)
 
             else:
                 action = self._policy.get_action(obs) #(num_nodes, future*2)
@@ -184,8 +192,10 @@ class Trainer:
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
                 obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
                 gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()
-                pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
-                plot_traj(obs_traj, gt_traj, pred_traj[:, None, :, :], 
+                # pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+                plot_traj(obs_traj, gt_traj, 
+                          pred_traj = None,
+                          # pred_traj = pred_traj[:, None, :, :], 
                           ped_ids=obs.ndata['tid'].numpy(), 
                           extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
                           limit_axes=True, legend=True, counter=total_steps, 
@@ -404,6 +414,7 @@ if __name__ == '__main__':
     state_dims['future_pos'] = args.future_steps * state_dims['pos']
     state_dims['future_vel'] = args.future_steps * state_dims['vel']
     state_dims['future_disp'] = args.future_steps * state_dims['pos']
+
     args.state_dims = state_dims
 
     # load net params
@@ -416,13 +427,14 @@ if __name__ == '__main__':
     # prepare output dir
     if not args.evaluate:
         # prepare log directory
-        suffix = '_'.join(['run%d'%args.run,
-                          '%s'%args.policy,
-                        'warmup_%d'%args.n_warmup,
+        suffix = '_'.join(['%s'%args.policy,
+                        'warm_%d'%args.n_warmup,
                         'bs%d'%args.batch_size,
                         'ht%d'%args.history_steps,
                         'ft%d'%args.future_steps,
-                        'input_%s'%'_'.join(args.input_states),
+                        'pt%d'%args.pred_steps,
+                        'in_%s'%'_'.join(args.input_states),
+                        'pred_%s'%'_'.join(args.pred_states),
                         'h%d'%net_params['hidden_dim'],
                         'l%d'%net_params['num_layers'],
                         ])

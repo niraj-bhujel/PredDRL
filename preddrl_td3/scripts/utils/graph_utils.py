@@ -141,11 +141,11 @@ def create_graph(nodes, state_dims):
         nodes_data['state'].append(node.state)
 
         nodes_data['history_pos'].append(node.history[:, :2])
-        nodes_data['history_vel'].append(node.history[:, 2:])
+        nodes_data['history_vel'].append(node.history[:, 2:4])
         nodes_data['history_disp'].append(node.history[:, :2]-node.pos)
 
         nodes_data['future_pos'].append(node.futures[:, :2])
-        nodes_data['future_vel'].append(node.futures[:, 2:])
+        nodes_data['future_vel'].append(node.futures[:, 2:4])
         nodes_data['future_disp'].append(node.pos - node.futures[:, :2])
 
         nodes_data['dt'].append(node.time_step)
