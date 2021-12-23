@@ -78,7 +78,7 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref', 'future_vel'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref'],
                         help='Input states for nodes')
     parser.add_argument('--pred_states', nargs='+', default=['vel'],
                         help='Prediction states of the nodes')

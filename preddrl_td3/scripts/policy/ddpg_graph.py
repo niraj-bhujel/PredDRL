@@ -81,7 +81,7 @@ class Critic(nn.Module):
         h = torch.cat([h, action], dim=-1)
         g, h, _ = self.gcn(g, h, e)
 
-        h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
+        # h = dgl.readout_nodes(g, 'h', op='mean') # (bs, 1)
 
         h = self.out(h) 
         

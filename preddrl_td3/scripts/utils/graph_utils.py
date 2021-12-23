@@ -7,7 +7,7 @@ import numpy as np
 from collections import defaultdict
 
 
-node_type_list = ['robot', 'pedestrian', 'obstacle', 'robot_goal']
+node_type_list = ['robot', 'robot_goal', 'pedestrian', 'obstacle']
 
 # define edges direction, and threshold value for interaction distance
 interaction_direction = {
@@ -47,6 +47,29 @@ def min_neighbor_distance(g):
     else:
         # no nodes nearby, thus infinite distance
         return 1e3
+
+def remove_uncommon_nodes(g1, g2):
+    g1_tid = g1.ndata['tid'].cpu().numpy()
+    g2_tid = g2.ndata['tid'].cpu().numpy()
+
+    comm_tid = np.sort(np.intersect1d(g1_tid, g2_tid))
+
+    # remove uncommon nodes from g1
+    g1_redundant_tid = [tid for tid in g1_tid if tid not in comm_tid]
+    g1_redundant_nodes = [g1.nodes()[g1.ndata['tid']==tid] for tid in g1_redundant_tid]
+    g1_node_idx = [i for i, node in enumerate(g1.nodes()) if node not in g1_redundant_nodes]
+    
+    if len(g1_redundant_nodes)>0:
+        g1.remove_nodes(g1_redundant_nodes)
+
+    g2_redundant_tid = [tid for tid in g2_tid if tid not in comm_tid]
+    g2_redundant_nodes = [g2.nodes()[g2.ndata['tid']==tid] for tid in g2_redundant_tid]
+    g2_node_idx = [i for i, node in enumerate(g2.nodes()) if node not in g2_redundant_nodes]
+    
+    if len(g2_redundant_nodes)>0:
+        g2.remove_nodes(g2_redundant_nodes)
+
+    return g1, g2, g1_node_idx, g2_node_idx
 
 def n1_has_n2_in_sight(n1, n2, fov=57):
     '''

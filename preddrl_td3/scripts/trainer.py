@@ -6,6 +6,7 @@ import shutil
 import random
 import numpy as np
 from collections import deque
+from copy import deepcopy, copy
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 import pickle
@@ -27,7 +28,7 @@ from misc.prepare_output_dir import prepare_output_dir
 from misc.initialize_logger import initialize_logger
 from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_ckpt, load_ckpt, copy_src, create_new_dir
-from utils.graph_utils import node_type_list
+from utils.graph_utils import node_type_list, remove_uncommon_nodes
 from vis.vis_graph import network_draw, data_stats
 from vis.vis_traj import plot_traj, data_stats
 from utils.timer import Timer
@@ -48,6 +49,7 @@ class Trainer:
         self._logdir = args.logdir
 
         self._input_states = args.input_states
+        self._input_edges = args.input_edges
         self._pred_states = args.pred_states
         self._future_steps = args.future_steps
         self._history_steps = args.history_steps
@@ -173,29 +175,26 @@ class Trainer:
             if self._verbose>0:
                 print('Step - {}/{}'.format(total_steps, self._max_steps))    
 
+            robot_idx = obs.ndata['cid']==node_type_list.index('robot')
             if total_steps < self._policy.n_warmup:
                 robot_action = self._env.sample_robot_action(self._sampling_method)
                 action = obs.ndata['future_vel'].numpy()
                 action = action.reshape(-1, self._future_steps, 2)[:, :self._pred_steps, :].reshape(-1, self._pred_steps*2)
-                action[obs.ndata['cid']==node_type_list.index('robot')] = np.tile(robot_action, self._pred_steps)
+                action[robot_idx] = np.tile(robot_action, self._pred_steps)
 
             else:
                 action = self._policy.get_action(obs) #(num_nodes, future*2)
 
-            next_obs, reward, done, success = self._env.step(action, obs)          
-
-            if isinstance(next_obs, DGLHeteroGraph):
-                robot_action = action[obs.ndata['cid']==node_type_list.index('robot')].flatten()
-            else:
-                robot_action = action
+            next_obs, reward, done, success = self._env.step(action, obs)
 
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
                 obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
-                gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()
-                # pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._future_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+                gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()[:, :self._pred_steps, :]
+                pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._pred_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+                # print(gt_traj.shape, pred_traj.shape)
                 plot_traj(obs_traj, gt_traj, 
-                          pred_traj = None,
-                          # pred_traj = pred_traj[:, None, :, :], 
+                          # pred_traj = None,
+                          pred_traj = pred_traj[:, None, :, :], 
                           ped_ids=obs.ndata['tid'].numpy(), 
                           extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
                           limit_axes=True, legend=True, counter=total_steps, 
@@ -203,7 +202,7 @@ class Trainer:
 
 
             if self._vis_graph and total_steps<100:
-                network_draw(next_obs,
+                network_draw(deepcopy(next_obs),
                              show_node_label=True, node_labels=['tid'],
                              show_edge_labels=False, edge_labels=['dist'],
                              show_legend=False,
@@ -213,28 +212,33 @@ class Trainer:
                              show_dirction=True,
                              extent = data_stats[self._dataset]
                              )
-                # pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
+                pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
 
-            # update buffer/memory
-            self.replay_buffer.add([obs, action, reward, next_obs, done])
+            self.writer.add_scalar(self._policy.policy_name + "/robot_act0", action[robot_idx].flatten()[0], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/robot_act1", action[robot_idx].flatten()[1], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/robot_reward", reward[robot_idx], total_steps)
+
+            # remove uncommon nodes
+            _obs, _next_obs, _obs_nidx, _next_obs_nidx = remove_uncommon_nodes(deepcopy(obs), deepcopy(next_obs))
+
+            assert _obs.number_of_nodes() == _next_obs.number_of_nodes(), "obs is not similar to next_obs"
+            
+            self.replay_buffer.add([_obs, action[_obs_nidx], reward[_obs_nidx], _next_obs, done[_obs_nidx]])
+            # self.replay_buffer.add([obs, action, reward, next_obs, done])
 
             if total_steps==self._policy.n_warmup-1:                
                 pickle.dump(self.replay_buffer, open(self._memory_path + '.pkl', 'wb'))
 
-            self.writer.add_scalar(self._policy.policy_name + "/act_0", robot_action[0], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/act_1", robot_action[1], total_steps)
-            self.writer.add_scalar(self._policy.policy_name + "/reward", reward, total_steps)
-
             episode_steps += 1
-            episode_return += reward
+            episode_return += reward[robot_idx]
             total_steps += 1
             fps = episode_steps / (time.perf_counter() - episode_start_time)
 
             # update
             obs = next_obs
 
-            time_out = episode_steps == self._episode_max_steps
-            if done or time_out:
+            time_out = episode_steps==self._episode_max_steps
+            if done[robot_idx] or time_out:
                 obs = self._env.reset()
 
                 episode_steps = 0
@@ -243,13 +247,13 @@ class Trainer:
 
             if total_steps > self._policy.n_warmup-1:
                 # count success rate only after warmup
-                if success:
+                if success[robot_idx]:
                     n_success += 1
 
                 if time_out:
                     n_timeout += 1
 
-                if done or success or time_out:
+                if done[robot_idx] or success[robot_idx] or time_out:
                     n_episode += 1
 
                     self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, n_success/n_episode))
@@ -259,8 +263,6 @@ class Trainer:
                 self.writer.add_scalar("Common/timeout_rate", n_timeout/n_episode, total_steps)
                 self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
                 self.writer.add_scalar("Common/discomforts", self._env.discomforts, total_steps)
-                self.writer.add_scalar("Common/dones", int(done), total_steps)
-
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
@@ -324,8 +326,8 @@ class Trainer:
 
         # graph state  only
         elif isinstance(obs[0], DGLHeteroGraph):
-            obs = dgl.batch(obs).to(device)
-            next_obs = dgl.batch(next_obs).to(device)
+            obs = dgl.batch(obs, ndata=self._input_states + ['max_action'], edata=self._input_edges).to(device)
+            next_obs = dgl.batch(next_obs, ndata=self._input_states + ['max_action'], edata=self._input_edges).to(device)
 
         # laser state only
         elif isinstance(obs[0], list):
@@ -336,8 +338,8 @@ class Trainer:
             raise Exception("Data type not known!")
 
         act = torch.Tensor(np.concatenate(act)).to(device)
-        rew = torch.Tensor(np.array(rew)).view(-1, 1).to(device)
-        done = torch.Tensor(np.array(done)).view(-1, 1).to(device)
+        rew = torch.Tensor(np.concatenate(rew)).view(-1, 1).to(device)
+        done = torch.Tensor(np.concatenate(done)).view(-1, 1).to(device)
 
         if self._use_prioritized_rb:
             weights = torch.Tensor(np.stack(weights, 0)).to(device)

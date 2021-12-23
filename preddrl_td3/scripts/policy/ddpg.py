@@ -123,7 +123,7 @@ class DDPG(OffPolicyAgent):
         return action.squeeze(0)
 
     def train(self, states, actions, next_states, rewards, dones, weights):
-        # print('states:', states.number_of_nodes(), 'action_batch:', actions.shape, 'reward_batch:', rewards.shape, 'done_batch:', dones.shape, 'weights_batch', weights.shape)
+        # print('states:', states.number_of_nodes(), 'actions:', actions.shape, 'rewards:', rewards.shape, 'dones:', dones.shape, 'weights', weights.shape)
 
         self.iteration +=1 
 
@@ -137,11 +137,12 @@ class DDPG(OffPolicyAgent):
 
             self.writer.add_scalar(self.policy_name + "/actor_loss", actor_loss, self.iteration)
             self.writer.add_scalar(self.policy_name + "/critic_loss", critic_loss, self.iteration)
+            self.writer.add_scalar(self.policy_name + "/batch_rewards", rewards.mean().item(), self.iteration)
 
-            print('batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
-                                                                                        rewards.mean().item(),
-                                                                                        actor_loss,
-                                                                                        critic_loss,))
+            print('STEP:{}, batch_rewards:{:.2f}, actor_loss:{:.5f}, critic_loss:{:.5f}'.format(self.iteration, 
+                                                                                                rewards.mean().item(),
+                                                                                                actor_loss,
+                                                                                                critic_loss,))
 
         return actor_loss, critic_loss, td_errors
 

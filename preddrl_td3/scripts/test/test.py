@@ -12,8 +12,9 @@ import pickle
 import warnings
 warnings.filterwarnings("ignore")
 
-
-gs = pickle.load(open("/home/dl-asoro/Desktop/PredDRL/preddrl_td3/results/2021_12_16_run0_ddpg_graph_warmup_20_bs10_input_history_disp_vel_vpref_h256_l2_pred_future/graphs/train/step1_episode_step0.pkl", "rb"))
+g_path = '/home/loc/preddrl_ws/src/preddrl_td3/results/2021_12_24_ddpg_graph_warm_20_bs10_ht4_ft4_pt4_in_pos_vpref_pred_vel_h256_l2/vis_graphs/train'
+for file in os.listdir(g_path):
+    g = pickle.load(open(g_path + "/" + file, "rb"))
 
 print(gs.ndata['cid'])
 robot_node = state.nodes()[gs.ndata['cid']==node_type_list.index('robot')]

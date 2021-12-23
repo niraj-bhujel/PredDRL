@@ -3,7 +3,7 @@ import math
 import random
 import torch
 import numpy as np
-from copy import deepcopy
+from copy import deepcopy, copy
 
 from gym import spaces
 from gym.utils import seeding
@@ -76,8 +76,8 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_distance = 15.
-        self.last_goal_distance = 100.
+        self.max_goal_dist = 15.
+        self.last_goal_dist = 100.
 
         self.global_step = 0
         self.frame_num = 0
@@ -147,11 +147,11 @@ class Env:
         else:
             t = self.frame_num
 
-        curr_peds = [ped for ped in self.pedestrians if t>=ped.first_timestep and t<ped.last_timestep]
+        self.pedestrians_list = [ped for ped in self.pedestrians if t>=ped.first_timestep and t<ped.last_timestep]
 
         ped_states = {}
         # update action of the current peds
-        for ped in curr_peds:
+        for ped in self.pedestrians_list:
 
             # history
             ped.history = ped.get_history_at(t, self.history_steps)
@@ -171,17 +171,22 @@ class Env:
         if self.spawn_pedestrians:
                 self.pedestrian_spawnner.respawn(ped_states)
             
-        return curr_peds
 
-    def update_agents(self, action=(0., 0.)):
+    def update_robot_goal(self, ):
+        # update robot goal node
+        self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
+        self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
+        self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.future_steps)])
+        self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.history_steps)])
+
+    def update_robot(self, robot_action):
 
         # update robot state
         self.robot.update_history(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
         self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
-        self.robot.set_action(action)
-
+        self.robot.set_action(robot_action)
         # update robot history
-        self.robot.set_history(self.robot.get_history(self.history_steps))
+        self.robot.history = self.robot.get_history(self.history_steps)
 
         # update robot futures
         self.robot.futures = np.zeros((self.future_steps, 7))
@@ -192,16 +197,12 @@ class Env:
             py = py + vy * self.time_step
             self.robot.futures[t] = (px, py, vx, vy, self.gx, self.gy, math.atan2(vy, vx))
 
-        # update robot goal node
-        self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
-        self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
-        # self.robot_goal.history = self.robot_goal.get_history(self.history_steps)
-        # self.robot_goal.futures = self.robot_goal.get_futures(self.future_steps)
-        self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.future_steps)])
-        self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.history_steps)])
-        
+    def update_agents(self, robot_action=(0., 0.)):
+
+        self.update_robot(robot_action)
+        self.update_robot_goal()
         # update pedestrians
-        self.pedestrians_list = self.updatePedestrians()
+        self.updatePedestrians()
 
         
     def getGraphState(self, ):
@@ -215,80 +216,92 @@ class Env:
     def step(self, action, last_state):
 
         reward = 0
-        done = False
-        success = False
-
-        future_actions = action[last_state.ndata['cid']==node_type_list.index('robot')].reshape(self.pred_steps, 2)
-
-        if self.verbose>0:
-            print('Action:', np.round(future_actions, 3))
-            print("Vpref:", np.round(self.robot.preferred_vel(), 3))
-
-
-        for t in range(self.pred_steps):
-            curr_action = future_actions[t]
-            # step robot
-            vx, vy = curr_action
-            self.position.x = self.position.x + vx*self.time_step
-            self.position.y = self.position.y + vy*self.time_step
-            self.yaw = math.atan2(vy, vx)
-            self.linear.x = vx
-            self.linear.y = vy
-            self.set_robot_pose(self.position, self.yaw)
-
-            self.update_agents(curr_action)
-
-            # compute rewards
-            curr_goal_distance = self.getGoalDistance()
-            reaching_goal = curr_goal_distance < self.goal_threshold
-            too_far = curr_goal_distance > self.max_goal_distance
-
-            robot_ped_dist = [l2norm(ped.pos, self.robot.pos) for ped in self.pedestrians_list]
-            collision = min(robot_ped_dist, default=1e6) < self.collision_threshold+self.robot_radius
-
-            if collision:
-                done = True
-                reward = -100
-                self.collision_times += 1
-                rospy.loginfo("COLLISION !!")
-
-            elif reaching_goal:
-                success = True
-                reward = 100
-                rospy.loginfo('SUCCESS !!')
-                
-            elif too_far:
-                done = True
-                reward = -100
-                rospy.loginfo('TOO FAR !!')
-
-
-            if self.last_goal_distance - curr_goal_distance>0.01:
-                reward += 1
-            else:
-                reward -= 1
-
-            self.discomforts += sum([d<self.discomfort_zone for d in robot_ped_dist])
-
-            self.last_goal_distance = curr_goal_distance
-            self.frame_num += 1
-
-            if success or done:
-                break
 
         # # compute correct action reward for agents
-        gt_action = last_state.ndata['future_vel'].view(-1, self.future_steps, 2).numpy()
-        action_error = np.mean(np.abs(gt_action[:, :self.pred_steps, :] - action.reshape(-1, self.pred_steps, 2)))
-        self.writer.add_scalar("Common/action_error", action_error, self.global_step)
+        gt_action = last_state.ndata['future_vel'].view(-1, self.future_steps, 2)[:, :self.pred_steps, :].numpy()
+        action_error = np.mean(np.abs(gt_action.reshape(-1, self.pred_steps*2) - action), axis=-1, keepdims=True)
+        self.writer.add_scalar("Common/action_error", np.mean(action_error), self.global_step)
         reward -= action_error
 
-        if self.verbose>0:
-            print('Reward:', round(reward, 3))
+        robot_idx = last_state.ndata['cid']==node_type_list.index('robot')
+        goal_mask = last_state.ndata['cid']!=node_type_list.index('robot_goal')
+        goal_mask = goal_mask.numpy().reshape(-1, 1)
+
+        action = action.reshape(-1, self.pred_steps, 2)
+        curr_pos = copy(last_state.ndata['pos'].numpy())
+        last_goal_dist = np.linalg.norm((curr_pos - last_state.ndata['goal'].numpy()), axis=-1, keepdims=True) # (num_nodes, 1)
+        for t in range(self.pred_steps):
+
+            curr_action = action[:, t, :]
+
+            # predicted pos of all nodes
+            curr_pos = curr_pos + curr_action * last_state.ndata['dt'].numpy()
+            
+            robot_action = curr_action[robot_idx].flatten()
+            robot_pos = curr_pos[robot_idx].flatten()
+
+            self.position.x = robot_pos[0]
+            self.position.y = robot_pos[1]
+            self.linear.x = robot_action[0]
+            self.linear.y = robot_action[1]
+            self.yaw = math.atan2(self.linear.y, self.linear.x)
+
+            if self.verbose>0:
+                print('Action:', np.round(robot_action, 3))
+                print("Vpref:", np.round(self.robot.preferred_vel(), 3))
+            
+            self.set_robot_pose(self.position, self.yaw)
+
+            # distance between agents
+            dmat = np.linalg.norm(curr_pos[:, None, :] - curr_pos[None, :, :], axis=-1)
+            min_agent_dist = np.min(dmat + np.diag(np.full(dmat.shape[0], 1e3)), axis=-1, keepdims=True)
+
+            # penalty for collisions for all node
+            collisions = min_agent_dist<self.collision_threshold
+            reward -= collisions*goal_mask*100
+
+            # agent goal distance
+            curr_goal_dist = np.linalg.norm((curr_pos - last_state.ndata['goal'].numpy()), axis=-1, keepdims=True) # (num_nodes, 1)
+            
+            # reward for reaching goal
+            reaching_goal = curr_goal_dist<self.goal_threshold
+            reward += reaching_goal*goal_mask*100
+
+            # penalty for moving too far
+            too_far = curr_goal_dist>self.max_goal_dist
+            reward -= too_far*goal_mask*100
+
+            # reward/penalty for moving toward/away from goal
+            reward += np.where(last_goal_dist-curr_goal_dist>0.01, 1, -1)
+
+            if self.verbose>0:
+                print('Reward:', round(reward.mean(), 3))
+
+            done = too_far + collisions
+            success = reaching_goal
+
+            # init goal if success
+            if reaching_goal[robot_idx]: 
+                self.init_goal()
+            self.update_agents(robot_action=robot_action)
+
+            self.frame_num += 1
+
+            # rewards for robot
+            if reaching_goal[robot_idx]:
+                rospy.loginfo('SUCCESS !!')
+                break
+
+            elif collisions[robot_idx]:
+                self.collision_times += 1
+                rospy.loginfo("COLLISION !!")
+                break
+
+            elif too_far[robot_idx]:
+                rospy.loginfo('TOO FAR !!')
+                break
 
         state = self.getGraphState()
-
-        if success:
-            self.init_goal()
 
         self.global_step+=1
 
