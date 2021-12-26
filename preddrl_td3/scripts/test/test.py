@@ -11,10 +11,16 @@ import pickle
 
 import warnings
 warnings.filterwarnings("ignore")
+run_dir = '../results/'
+run = '2021_12_25_ddpg_graph_warm_200_bs10_ht4_ft4_pt2_in_pos_vpref_pred_vel_h256_l2'
+run_path = os.path.join(run_dir, run, 'vis_graphs/train')
 
-g_path = '/home/loc/preddrl_ws/src/preddrl_td3/results/2021_12_24_ddpg_graph_warm_20_bs10_ht4_ft4_pt4_in_pos_vpref_pred_vel_h256_l2/vis_graphs/train'
-for file in os.listdir(g_path):
-    g = pickle.load(open(g_path + "/" + file, "rb"))
+g = pickle.load(open(run_path + '/step31_episode_step31.pkl',  "rb"))
+#%%
+for file in os.listdir(run_path):
+    if '.pkl' in file:
+        g = pickle.load(open(g_path + "/" + file, "rb"))
+        print(g.node_attr_schemes().keys())
 
 print(gs.ndata['cid'])
 robot_node = state.nodes()[gs.ndata['cid']==node_type_list.index('robot')]

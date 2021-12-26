@@ -19,6 +19,7 @@ from gazebo_msgs.srv import SetModelState
 from spawnner.respawnGoal import RespawnGoal
 from spawnner.respawnPeds import RespawnPedestrians
 from utils.env_utils import *
+from utils.info import *
 
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
@@ -50,22 +51,28 @@ class Env:
         self.state_dims = args.state_dims
         self.pred_states = args.pred_states
 
-        self.gx = 0
-        self.gy = 0
+        self.episode_max_steps = args.episode_max_steps
 
-        self.goal_threshold = 0.3
-        self.collision_threshold = 0.2
+
+        self.goal_threshold = 0.2
 
         self.robot_radius = 0.2
+        self.human_radius = 0.2
+        self.collision_threshold = 0.2
         self.discomfort_zone = 0.4
 
-        self.inital_pos = Point(10.0, 10.0, 0.)
+        self.collision_penalty = -100
+        self.success_reward = 100
+        self.lost_penalty = -100
+        self.discomfort_penalty = -1
+
+        self.inital_pos = (10.0, 10.0)
 
         self.minLinearSpeed = 0.
         self.maxLinearSpeed = 0.7
         self.maxAngularSpeed = 2.
 
-        self.action_space = spaces.Box(low=np.array([-self.minLinearSpeed, -self.minLinearSpeed]), 
+        self.action_space = spaces.Box(low=np.array([self.minLinearSpeed, self.minLinearSpeed]), 
                                        high=np.array([self.maxLinearSpeed, self.maxLinearSpeed]), 
                                        dtype=np.float32)          
 
@@ -76,16 +83,17 @@ class Env:
         self.time_step = 0.25
         self.timer = Timer() # set by trainer
 
-        self.max_goal_dist = 15.
+        self.max_goal_dist = 20.
         self.last_goal_dist = 100.
 
+        self.episode_step = 0
         self.global_step = 0
         self.frame_num = 0
 
         self.collision_times = 0
         self.discomforts = 0
 
-        self.goal_spawnner = RespawnGoal(self.stage, self.gx, self.gy)
+        self.goal_spawnner = RespawnGoal()
 
         self.pedestrian_spawnner = RespawnPedestrians()
 
@@ -102,24 +110,31 @@ class Env:
 
         self.robot_goal = Agent(node_id=98, node_type='robot_goal', time_step=self.time_step)
 
-        if self.stage==7:
-            self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
-                                                            target_frame_rate=2*1/self.time_step,
-                                                            max_peds=40)
-            print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
+        self.pedestrians, self.ped_frames, _  = prepare_data('./preddrl_data/{}.txt'.format(self.dataset), 
+                                                        target_frame_rate=2*1/self.time_step,
+                                                        max_peds=40)
+
+        print("Total pedestrians:{}, Total frames:{}".format(len(self.pedestrians), len(self.ped_frames)))
         
         self.init_goal()
             
 
     def seed(self, seed=None):
-        # 产生一个随机化时需要的种子，同时返回一个np_random对象，支持后续的随机化生成操作
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def getGoalDistance(self):
-        goal_distance = round(math.hypot(self.gx - self.position.x, self.gy - self.position.y), 2)
+    def set_robot_pose(self, position, yaw):
 
-        return goal_distance
+        tmp_state = ModelState()
+        tmp_state.model_name = self.robot_name
+        tmp_state.pose = Pose(position, euler_to_quaternion([0.0, 0.0, yaw]))
+        tmp_state.reference_frame = "world"
+        rospy.wait_for_service("/gazebo/set_model_state")
+        set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+        set_model_state(tmp_state)
+
+        if self.verbose>0:
+            print('Robot pos set to:', round(position.x, 2), round(position.y, 2))
 
     def sample_robot_action(self, policy='uniform'):
         if policy =='uniform':
@@ -137,7 +152,7 @@ class Env:
         return action
 
 
-    def updatePedestrians(self, ):
+    def update_pedestrians(self, masked_peds=[], last_state=None):
         '''
         Get pedestrians at current step, update and return pedestrian states, 
         Meanwhile spawn the current pedestrians to gazebo
@@ -148,7 +163,7 @@ class Env:
             t = self.frame_num
 
         self.pedestrians_list = [ped for ped in self.pedestrians if t>=ped.first_timestep and t<ped.last_timestep]
-
+        self.pedestrians_list = [ped for ped in self.pedestrians_list if ped.id not in masked_peds]
         ped_states = {}
         # update action of the current peds
         for ped in self.pedestrians_list:
@@ -172,37 +187,47 @@ class Env:
                 self.pedestrian_spawnner.respawn(ped_states)
             
 
-    def update_robot_goal(self, ):
+    def update_robot_goal(self, goal_pos):
+        px, py = np.reshape(goal_pos, (2,))
         # update robot goal node
-        self.robot_goal.update_history(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
-        self.robot_goal.set_state(self.gx, self.gy, 0., 0., self.gx, self.gy, theta=0.0)
-        self.robot_goal.futures = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.future_steps)])
-        self.robot_goal.history = np.array([(self.gx, self.gy, 0., 0., self.gx, self.gy, 0.) for _ in range(self.history_steps)])
+        self.robot_goal.update_history(px, py, 0., 0., px, py, theta=0.0)
+        self.robot_goal.set_state(px, py, 0., 0., px, py, theta=0.0)
+        self.robot_goal.futures = np.array([(px, py, 0., 0., px, py, 0.) for _ in range(self.future_steps)])
+        self.robot_goal.history = np.array([(px, py, 0., 0., px, py, 0.) for _ in range(self.history_steps)])
 
-    def update_robot(self, robot_action):
+    def update_robot(self, robot_pos, robot_action=(0.0, 0.0)):
 
-        # update robot state
-        self.robot.update_history(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
-        self.robot.set_state(self.position.x, self.position.y, self.linear.x, self.linear.y, self.gx, self.gy, theta=self.yaw)
+        px, py = np.reshape(robot_pos, (2,))
+        vx, vy = np.reshape(robot_action, (2,))
+        yaw = math.atan2(vy, vx)
+        gx, gy = self.robot_goal.pos
+
+        # set robot pose for gazebo
+        self.set_robot_pose(Point(px, py, 0.), yaw)
+
+        # update robot node state
+        self.robot.update_history(px, py, vx, vy, gx, gy, yaw)
+        self.robot.set_state(px, py, vx, vy, gx, gy, yaw)
         self.robot.set_action(robot_action)
-        # update robot history
+
+        # update robot node history
         self.robot.history = self.robot.get_history(self.history_steps)
 
-        # update robot futures
+        # update robot node futures
         self.robot.futures = np.zeros((self.future_steps, 7))
         px, py = self.robot.pos
         vx, vy = self.robot.preferred_vel()
         for t in range(self.future_steps):
             px = px + vx * self.time_step
             py = py + vy * self.time_step
-            self.robot.futures[t] = (px, py, vx, vy, self.gx, self.gy, math.atan2(vy, vx))
+            self.robot.futures[t] = (px, py, vx, vy, gx, gy, math.atan2(vy, vx))
 
     def update_agents(self, robot_action=(0., 0.)):
 
         self.update_robot(robot_action)
         self.update_robot_goal()
         # update pedestrians
-        self.updatePedestrians()
+        self.update_pedestrians()
 
         
     def getGraphState(self, ):
@@ -214,7 +239,7 @@ class Env:
 
 
     def step(self, action, last_state):
-
+        
         reward = 0
 
         # # compute correct action reward for agents
@@ -223,9 +248,9 @@ class Env:
         self.writer.add_scalar("Common/action_error", np.mean(action_error), self.global_step)
         reward -= action_error
 
-        robot_idx = last_state.ndata['cid']==node_type_list.index('robot')
-        goal_mask = last_state.ndata['cid']!=node_type_list.index('robot_goal')
-        goal_mask = goal_mask.numpy().reshape(-1, 1)
+        robot_idx = (last_state.ndata['cid']==node_type_list.index('robot')).nonzero(as_tuple=False).item()
+        goal_idx = (last_state.ndata['cid']==node_type_list.index('robot_goal')).nonzero(as_tuple=False).item()
+        goal_mask = (last_state.ndata['cid']!=node_type_list.index('robot_goal')).numpy().reshape(-1, 1)
 
         action = action.reshape(-1, self.pred_steps, 2)
         curr_pos = copy(last_state.ndata['pos'].numpy())
@@ -237,117 +262,124 @@ class Env:
             # predicted pos of all nodes
             curr_pos = curr_pos + curr_action * last_state.ndata['dt'].numpy()
             
-            robot_action = curr_action[robot_idx].flatten()
-            robot_pos = curr_pos[robot_idx].flatten()
-
-            self.position.x = robot_pos[0]
-            self.position.y = robot_pos[1]
-            self.linear.x = robot_action[0]
-            self.linear.y = robot_action[1]
-            self.yaw = math.atan2(self.linear.y, self.linear.x)
+            robot_action = curr_action[robot_idx]
+            robot_pos = curr_pos[robot_idx]
 
             if self.verbose>0:
                 print('Action:', np.round(robot_action, 3))
                 print("Vpref:", np.round(self.robot.preferred_vel(), 3))
             
-            self.set_robot_pose(self.position, self.yaw)
-
             # distance between agents
-            dmat = np.linalg.norm(curr_pos[:, None, :] - curr_pos[None, :, :], axis=-1)
-            min_agent_dist = np.min(dmat + np.diag(np.full(dmat.shape[0], 1e3)), axis=-1, keepdims=True)
+            agent_dist = np.linalg.norm(curr_pos[:, None, :] - curr_pos[None, :, :], axis=-1)
+            agent_dist[robot_idx, goal_idx] = 1e3
+            agent_dist[goal_idx, robot_idx] = 1e3
+            min_agent_dist = np.min(agent_dist+np.diag(np.full(agent_dist.shape[0], 1e3)), axis=-1, keepdims=True)
 
             # penalty for collisions for all node
-            collisions = min_agent_dist<self.collision_threshold
-            reward -= collisions*goal_mask*100
+            collisions = (min_agent_dist<self.collision_threshold)*goal_mask
+            reward += collisions*self.collision_penalty
 
             # agent goal distance
             curr_goal_dist = np.linalg.norm((curr_pos - last_state.ndata['goal'].numpy()), axis=-1, keepdims=True) # (num_nodes, 1)
             
             # reward for reaching goal
-            reaching_goal = curr_goal_dist<self.goal_threshold
-            reward += reaching_goal*goal_mask*100
+            reaching_goal = (curr_goal_dist<self.goal_threshold)*goal_mask
+            reward += reaching_goal*self.success_reward
 
             # penalty for moving too far
-            too_far = curr_goal_dist>self.max_goal_dist
-            reward -= too_far*goal_mask*100
+            too_far = (curr_goal_dist>self.max_goal_dist)*goal_mask
+            reward += too_far*self.lost_penalty
 
             # reward/penalty for moving toward/away from goal
-            reward += np.where(last_goal_dist-curr_goal_dist>0.01, 1, -1)
+            reward += np.where(last_goal_dist-curr_goal_dist>0.01, 1, -1)*goal_mask
+
+            # discomforts
+            discomforts = (min_agent_dist<self.discomfort_zone)*goal_mask
+            # reward += discomforts*self.discomfort_penalty
 
             if self.verbose>0:
-                print('Reward:', round(reward.mean(), 3))
+                print('\n Reward:{:.3f}***'.format(reward.sum()))
+                # print('collisions:', {tid:collisions[last_state.ndata['tid']==tid].flatten()[0]*self.collision_penalty for tid in sorted(last_state.ndata['tid'].numpy())})
+                # print('success:', {tid:reaching_goal[last_state.ndata['tid']==tid].flatten()[0]*self.success_reward for tid in sorted(last_state.ndata['tid'].numpy())})
+                # print('too_far:', {tid:too_far[last_state.ndata['tid']==tid].flatten()[0]*self.lost_penalty for tid in sorted(last_state.ndata['tid'].numpy())})
+                # print('rewards:', {tid:reward[last_state.ndata['tid']==tid].flatten()[0] for tid in sorted(last_state.ndata['tid'].numpy())})
 
-            done = too_far + collisions
-            success = reaching_goal
+            if self.episode_step>=self.episode_max_steps:
+                info = Timeout()
+                rospy.loginfo(str(info))
+                self.episode_step = 0
 
-            # init goal if success
-            if reaching_goal[robot_idx]: 
+            elif reaching_goal[robot_idx]:
+                info = ReachGoal()
+                rospy.loginfo(str(info))
+
                 self.init_goal()
-            self.update_agents(robot_action=robot_action)
-
-            self.frame_num += 1
-
-            # rewards for robot
-            if reaching_goal[robot_idx]:
-                rospy.loginfo('SUCCESS !!')
-                break
+                self.episode_step = 0
 
             elif collisions[robot_idx]:
-                self.collision_times += 1
-                rospy.loginfo("COLLISION !!")
-                break
+                info = Collision()
+                rospy.loginfo(str(info))
 
             elif too_far[robot_idx]:
-                rospy.loginfo('TOO FAR !!')
+                info = Lost()
+                rospy.loginfo(str(info))
+
+            elif discomforts[robot_idx]:
+                info = Discomfort()
+
+            else:
+                info = Nothing()
+
+            # NOTE: update robot after updating goal if success
+            self.update_robot(robot_pos, robot_action)
+
+            # remove success node in the next state
+            success_nodes = last_state.ndata['tid'][reaching_goal.flatten()].numpy().tolist()
+            self.update_pedestrians(success_nodes)
+
+            self.frame_num += 1
+            self.episode_step += 1
+
+            if isinstance(info, Collision) or isinstance(info, Lost) or isinstance(info, ReachGoal) or isinstance(info, Timeout):
                 break
 
+        done = too_far + collisions
+
+        success = reaching_goal
+
         state = self.getGraphState()
+        self.global_step += 1
 
-        self.global_step+=1
+        return state, reward, done, success, info
 
-        return state, reward, done, success
-
-    def init_goal(self, position_check=False, test=False):
-        self.robot_goal.reset()
-        self.gx, self.gy = self.goal_spawnner.getPosition(position_check, test)
-
-        if self.goal_spawnner.modelName in self.model_states.name:
-        # if self.goal_spawnner.check_model:
+    def init_goal(self, position_check=False):
+        # delete existing goal from gazebo
+        if self.goal_spawnner.name in self.model_states.name:
             self.goal_spawnner.deleteGoal()
-        
+
+        # get new pose for the goal
+        self.goal_spawnner.setPosition(position_check)
+
+        # spwan new goal
         self.goal_spawnner.spawnGoal()
 
-        rospy.loginfo("New Goal : (%.1f, %.1f)", self.gx, self.gy)
+        # reset robot_goal node 
+        self.robot_goal.reset()
 
-    def set_robot_pose(self, position, yaw):
+        # update robot_goal node with new goal
+        self.update_robot_goal((self.goal_spawnner.pose.position.x, self.goal_spawnner.pose.position.y))
 
-        tmp_state = ModelState()
-        tmp_state.model_name = "turtlebot3_burger"
-        tmp_state.pose = Pose(position, euler_to_quaternion([0.0, 0.0, yaw]))
-        tmp_state.reference_frame = "world"
-        rospy.wait_for_service("/gazebo/set_model_state")
-        set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
-        set_model_state(tmp_state)
-
-        if self.verbose>0:
-            print('Robot pos set to:', round(position.x, 2), round(position.y, 2))
-
-    def reset(self, initGoal=False):
-        print('Resetting env ... ')
-
+    def reset(self, ):
+        print('Resetting ... ')
+        self.episode_step = 0
         # reset robot history
         self.robot.reset()
 
-        # reset current state
-        self.position = deepcopy(self.inital_pos)
-        self.yaw = random.uniform(0, 3.14)
-        self.linear = Vector3(0., 0., 0.)
-        # NOTE: Goal must be updated before computing robot heading     
-        # self.heading = compute_heading(self.position.x, self.position.y, self.yaw, self.gx, self.gy) 
-        self.set_robot_pose(self.position, self.yaw)
+        # update robot
+        self.update_robot(self.inital_pos)
 
-        # update agent before getting state
-        self.update_agents()
+        # update pedestrians
+        self.update_pedestrians()
 
         state = self.getGraphState()
 

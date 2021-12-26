@@ -88,6 +88,8 @@ def get_argument(parser=None):
                         help='Inter node disances, dist (l2norm) or diff (l1norm)')
     parser.add_argument('--vis_graph', action='store_true', default=False,
                         help='Plot graph during training step. Plot in output_dir/graphs/')
+    parser.add_argument('--save_graph', action='store_true', default=False,
+                        help='Save original graph . Plot in output_dir/graphs/')
     parser.add_argument('--vis_traj', action='store_true', default=False,
                         help='Plot trajectory during training step. Plot in output_dir/plots/') 
     parser.add_argument('--vis_traj_interval', type=int, default=100,

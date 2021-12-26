@@ -5,10 +5,12 @@ import logging
 import shutil
 import random
 import numpy as np
-from collections import deque
-from copy import deepcopy, copy
+
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
+
+from collections import deque
+from copy import deepcopy, copy
 import pickle
 
 import torch
@@ -32,6 +34,7 @@ from utils.graph_utils import node_type_list, remove_uncommon_nodes
 from vis.vis_graph import network_draw, data_stats
 from vis.vis_traj import plot_traj, data_stats
 from utils.timer import Timer
+from utils.info import *
 from buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 
@@ -82,6 +85,7 @@ class Trainer:
         self._dataset = args.dataset
 
         self._vis_graph = args.vis_graph
+        self._save_graph = args.save_graph
         self._vis_traj = args.vis_traj
         self._vis_traj_interval = args.vis_traj_interval
 
@@ -115,7 +119,7 @@ class Trainer:
                                                                          policy.n_warmup, 
                                                                          args.sampling_method)
         # graph visualization
-        if self._vis_graph:
+        if self._vis_graph or self._save_graph:
             self._vis_graph_dir = create_new_dir(self._output_dir + '/vis_graphs/{}/'.format(phase), clean=True)
 
         if self._vis_traj:
@@ -137,21 +141,18 @@ class Trainer:
 
     def __call__(self):
         print('Begin training ...')
+
         total_steps = 0
         episode_steps = 0
         episode_return = 0
         
         n_episode = 1
         n_success = 0
+        n_collision = 0
+        n_discomfort = 0
         n_timeout = 0
-        success_rate = 0
 
-        actor_loss = 0
-        critic_loss = 0
-
-        episode_start_time = time.perf_counter()
         
-
         if self._load_memory:
             print('Loading memory ...', self._memory_path)
             try:
@@ -185,7 +186,7 @@ class Trainer:
             else:
                 action = self._policy.get_action(obs) #(num_nodes, future*2)
 
-            next_obs, reward, done, success = self._env.step(action, obs)
+            next_obs, reward, done, success, info = self._env.step(action, deepcopy(obs))
 
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
                 obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
@@ -203,16 +204,16 @@ class Trainer:
 
             if self._vis_graph and total_steps<100:
                 network_draw(deepcopy(next_obs),
-                             show_node_label=True, node_labels=['tid'],
+                             show_node_labels=True, node_labels=['tid'],
                              show_edge_labels=False, edge_labels=['dist'],
                              show_legend=False,
                              fsuffix = 'episode_step%d'%episode_steps,
                              counter=total_steps,
                              save_dir=self._vis_graph_dir, 
-                             show_dirction=True,
-                             extent = data_stats[self._dataset]
+                             extent = data_stats[self._dataset],
                              )
-                pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
+            if self._save_graph and total_steps<100:
+                pickle.dump(next_obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(total_steps, episode_steps), "wb"))
 
             self.writer.add_scalar(self._policy.policy_name + "/robot_act0", action[robot_idx].flatten()[0], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/robot_act1", action[robot_idx].flatten()[1], total_steps)
@@ -232,37 +233,41 @@ class Trainer:
             episode_steps += 1
             episode_return += reward[robot_idx]
             total_steps += 1
-            fps = episode_steps / (time.perf_counter() - episode_start_time)
 
             # update
             obs = next_obs
 
-            time_out = episode_steps==self._episode_max_steps
-            if done[robot_idx] or time_out:
+            if isinstance(info, Collision) or isinstance(info, Lost) or isinstance(info, Timeout):
                 obs = self._env.reset()
-
-                episode_steps = 0
+                # reset episode
+                episode_steps = 0 
                 episode_return = 0
-                episode_start_time = time.perf_counter()
 
             if total_steps > self._policy.n_warmup-1:
                 # count success rate only after warmup
-                if success[robot_idx]:
+                if isinstance(info, ReachGoal):
                     n_success += 1
 
-                if time_out:
+                if isinstance(info, Collision):
+                    n_collision += 1
+
+                if isinstance(info, Timeout):
                     n_timeout += 1
 
-                if done[robot_idx] or success[robot_idx] or time_out:
+                if isinstance(info, Discomfort):
+                    n_discomfort += 1
+
+                if isinstance(info, Collision) or isinstance(info, Lost) or isinstance(info, Timeout) or isinstance(info, ReachGoal):
                     n_episode += 1
 
                     self.logger.info("Total Steps: {}, Episode: {}, Success Rate:{:.2f}".format(total_steps, n_episode, n_success/n_episode))
 
+
                 self.writer.add_scalar("Common/episode_return", episode_return, total_steps)
                 self.writer.add_scalar("Common/success_rate", n_success/n_episode, total_steps)
                 self.writer.add_scalar("Common/timeout_rate", n_timeout/n_episode, total_steps)
-                self.writer.add_scalar("Common/collisions_rate", self._env.collision_times/n_episode, total_steps)
-                self.writer.add_scalar("Common/discomforts", self._env.discomforts, total_steps)
+                self.writer.add_scalar("Common/collisions_rate", n_collision/n_episode, total_steps)
+                self.writer.add_scalar("Common/discomfort_rate", n_discomfort/total_steps, total_steps)
 
                 if total_steps % self._policy.update_interval==0 and len(self.replay_buffer)>self._policy.batch_size:
 
