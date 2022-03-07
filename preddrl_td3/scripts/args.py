@@ -21,7 +21,7 @@ def get_argument(parser=None):
                         help='Number of experiments')
     parser.add_argument('--show_progress', action='store_true',
                         help='Call `render` in training process')
-    parser.add_argument('--save_model_interval', type=int, default=int(5e3),
+    parser.add_argument('--save_model_interval', type=int, default=int(1e3),
                         help='Interval to save model')
     parser.add_argument('--save_summary_interval', type=int, default=int(1e3),
                         help='Interval to save summary')
@@ -78,14 +78,14 @@ def get_argument(parser=None):
                         default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref', 'history_vel'],
                         help='Input states for nodes')
-    parser.add_argument('--pred_states', nargs='+', default=['vel'],
-                        help='Prediction states of the nodes')
-    parser.add_argument('--input_edges', nargs='+', default=['diff', 'dist'], 
-                        help='Inter node disances, dist (l2norm) or diff (l1norm)')
-    parser.add_argument('--pred_edges', nargs='+', default=['dist'], 
-                        help='Inter node disances, dist (l2norm) or diff (l1norm)')
+    parser.add_argument('--pred_states', nargs='+', default=['future_vel'],
+                        help='Prediction states for nodes')
+    parser.add_argument('--input_edges', nargs='+', default=['history_dist'], 
+                        help='Input states for edge')
+    parser.add_argument('--pred_edges', nargs='+', default=['future_dist'], 
+                        help='Prediction state for edge')
     parser.add_argument('--vis_graph', action='store_true', default=False,
                         help='Plot graph during training step. Plot in output_dir/graphs/')
     parser.add_argument('--save_graph', action='store_true', default=False,

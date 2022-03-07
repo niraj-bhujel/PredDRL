@@ -1,6 +1,7 @@
 import dgl
 import torch
 import random
+import math
 from copy import copy, deepcopy
 
 import numpy as np
@@ -99,16 +100,19 @@ def create_graph(nodes, state_dims):
     nodes_data = defaultdict(list)
     edges_data = defaultdict(list)
     
+    src_nodes = []
+    dst_nodes = []
     # shuffle nodes
     random.shuffle(nodes)
 
-    src_nodes = []
-    dst_nodes = []
     for i, src_node in enumerate(nodes):
-        
-        num_neighbors = 0
+
         # spatial edges
         for j, dst_node in enumerate(nodes):
+
+            # avoid self loop, but this will add stand alone nodes without edges often resulting to graph creation failure 
+            if i==j:
+                continue
             
             try:
                 rad = interaction_direction[src_node.type, dst_node.type]
@@ -116,7 +120,6 @@ def create_graph(nodes, state_dims):
                 continue
             
             diff = np.array(src_node.pos) - np.array(dst_node.pos)
-
             dist = np.linalg.norm(diff, keepdims=True)
 
             if dist > rad:
@@ -130,14 +133,12 @@ def create_graph(nodes, state_dims):
             edges_data['dist'].extend([dist])
             edges_data['diff'].extend([diff])
 
-            edges_data['rel_vel'].extend([np.array(src_node.vel) - np.array(dst_node.vel)])
+            edges_data['history_dist'].extend(np.linalg.norm(src_node.history[:, :2]-dst_node.history[:, :2], axis=-1, keepdims=True))
+            edges_data['future_dist'].extend(np.linalg.norm(src_node.futures[:, :2]-dst_node.futures[:, :2], axis=-1, keepdims=True))
 
             edges_data['spatial_mask'].extend([1.0])
 
-            num_neighbors+=1
-
-    robot_node = [node for node in nodes if node.type=='robot'][0]
-
+    # Avoid graph creation failures
     # prepare node data, discard node without edges
     valid_nodes = np.unique(src_nodes + dst_nodes)
     for n in valid_nodes:

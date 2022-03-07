@@ -5,12 +5,10 @@ import logging
 import shutil
 import random
 import numpy as np
-
-import matplotlib.pyplot as plt
-plt.switch_backend('agg')
-
 from collections import deque
 from copy import deepcopy, copy
+import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 import pickle
 
 import torch
@@ -48,12 +46,12 @@ class Trainer:
         self._show_progress = args.show_progress
         self._save_model_interval = args.save_model_interval
         self._save_summary_interval = args.save_summary_interval
-        self._normalize_obs = args.normalize_obs
         self._logdir = args.logdir
 
         self._input_states = args.input_states
         self._input_edges = args.input_edges
         self._pred_states = args.pred_states
+        self._pred_edges = args.pred_edges
         self._future_steps = args.future_steps
         self._history_steps = args.history_steps
         self._pred_steps = args.pred_steps
@@ -94,9 +92,6 @@ class Trainer:
         # self.timer = Timer()
         # self.r = rospy.Rate(1/self._env.time_step)
 
-        if self._normalize_obs:
-            assert isinstance(env.observation_space, Box)
-            self._obs_normalizer = EmpiricalNormalizer(shape=env.observation_space.shape)
 
 
 
@@ -114,8 +109,7 @@ class Trainer:
 
         self._load_memory = args.load_memory
         self._memory_path = create_new_dir('./preddrl_td3/memory')
-        self._memory_path += '/{}_stage{}_nwarmup{}_sampling_{}'.format(type(self.replay_buffer).__name__, 
-                                                                         args.stage, 
+        self._memory_path += '/{}_nwarmup{}_sampling_{}'.format(type(self.replay_buffer).__name__, 
                                                                          policy.n_warmup, 
                                                                          args.sampling_method)
         # graph visualization
@@ -184,7 +178,7 @@ class Trainer:
                 action[robot_idx] = np.tile(robot_action, self._pred_steps)
 
             else:
-                action = self._policy.get_action(obs) #(num_nodes, future*2)
+                obs, action = self._policy.get_action(obs) #(num_nodes, future*2)
 
             next_obs, reward, done, success, info = self._env.step(action, deepcopy(obs))
 
@@ -203,7 +197,7 @@ class Trainer:
 
 
             if self._vis_graph and total_steps<100:
-                network_draw(deepcopy(next_obs),
+                network_draw(deepcopy(obs),
                              show_node_labels=True, node_labels=['tid'],
                              show_edge_labels=False, edge_labels=['dist'],
                              show_legend=False,
@@ -274,12 +268,12 @@ class Trainer:
                     samples = self.sample_data(batch_size=self._policy.batch_size,
                                                device=self._policy.device)
 
-                    self._policy.train(samples["obs"], 
-                                        samples["act"], 
-                                        samples["next_obs"],
-                                        samples["rew"], 
-                                        samples["done"],
-                                        samples["weights"])
+                    self._policy.train_step(samples["obs"], 
+                                            samples["act"], 
+                                            samples["next_obs"],
+                                            samples["rew"], 
+                                            samples["done"],
+                                            samples["weights"])
 
                     if self._use_prioritized_rb:
                         priorities = self._policy.compute_td_error(samples["obs"], 
@@ -316,31 +310,15 @@ class Trainer:
         sampled_data, idxes, weights = self.replay_buffer.sample(batch_size)
 
         obs, act, rew, next_obs, done = map(list, zip(*sampled_data))
-        # laser and graph state
-        if isinstance(obs[0], tuple):
-            obs_scan, obs_graph = zip(*obs)
 
-            obs_scan = torch.Tensor(np.stack(obs_scan, 0)).to(device)
-            obs_graph = dgl.batch(obs_graph).to(device)
-            obs = (obs_scan, obs_graph)
-
-            next_scan, next_graph = zip(*next_obs)
-            next_scan = torch.Tensor(np.stack(next_scan, 0)).to(device)
-            next_graph = dgl.batch(next_graph).to(device)
-            next_obs = (next_scan, next_graph)
-
-        # graph state  only
-        elif isinstance(obs[0], DGLHeteroGraph):
-            obs = dgl.batch(obs, ndata=self._input_states + ['max_action'], edata=self._input_edges).to(device)
-            next_obs = dgl.batch(next_obs, ndata=self._input_states + ['max_action'], edata=self._input_edges).to(device)
-
-        # laser state only
-        elif isinstance(obs[0], list):
-            obs = torch.Tensor(np.stack(obs, 0)).to(device)
-            next_obs = torch.Tensor(np.stack(next_obs, 0)).to(device)
+        ndata = self._input_states + self._pred_states + ['max_action']
+        edata = self._input_edges + self._pred_edges
         
-        else:
-            raise Exception("Data type not known!")
+        obs = dgl.batch(obs, ndata=ndata, edata=edata).to(device)
+        next_obs = dgl.batch(next_obs, ndata=ndata, edata=edata).to(device)
+
+        # obs = dgl.batch(obs).to(device)
+        # next_obs = dgl.batch(next_obs).to(device)
 
         act = torch.Tensor(np.concatenate(act)).to(device)
         rew = torch.Tensor(np.concatenate(rew)).view(-1, 1).to(device)
@@ -354,9 +332,6 @@ class Trainer:
         return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
         
     def evaluate_policy(self, ):
-        
-        if self._normalize_obs:
-            self._test_env.normalizer.set_params(*self._env.normalizer.get_params())
 
         avg_test_return = 0.
 
@@ -368,19 +343,37 @@ class Trainer:
 
             for j in range(self._episode_max_steps):
 
-                action = self._policy.get_action(obs)
+                obs, action = self._policy.get_action(obs)
+
+                if self._vis_graph:
+                    obs.edata['sigma'] = obs.edata['e_ij'].sigmoid().mean(-1, keepdims=True)
+                    network_draw(deepcopy(obs),
+                                 show_node_label=False, node_labels=['tid'],
+                                 show_edge_labels=True, edge_labels=['dist'],
+                                 show_legend=False,
+                                 fsuffix = 'episode_step%d'%i,
+                                 counter=j,
+                                 save_dir=self._vis_graph_dir, 
+                                 extent = data_stats[self._dataset]
+                                 )
+
+                    pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(i, j), "wb"))
+
 
                 next_obs, reward, done, success = self._test_env.step(action, obs)
 
-                print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
-                print('Robot Action:', np.round(action, 2))
-                print('Reward:', np.round(reward, 2))
+                robot_idx = obs.ndata['cid']==node_type_list.index('robot')
 
-                episode_return += reward
+
+                print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
+                # print('Action:', np.round(action, 2))
+                # print('Reward:', np.round(reward, 2))
+
+                episode_return += reward.mean()
 
                 obs = next_obs
 
-                if done:
+                if done[robot_idx]:
                     break
 
             avg_test_return += episode_return
@@ -399,6 +392,7 @@ if __name__ == '__main__':
     from policy.td3 import TD3
     from policy.ddpg import DDPG
     from policy.ddpg_graph import GraphDDPG
+    from policy.ddpg_vae import GraphVAE
     from policy.td3_graph import GraphTD3
 
     from env import Env
@@ -406,7 +400,7 @@ if __name__ == '__main__':
     from gazebo_msgs.srv import DeleteModel
     from gazebo_msgs.msg import ModelStates
 
-    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3}
+    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'graph_vae': GraphVAE}
 
     rospy.init_node('pred_drl', disable_signals=True)
 
@@ -418,10 +412,14 @@ if __name__ == '__main__':
     state_dims['history_pos'] = args.history_steps * state_dims['pos']
     state_dims['history_vel'] = args.history_steps * state_dims['vel']
     state_dims['history_disp'] = args.history_steps * state_dims['pos']
+    state_dims['history_diff'] = args.history_steps * state_dims['diff']
+    state_dims['history_dist'] = args.history_steps * state_dims['dist']
+
     state_dims['future_pos'] = args.future_steps * state_dims['pos']
     state_dims['future_vel'] = args.future_steps * state_dims['vel']
     state_dims['future_disp'] = args.future_steps * state_dims['pos']
-
+    state_dims['future_diff'] = args.future_steps * state_dims['diff']
+    state_dims['future_dist'] = args.future_steps * state_dims['dist']
     args.state_dims = state_dims
 
     # load net params
@@ -442,8 +440,8 @@ if __name__ == '__main__':
                         'pt%d'%args.pred_steps,
                         'in_%s'%'_'.join(args.input_states),
                         'pred_%s'%'_'.join(args.pred_states),
-                        'h%d'%net_params['hidden_dim'],
-                        'l%d'%net_params['num_layers'],
+                        # 'h%d'%net_params['hidden_dim'],
+                        # 'l%d'%net_params['num_layers'],
                         ])
 
         if args.prefix is not None:
@@ -460,9 +458,7 @@ if __name__ == '__main__':
         pickle.dump(args, open(output_dir + '/args.pkl', 'wb'))
 
     elif args.evaluate:
-        output_dir = './preddrl_td3/results/'
-        output_dir += '2021_12_16_run0_ddpg_graph_warmup_2000_bs100_input_history_disp_vel_vpref_h256_l2_pred_future'
-        # output_dir = trainer._output_dir
+        output_dir = './preddrl_td3/results/2022_03_02_ddpg_graph_warm_10_bs10_ht4_ft4_pt2_in_pos_vpref_pred_vel_h256_l2'
         
 
     # create enviornment
@@ -484,7 +480,7 @@ if __name__ == '__main__':
     print('Total Paramaters:', model_parameters(policy))
     print('Actor Paramaters:', model_parameters(policy.actor))
     print('Critic Paramaters:', model_parameters(policy.critic))
-    print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
+    # print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
     trainer = Trainer(policy, env, args, output_dir, phase='train' if not args.evaluate else 'test')
     trainer.set_seed(args.seed)

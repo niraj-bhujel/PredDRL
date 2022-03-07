@@ -13,8 +13,6 @@ import dgl
 from dgl.heterograph import DGLHeteroGraph
 
 from policy.ddpg import DDPG
-from policy.policy_base import OffPolicyAgent
-from misc.huber_loss import huber_loss
 
 from networks.gated_gcn_net import GatedGCNNet
 from networks.layers.mlp_layer import MLP
@@ -23,10 +21,10 @@ class Actor(nn.Module):
     def __init__(self, net_params, args, state_shape, action_dim, max_action, **kwargs):
         super(Actor, self).__init__()
 
-        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states])
-        net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
-        
-        self.gcn = GatedGCNNet(net_params, 
+        net_params['actor']['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states])
+        net_params['actor']['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
+
+        self.gcn = GatedGCNNet(net_params['actor'], 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -34,7 +32,7 @@ class Actor(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
 
-        self.out = MLP(net_params['hidden_dim'], action_dim*args.pred_steps, hidden_size=net_params['mlp'])
+        self.out = MLP(net_params['actor']['hidden_dim'], action_dim*args.pred_steps, hidden_size=net_params['mlp'])
         
         self.max_action = max_action
         self.input_states = args.input_states
@@ -59,10 +57,10 @@ class Critic(nn.Module):
         self.input_states = args.input_states
         self.input_edges = args.input_edges
 
-        net_params['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.pred_steps
-        net_params['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
+        net_params['critic']['in_dim_node'] = sum([args.state_dims[s] for s in args.input_states]) + action_dim*args.pred_steps
+        net_params['critic']['in_dim_edge'] = sum([args.state_dims[s] for s in args.input_edges])
 
-        self.gcn = GatedGCNNet(net_params, 
+        self.gcn = GatedGCNNet(net_params['critic'], 
                                in_feat_dropout=args.in_feat_dropout,
                                dropout=args.dropout, 
                                batch_norm=args.batch_norm,
@@ -70,7 +68,7 @@ class Critic(nn.Module):
                                activation=args.activation,
                                layer=args.layer,)
         
-        self.out = MLP(net_params['hidden_dim'], 1, hidden_size=net_params['mlp'])
+        self.out = MLP(net_params['critic']['hidden_dim'], 1, hidden_size=net_params['mlp'])
 
 
     def forward(self, state, action):

@@ -109,20 +109,34 @@ class DDPG(OffPolicyAgent):
         if tensor:
             return action
         else:
-            return action.cpu().numpy()
+            return dgl.unbatch(state)[0].cpu(), action.cpu().numpy()
 
 
     def _get_action_body(self, state, sigma, max_action):
-
-        self.actor.eval()
+        self.eval()
         with torch.no_grad():
             action = self.actor(state)
             # action += torch.empty_like(action).normal_(mean=0,std=sigma)
-        self.actor.train()
+        self.train()
         # return torch.clamp(action, -max_action, max_action)
         return action.squeeze(0)
 
-    def train(self, states, actions, next_states, rewards, dones, weights):
+    def optimization_step(self, optimizer, loss, clip_norm=None, model=None, retain_graph=False):
+        optimizer.zero_grad()
+        loss.backward(retain_graph=retain_graph)
+
+        if clip_norm is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
+
+        optimizer.step()
+
+    def soft_update_of_target_network(self, local_model, target_model):
+        """Updates the target network in the direction of the local network but by taking a step size
+        less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(self.tau*local_param.data + (1.0-self.tau)*target_param.data)
+
+    def train_step(self, states, actions, next_states, rewards, dones, weights):
         # print('states:', states.number_of_nodes(), 'actions:', actions.shape, 'rewards:', rewards.shape, 'dones:', dones.shape, 'weights', weights.shape)
 
         self.iteration +=1 
@@ -145,15 +159,6 @@ class DDPG(OffPolicyAgent):
                                                                                                 critic_loss,))
 
         return actor_loss, critic_loss, td_errors
-
-    def optimization_step(self, optimizer, loss, clip_norm=None, model=None, retain_graph=False):
-        optimizer.zero_grad()
-        loss.backward(retain_graph=retain_graph)
-
-        if clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm) #clip gradients to help stabilise training
-
-        optimizer.step()
 
     def _train_body(self, states, actions, next_states, rewards, dones, weights):
         # Compute critic loss
@@ -197,9 +202,3 @@ class DDPG(OffPolicyAgent):
         td_errors = target_Q - current_Q
 
         return td_errors
-
-    def soft_update_of_target_network(self, local_model, target_model):
-        """Updates the target network in the direction of the local network but by taking a step size
-        less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
-        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-            target_param.data.copy_(self.tau*local_param.data + (1.0-self.tau)*target_param.data)
