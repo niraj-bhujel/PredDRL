@@ -3,10 +3,10 @@
 
 2. source devel/setup.bash 
 
-3. Change to preddrl_gazebo_plugin director
+3. Launch social_contexts
 $ roslaunch preddrl_gazebo social_contexts.launch
 
 4. Change to preddrl_ws/src and run the python script to train the model
-$ python3 preddrl_td3/scripts_torch/trainer.py --stage 7 --policy ddpg_graph --verbose 1 --n_warmup 2000 --sampling_method orca
+$ python3 preddrl_td3/scripts/trainer.py --stage 7 --policy ddpg_graph --verbose 1 --n_warmup 2000 --batch_size 100 --sampling_method orca
 
 

@@ -15,8 +15,8 @@ interaction_direction = {
     ('robot', 'robot_goal'): 1e6,
     ('robot_goal', 'robot'): 1e6,
 
-    ('robot', 'pedestrian'): 5.0,
-    ('pedestrian', 'robot') : 5.0,
+    ('robot', 'pedestrian'): 3.0,
+    ('pedestrian', 'robot') : 3.0,
 
     ('pedestrian', 'pedestrian'): 3.0,
 
@@ -146,6 +146,8 @@ def create_graph(nodes, state_dims):
 
         nodes_data['pos'].append(node.pos)
         nodes_data['vel'].append(node.vel)
+        nodes_data['speed'].append(np.linalg.norm(node.vel))
+        nodes_data['vpref'].append(node.preferred_vel())
 
         if node.type == 'robot':
             # nodes_data['vel'].append(node.preferred_vel())
@@ -154,23 +156,19 @@ def create_graph(nodes, state_dims):
             # 
             nodes_data['max_action'].append(1.4)
         
-        nodes_data['vpref'].append(node.preferred_vel())
-        nodes_data['theta'].append(node.theta)
-
-        nodes_data['dir'].append([node.gx - node.px, node.gy - node.py])
-        nodes_data['hed'].append(node.heading)
+        # nodes_data['dir'].append([node.gx - node.px, node.gy - node.py])
+        nodes_data['dir'].append((node.future_pos[-1][0]-node.px, node.future_pos[-1][1]-node.py))
+        # nodes_data['hed'].append(node.heading)
         nodes_data['goal'].append(node.goal)
         
         nodes_data['action'].append(node.action)
         nodes_data['state'].append(node.state)
 
-        nodes_data['history_pos'].append(node.history[:, :2])
-        nodes_data['history_vel'].append(node.history[:, 2:4])
-        nodes_data['history_disp'].append(node.history[:, :2]-node.pos)
+        nodes_data['history_pos'].append(node.history_pos)
+        nodes_data['history_vel'].append(node.history_vel)
 
-        nodes_data['future_pos'].append(node.futures[:, :2])
-        nodes_data['future_vel'].append(node.futures[:, 2:4])
-        nodes_data['future_disp'].append(node.pos - node.futures[:, :2])
+        nodes_data['future_pos'].append(node.future_pos)
+        nodes_data['future_vel'].append(node.future_vel)
 
         nodes_data['dt'].append(node.time_step)
         nodes_data['tid'].append(node.id)

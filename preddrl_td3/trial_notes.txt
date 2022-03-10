@@ -1,0 +1,5 @@
+Run
+2022_03_07: Stable version with graph vae, gcn, with pred_steps 1. Achieved up to 82% sucess rate and collision rate 14%.
+2022_03_08: Prediction steps 2 has slight lower performance (success 81%, collision 17%). Added batch normalization and residual, reduces performance very badly (47%). Gated_GCN have slightly lower success rate than gcn (success ~80%, collision 19%).
+2022_03_09: Remove history_vel and history_dist from input states and edges, and use pos, vpref, vel instead. This model converge faster around 10K iteraction (sucess 79%, collision 18%, measured at 20K). Add dir (computed from position at future_steps i.e. 4) converge even faster from 10K (success 81%, collision 17%). Use speed i.e vnorm instead of vel. 
+Use linear schedulerfor goal reward (linearly decreases from high to low) and collision reward (linearly increase from low to high) over training steps . 

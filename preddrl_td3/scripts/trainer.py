@@ -17,9 +17,6 @@ from torch.utils.tensorboard import SummaryWriter
 import dgl
 from dgl.heterograph import DGLHeteroGraph
 
-import rospy
-
-from gym.spaces import Box
 
 if './' not in sys.path: 
     sys.path.insert(0, './')
@@ -30,22 +27,24 @@ from utils.normalizer import EmpiricalNormalizer
 from utils.utils import save_ckpt, load_ckpt, copy_src, create_new_dir
 from utils.graph_utils import node_type_list, remove_uncommon_nodes
 from vis.vis_graph import network_draw, data_stats
-from vis.vis_traj import plot_traj, data_stats
+from vis.vis_traj import vis_traj_helper
 from utils.timer import Timer
 from utils.info import *
 from buffer.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
+try:
+    import rospy
+    from gym.spaces import Box
+except Exception:
+    pass
 
 class Trainer:
-    def __init__(self, policy, env, args, output_dir, phase='train', test_env=None, **kwargs):
+    def __init__(self, policy, env, args, phase='train', test_env=None, **kwargs):
 
         # experiment settings
         self._max_steps = args.max_steps
         self._episode_max_steps = args.episode_max_steps if args.episode_max_steps is not None else args.max_steps
-        self._n_experiments = args.n_experiments
-        self._show_progress = args.show_progress
         self._save_model_interval = args.save_model_interval
-        self._save_summary_interval = args.save_summary_interval
         self._logdir = args.logdir
 
         self._input_states = args.input_states
@@ -64,16 +63,17 @@ class Trainer:
 
         # test settings
         self._test_interval = args.test_interval
-        self._show_test_progress = args.show_test_progress
         self._test_episodes = args.test_episodes
         self._save_test_path = args.save_test_path
-        self._save_test_movie = args.save_test_movie
-        self._show_test_images = args.show_test_images
         self._evaluate = args.evaluate
         self._resume_training = args.resume_training
 
         self._policy = policy
+        self._policy._verbose = args.verbose
+
         self._sampling_method = args.sampling_method
+
+        self._load_memory = args.load_memory
 
         self._device = policy.device
 
@@ -87,16 +87,11 @@ class Trainer:
         self._vis_traj = args.vis_traj
         self._vis_traj_interval = args.vis_traj_interval
 
-        self._output_dir = output_dir
-
-        # self.timer = Timer()
-        # self.r = rospy.Rate(1/self._env.time_step)
-
-
+        self._output_dir = args.output_dir
 
 
         self.logger = initialize_logger(logging_level=logging.getLevelName(args.logging_level), 
-                                        output_dir=self._output_dir)
+                                        output_dir=args.output_dir)
 
         # prepare buffer
         if self._use_prioritized_rb:
@@ -107,25 +102,23 @@ class Trainer:
         else:
             self.replay_buffer = ReplayBuffer(size=self._buffer_size)
 
-        self._load_memory = args.load_memory
+
         self._memory_path = create_new_dir('./preddrl_td3/memory')
-        self._memory_path += '/{}_nwarmup{}_sampling_{}'.format(type(self.replay_buffer).__name__, 
-                                                                         policy.n_warmup, 
-                                                                         args.sampling_method)
-        # graph visualization
-        if self._vis_graph or self._save_graph:
-            self._vis_graph_dir = create_new_dir(self._output_dir + '/vis_graphs/{}/'.format(phase), clean=True)
+        self._memory_path += '/{}_nwarmup{}_sampling_{}'.format(type(self.replay_buffer).__name__, self._policy.n_warmup, self._sampling_method)
 
-        if self._vis_traj:
-            self._plot_dir = create_new_dir(self._output_dir + '/vis_traj/{}/'.format(phase), clean=True)
-        
-
-        # prepare TensorBoard writer
-        self._summary_dir = create_new_dir(self._output_dir + '/summary/{}'.format(phase), clean=True)
+        # tensorboard visualization
+        self._summary_dir = create_new_dir(args.output_dir + '/summary/{}/'.format(phase), clean=True)
+        # create writer
         self.writer = SummaryWriter(self._summary_dir)
         self._env.writer = self.writer
         self._policy.writer = self.writer
-        self._policy._verbose = self._verbose
+
+        # graph visualization (for bothe train and eval)
+        if args.vis_graph or args.save_graph:
+            self._vis_graph_dir = create_new_dir(args.output_dir + '/vis_graphs/{}/'.format(phase), clean=True)
+
+        if args.vis_traj:
+            self._vis_traj_dir = create_new_dir(args.output_dir + '/vis_traj/{}/'.format(phase), clean=True)
 
     def set_seed(self, seed):
         #setup seeds
@@ -134,8 +127,8 @@ class Trainer:
         torch.manual_seed(seed)
 
     def __call__(self):
-        print('Begin training ...')
 
+        print('**** Training Begins ****')
         total_steps = 0
         episode_steps = 0
         episode_return = 0
@@ -146,7 +139,7 @@ class Trainer:
         n_discomfort = 0
         n_timeout = 0
 
-        
+
         if self._load_memory:
             print('Loading memory ...', self._memory_path)
             try:
@@ -159,8 +152,8 @@ class Trainer:
         if self._resume_training:
             total_steps = self._policy.iteration
 
-        self._env.initialize_agents()
-        
+        # initialize 
+        self._env.initialize_agents()        
         obs = self._env.reset()
 
         ##### Begin Training ###########
@@ -183,17 +176,7 @@ class Trainer:
             next_obs, reward, done, success, info = self._env.step(action, deepcopy(obs))
 
             if self._vis_traj and total_steps%self._vis_traj_interval==0:
-                obs_traj = obs.ndata['history_pos'].view(-1, self._history_steps, 2).numpy()
-                gt_traj = obs.ndata['future_pos'].view(-1, self._future_steps, 2).numpy()[:, :self._pred_steps, :]
-                pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + action.reshape(-1, self._pred_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
-                # print(gt_traj.shape, pred_traj.shape)
-                plot_traj(obs_traj, gt_traj, 
-                          # pred_traj = None,
-                          pred_traj = pred_traj[:, None, :, :], 
-                          ped_ids=obs.ndata['tid'].numpy(), 
-                          extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
-                          limit_axes=True, legend=True, counter=total_steps, 
-                          save_dir=self._plot_dir)
+                vis_traj_helper(obs, action, self._pred_steps, total_steps, self._vis_traj_dir)
 
 
             if self._vis_graph and total_steps<100:
@@ -212,6 +195,8 @@ class Trainer:
             self.writer.add_scalar(self._policy.policy_name + "/robot_act0", action[robot_idx].flatten()[0], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/robot_act1", action[robot_idx].flatten()[1], total_steps)
             self.writer.add_scalar(self._policy.policy_name + "/robot_reward", reward[robot_idx], total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/collision_penalty", self._env.collision_penalty, total_steps)
+            self.writer.add_scalar(self._policy.policy_name + "/success_reward", self._env.success_reward, total_steps)
 
             # remove uncommon nodes
             _obs, _next_obs, _obs_nidx, _next_obs_nidx = remove_uncommon_nodes(deepcopy(obs), deepcopy(next_obs))
@@ -297,6 +282,8 @@ class Trainer:
                 if total_steps % self._save_model_interval == 0:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
+                self._env.schedulers_step(total_steps-self._policy.n_warmup)
+
             self._env.timer.toc()
             self.writer.add_scalar("Common/fps", self._env.timer.fps, total_steps)
             if self._verbose>1:
@@ -311,8 +298,8 @@ class Trainer:
 
         obs, act, rew, next_obs, done = map(list, zip(*sampled_data))
 
-        ndata = self._input_states + self._pred_states + ['max_action']
-        edata = self._input_edges + self._pred_edges
+        ndata = list(set(self._input_states + self._pred_states + ['max_action', 'history_vel', 'future_vel']))
+        edata = list(set(self._input_edges + self._pred_edges + ['history_dist', 'future_dist']))
         
         obs = dgl.batch(obs, ndata=ndata, edata=edata).to(device)
         next_obs = dgl.batch(next_obs, ndata=ndata, edata=edata).to(device)
@@ -332,21 +319,24 @@ class Trainer:
         return {'obs':obs, 'act':act, 'next_obs':next_obs, 'rew':rew, 'done':done, 'weights':weights, 'idxes':idxes}
         
     def evaluate_policy(self, ):
-
+        self._env.initialize_agents()
         avg_test_return = 0.
 
         for i in range(self._test_episodes):
             episode_return = 0.
-            frames = []
 
-            obs = self._test_env.reset(initGoal=True)
+            obs = self._env.reset()
 
             for j in range(self._episode_max_steps):
 
                 obs, action = self._policy.get_action(obs)
+                robot_idx = obs.ndata['cid']==node_type_list.index('robot')
 
-                if self._vis_graph:
-                    obs.edata['sigma'] = obs.edata['e_ij'].sigmoid().mean(-1, keepdims=True)
+                # if self._vis_traj and j<100:
+                #     vis_traj_helper(obs, action, self._pred_steps, i, self._vis_traj_dir)
+
+                if self._vis_graph and j<100:
+                    # obs.edata['sigma'] = obs.edata['e_ij'].sigmoid().mean(-1, keepdims=True)
                     network_draw(deepcopy(obs),
                                  show_node_label=False, node_labels=['tid'],
                                  show_edge_labels=True, edge_labels=['dist'],
@@ -359,15 +349,13 @@ class Trainer:
 
                     pickle.dump(obs, open(self._vis_graph_dir + 'step{}_episode_step{}.pkl'.format(i, j), "wb"))
 
+                next_obs, reward, done, success, info = self._env.step(action, deepcopy(obs))
 
-                next_obs, reward, done, success = self._test_env.step(action, obs)
-
-                robot_idx = obs.ndata['cid']==node_type_list.index('robot')
-
-
-                print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
-                # print('Action:', np.round(action, 2))
-                # print('Reward:', np.round(reward, 2))
+                if self._verbose>0:
+                    print('STEP-[{}/{}]'.format(j, self._episode_max_steps))
+                    print('Action:', np.round(action, 2))
+                    print('GT Action:', np.round(obs.ndata['vpref'].cpu().numpy(), 2))
+                    print('Reward:', np.round(reward, 2))
 
                 episode_return += reward.mean()
 
@@ -400,9 +388,9 @@ if __name__ == '__main__':
     from gazebo_msgs.srv import DeleteModel
     from gazebo_msgs.msg import ModelStates
 
-    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'graph_vae': GraphVAE}
-
     rospy.init_node('pred_drl', disable_signals=True)
+
+    policies = {'td3': TD3, 'ddpg':DDPG, 'ddpg_graph': GraphDDPG, 'td3_graph': GraphTD3, 'graph_vae': GraphVAE}
 
     parser = args.get_argument()
     args = parser.parse_args()
@@ -428,41 +416,47 @@ if __name__ == '__main__':
 
     print(net_params)
 
+    if args.evaluate:
+        args.output_dir = args.logdir + '/' 
+        args.output_dir += '2022_03_07_graph_vae_warm_1000_bs100_ht4_ft4_pt1_in_pos_vpref_history_vel_pred_future_vel'
 
-    # prepare output dir
-    if not args.evaluate:
+        with open(args.output_dir + '/args.pkl', 'rb') as f:
+            args = pickle.load(f)
+
+    else:
         # prepare log directory
-        suffix = '_'.join(['%s'%args.policy,
-                        'warm_%d'%args.n_warmup,
-                        'bs%d'%args.batch_size,
-                        'ht%d'%args.history_steps,
-                        'ft%d'%args.future_steps,
-                        'pt%d'%args.pred_steps,
-                        'in_%s'%'_'.join(args.input_states),
-                        'pred_%s'%'_'.join(args.pred_states),
-                        # 'h%d'%net_params['hidden_dim'],
-                        # 'l%d'%net_params['num_layers'],
-                        ])
+        suffix = '_'.join(['run-%d'%args.run,
+                            '%s'%args.policy,
+                            'warm%d'%args.n_warmup,
+                            'bs%d'%args.batch_size,
+                            'ht%d'%args.history_steps,
+                            'ft%d'%args.future_steps,
+                            'pt%d'%args.pred_steps,
+                            'in_%s'%'_'.join(args.input_states),
+                            # 'pred_%s'%'_'.join(args.pred_states),
+                            # 'h%d'%net_params['hidden_dim'],
+                            # 'l%d'%net_params['num_layers'],
+                            '%s'%args.layer,
+                            ])
 
         if args.prefix is not None:
             suffix += '_%s'%args.prefix
 
-        output_dir = prepare_output_dir(args=args, 
-                                        user_specified_dir=args.logdir, 
-                                        # time_format='%Y_%m_%d_%H-%M-%S',
-                                        time_format='%Y_%m_%d',
-                                        suffix=suffix
-                                        )
-        # backup scripts
-        copy_src('./preddrl_td3/scripts', output_dir + '/scripts')
-        pickle.dump(args, open(output_dir + '/args.pkl', 'wb'))
+        args.output_dir = prepare_output_dir(args=args, 
+                                            user_specified_dir=args.logdir, 
+                                            # time_format='%Y_%m_%d_%H-%M-%S',
+                                            time_format='%Y_%m_%d',
+                                            suffix=suffix
+                                            )
 
-    elif args.evaluate:
-        output_dir = './preddrl_td3/results/2022_03_02_ddpg_graph_warm_10_bs10_ht4_ft4_pt2_in_pos_vpref_pred_vel_h256_l2'
-        
+        # backup scripts
+        copy_src('./preddrl_td3/scripts', args.output_dir + '/scripts')
+        pickle.dump(args, open(args.output_dir + '/args.pkl', 'wb'))
+
+
 
     # create enviornment
-    env = Env(args, graph_state=True if 'graph' in args.policy else False)
+    env = Env(args)
 
     print('Creating policy ... ')
     policy = policies[args.policy](state_shape=env.observation_space.shape,
@@ -482,15 +476,15 @@ if __name__ == '__main__':
     print('Critic Paramaters:', model_parameters(policy.critic))
     # print({k:v for k, v in policy.__dict__.items() if k[0]!='_'})
 
-    trainer = Trainer(policy, env, args, output_dir, phase='train' if not args.evaluate else 'test')
+    trainer = Trainer(policy, env, args, phase='train' if not args.evaluate else 'test')
     trainer.set_seed(args.seed)
 
 
     try:
         if args.evaluate:
             print('-' * 89)
-            print('Evaluating ...', output_dir)
-            policy = load_ckpt(policy, output_dir)
+            print('Evaluating ...', args.output_dir)
+            policy = load_ckpt(policy, args.output_dir)
             trainer.evaluate_policy()  # 每次测试都会在生成临时文件，要定期处理
 
         else:

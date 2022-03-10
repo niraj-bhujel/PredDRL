@@ -56,6 +56,9 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         ped_pos = data[data[:, 1]==pid, 2:4]
         ped_vel = (ped_pos[1:] - ped_pos[:-1])*2.5
         
+        if not len(ped_pos)>2:
+            continue
+            
         intp_ped_pos = interpolate(ped_pos, 'quadratic', num_intp_points).round(2)
         
         intp_ped_vel = np.round((intp_ped_pos[1:] - intp_ped_pos[:-1]) * target_frame_rate, 2)
@@ -67,7 +70,7 @@ def prepare_data(data_path, target_frame_rate=25, max_peds=20):
         node = Agent(pid, first_timestep=start_idx, 
                      time_step=1./target_frame_rate, 
                      node_type='pedestrian', 
-                     vpref = np.linalg.norm(np.mean(ped_vel, axis=0)),
+                     pref_speed = np.linalg.norm(np.mean(ped_vel, axis=0)),
                      history_len=num_intp_points)
         
         for i in range(len(intp_ped_pos)-1):

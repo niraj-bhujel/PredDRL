@@ -83,3 +83,15 @@ def init_weights_xavier(m):
     if isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_normal_(m.weight.data, gain=1.4142135623730951) # gain for relu
         torch.nn.init.zeros_(m.bias.data)
+
+class LinearScheduler:
+    def __init__(self, start_value, target_value=None, total_steps=None):
+        self.start_value = start_value
+        self.target_value = target_value
+        self.total_steps = total_steps
+        # assert start_value != target_value, 'start_value and target_value should be different'
+        self.mode = min if target_value > start_value else max
+        self.per_step = (target_value - start_value) / total_steps
+
+    def step(self, step_num):
+        return self.mode(self.start_value + step_num * self.per_step, self.target_value)

@@ -178,8 +178,6 @@ class CVAE(nn.Module):
         else:
             z = self._reparameterize(p_mean, p_logvar)
 
-        g.ndata['z'] = z
-
         return {'z':z, 'kld':KLD}
 
 
@@ -225,7 +223,7 @@ class GraphVAE(DDPG):
     def _get_action_body(self, state, sigma, max_action):
         self.eval()
         with torch.no_grad():
-            self.cvae(state, training=self.training)
+            state.ndata['z'] = self.cvae(state)['z']
             action = self.actor(state)
             # action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.train()
@@ -278,7 +276,7 @@ class GraphVAE(DDPG):
 
         # Compute actor loss
         with torch.no_grad():
-            self.cvae(states, training=False)
+            states.ndata['z'] = self.cvae(states)['z']
 
         actor_loss = -self.critic(states, self.actor(states)).mean()
         # Optimize the actor 
@@ -296,7 +294,7 @@ class GraphVAE(DDPG):
         not_dones = 1. - dones
 
         with torch.no_grad():
-            self.cvae_target(next_states)
+            next_states.ndata['z'] = self.cvae_target(next_states)['z']
             target_Q = self.critic_target(next_states, self.actor_target(next_states))
 
             target_Q = rewards + (not_dones * self.discount * target_Q)

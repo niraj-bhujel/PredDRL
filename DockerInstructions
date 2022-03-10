@@ -19,3 +19,5 @@ $ nvidia-docker start -i preddrl
 $ nvidia-docker exec -it preddrl bash
 
 Alternatively, execute the run_docker_image.bash from the PredDRL directory.
+
+After running container, change to /workspace/ folder and do catkin_make. Source the setup.bash and follow the steps in README.md

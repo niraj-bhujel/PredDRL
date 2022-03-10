@@ -20,7 +20,7 @@ from spawnner.respawnGoal import RespawnGoal
 from spawnner.respawnPeds import RespawnPedestrians
 from utils.env_utils import *
 from utils.info import *
-
+from utils.utils import LinearScheduler
 from utils.agent import Agent
 from utils.graph_utils import create_graph, min_neighbor_distance, node_type_list
 from utils.timer import Timer
@@ -34,9 +34,8 @@ SelfL=0.16 # Length of wheel axels in meters
 # SelfD = 0.175
 # SelfL = 0.23
 class Env:
-    def __init__(self, args, graph_state=False, robot_name='turtlebot3_burger'):
+    def __init__(self, args, robot_name='turtlebot3_burger'):
 
-        self.graph_state = graph_state
         self.robot_name = robot_name
 
         self.stage = args.stage
@@ -51,22 +50,40 @@ class Env:
         self.state_dims = args.state_dims
         self.pred_states = args.pred_states
 
+        self.max_steps = args.max_steps
+        self.n_warmup = args.n_warmup
         self.episode_max_steps = args.episode_max_steps
 
+        self.episode_step = 0
+        self.global_step = 0
+        self.frame_num = 0
+
+        self.inital_pos = (10.0, 10.0)
+
+        self.max_goal_dist = 20.
+        self.last_goal_dist = 1000
 
         self.goal_threshold = 0.2
-
         self.robot_radius = 0.2
         self.human_radius = 0.2
         self.collision_threshold = 0.2
         self.discomfort_zone = 0.4
 
+        # note during sampling, success reward and collision penalty are fixed
         self.collision_penalty = -100
         self.success_reward = 100
         self.lost_penalty = -100
         self.discomfort_penalty = -1
 
-        self.inital_pos = (10.0, 10.0)
+        self.collision_scheduler = LinearScheduler(start_value=-100, target_value=-10, total_steps=self.max_steps)
+        self.success_scheduler = LinearScheduler(start_value=10, target_value=100, total_steps=self.max_steps)
+
+        self.collision_times = 0
+        self.discomforts = 0
+
+
+        self.time_step = 0.25
+        self.timer = Timer() # set by trainer
 
         self.minLinearSpeed = 0.
         self.maxLinearSpeed = 0.7
@@ -79,19 +96,6 @@ class Env:
         self.observation_space = spaces.Box(low=np.array([0.0]*2), 
                                             high=np.array([self.maxLinearSpeed]*2), 
                                             dtype=np.float32)
-
-        self.time_step = 0.25
-        self.timer = Timer() # set by trainer
-
-        self.max_goal_dist = 20.
-        self.last_goal_dist = 100.
-
-        self.episode_step = 0
-        self.global_step = 0
-        self.frame_num = 0
-
-        self.collision_times = 0
-        self.discomforts = 0
 
         self.goal_spawnner = RespawnGoal()
 
@@ -118,10 +122,14 @@ class Env:
         
         self.init_goal()
             
-
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+    # called by trainer
+    def schedulers_step(self, step_num):
+        self.collision_penalty = self.collision_scheduler.step(step_num)
+        self.success_reward = self.success_scheduler.step(step_num)
 
     def set_robot_pose(self, position, yaw):
 
@@ -348,6 +356,7 @@ class Env:
         success = reaching_goal
 
         state = self.getGraphState()
+        
         self.global_step += 1
 
         return state, reward, done, success, info

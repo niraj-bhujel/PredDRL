@@ -9,14 +9,14 @@ from collections import deque, namedtuple
 State = namedtuple('State', ['px', 'py', 'vx', 'vy', 'gx', 'gy', 'theta'])
 
 class Agent(object):
-    def __init__(self, node_id, node_type='robot', first_timestep=0, time_step=0.1, vpref=0.4, radius=0.2, history_len=1000):
+    def __init__(self, node_id, node_type='robot', first_timestep=0, time_step=0.1, pref_speed=0.4, radius=0.2, history_len=1000):
 
         self.first_timestep = int(first_timestep)
         self.id = int(node_id)
         self.type = node_type
         self.time_step = time_step
         self.radius = radius
-        self.vpref = vpref # speed
+        self.pref_speed = pref_speed
         self.history_len = history_len
 
         self.px = None
@@ -147,7 +147,15 @@ class Agent(object):
         goal_vec = np.array((self.gx - self.px, self.gy - self.py))
         norm = np.linalg.norm(goal_vec)
         if norm>1:
-            return goal_vec/norm * self.vpref
+            return goal_vec/norm * self.pref_speed
+        else:
+            return goal_vec
+
+    def preferred_dir(self, ):
+        goal_vec = np.array((self.gx - self.px, self.gy - self.py))
+        norm = np.linalg.norm(goal_vec)
+        if norm>0:
+            return goal_vec/norm
         else:
             return goal_vec
 
@@ -176,6 +184,7 @@ class Agent(object):
     @property
     def state(self, ):
         return (self.px, self.py, self.vx, self.vy, self.gx, self.gy, self.theta)
+
     @property
     def pos(self, ):
         return (self.px, self.py)
@@ -183,6 +192,22 @@ class Agent(object):
     @property
     def vel(self, ):
         return (self.vx, self.vy)
+
+    @property
+    def history_pos(self, ):
+        return self.history[:, :2]
+    
+    @property
+    def history_vel(self, ):
+        return self.history[:, 2:4]
+
+    @property
+    def future_pos(self, ):
+        return self.futures[:, :2]
+
+    @property
+    def future_vel(self, ):
+        return self.futures[:, 2:4]
 
     @property
     def goal(self, ):

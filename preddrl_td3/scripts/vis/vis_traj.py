@@ -175,3 +175,18 @@ def plot_traj(obsv_traj, trgt_traj, pred_traj=None, ped_ids=None, K=1, extent=No
         else:
             file_path = save_dir + 'frame_{}.png'.format(counter)
         fig.savefig(file_path , bbox_inches='tight',dpi=100)
+
+
+def vis_traj_helper(obs, pred_vel, pred_steps, step, save_dir):
+    N = obs.number_of_nodes()
+    obs_traj = obs.ndata['history_pos'].view(N, -1, 2).numpy()
+    gt_traj = obs.ndata['future_pos'].view(N, -1, 2).numpy()[:, :pred_steps, :]
+    pred_traj = obs.ndata['pos'].unsqueeze(1).numpy() + pred_vel.reshape(-1, pred_steps, 2).cumsum(axis=1)*obs.ndata['dt'].unsqueeze(-1).numpy()
+    # print(gt_traj.shape, pred_traj.shape)
+    plot_traj(obs_traj, gt_traj, 
+              # pred_traj = None,
+              pred_traj = pred_traj[:, None, :, :], 
+              ped_ids=obs.ndata['tid'].numpy(), 
+              extent={'x_min': -1., 'x_max': 15., 'y_min': -1., 'y_max': 15.}, 
+              limit_axes=True, legend=True, counter=step, 
+              save_dir=save_dir)

@@ -4,6 +4,9 @@ def get_argument(parser=None):
     if parser is None:
         parser = argparse.ArgumentParser(conflict_handler='resolve')
 
+    # simulation env
+    parser.add_argument('--stage', type=int, default=7,
+                        help='Value from 0-7')  
     # policy setting
     parser.add_argument('--policy', type=str, default='ddpg_graph',
                         help="Model name one of [td3, ddpg, graph_ddpg, gcn]")
@@ -17,22 +20,8 @@ def get_argument(parser=None):
                         help='Maximum number steps to interact with env.')
     parser.add_argument('--episode_max_steps', type=int, default=int(1e3),
                         help='Maximum steps in an episode')
-    parser.add_argument('--n_experiments', type=int, default=1,
-                        help='Number of experiments')
-    parser.add_argument('--show_progress', action='store_true',
-                        help='Call `render` in training process')
     parser.add_argument('--save_model_interval', type=int, default=int(1e3),
                         help='Interval to save model')
-    parser.add_argument('--save_summary_interval', type=int, default=int(1e3),
-                        help='Interval to save summary')
-    parser.add_argument('--model_dir', type=str, default=None,
-                        help='Directory to restore model')
-    parser.add_argument('--dir_suffix', type=str, default='',
-                        help='Suffix for directory that contains results')
-    parser.add_argument('--normalize_obs', action='store_true',
-                        help='Normalize observation')
-    parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
-                        help='Output directory')
     parser.add_argument('--overwrite', action='store_false',
                         help='Overwrite existing experiments')
     parser.add_argument('--dataset', type=str, default='zara1',
@@ -46,22 +35,6 @@ def get_argument(parser=None):
     parser.add_argument('--spawn_pedestrians', action='store_true', default=False,
                         help='Wether to spawn pedestrians in gazebo for visualization')
 
-    # test settings
-    parser.add_argument('--evaluate', action='store_true',
-                        help='Evaluate trained model')
-    parser.add_argument('--test_interval', type=int, default=int(1e6),
-                        help='Interval to evaluate trained model')
-    parser.add_argument('--show_test_progress', action='store_true',
-                        help='Call `render` in evaluation process')
-    parser.add_argument('--test_episodes', type=int, default=5,
-                        help='Number of episodes to evaluate at once')
-    parser.add_argument('--save_test_path', action='store_true',
-                        help='Save trajectories of evaluation')
-    parser.add_argument('--show_test_images', action='store_true',
-                        help='Show input images to neural networks when an episode finishes')
-    parser.add_argument('--save_test_movie', action='store_true',
-                        help='Save rendering results')
-
     # replay buffer
     parser.add_argument('--buffer_size', type=int, default=100000,
                         help='Size of buffer')
@@ -73,28 +46,16 @@ def get_argument(parser=None):
                         help='Number of steps to look over')
     parser.add_argument('--load_memory', action='store_true', default=False,
                         help='If use previously saved memory to save sampling time')
-    # others
-    parser.add_argument('--logging_level', choices=['DEBUG', 'INFO', 'WARNING'],
-                        default='INFO', help='Logging level')
 
     # graph
-    parser.add_argument('--input_states', nargs='+', default=['pos', 'vpref', 'history_vel'],
+    parser.add_argument('--input_states', nargs='+', default=['pos', 'speed', 'vpref', 'dir'],
                         help='Input states for nodes')
-    parser.add_argument('--pred_states', nargs='+', default=['future_vel'],
+    parser.add_argument('--pred_states', nargs='+', default=['vel'],
                         help='Prediction states for nodes')
-    parser.add_argument('--input_edges', nargs='+', default=['history_dist'], 
+    parser.add_argument('--input_edges', nargs='+', default=['dist', 'diff'], 
                         help='Input states for edge')
-    parser.add_argument('--pred_edges', nargs='+', default=['future_dist'], 
+    parser.add_argument('--pred_edges', nargs='+', default=['dist'], 
                         help='Prediction state for edge')
-    parser.add_argument('--vis_graph', action='store_true', default=False,
-                        help='Plot graph during training step. Plot in output_dir/graphs/')
-    parser.add_argument('--save_graph', action='store_true', default=False,
-                        help='Save original graph . Plot in output_dir/graphs/')
-    parser.add_argument('--vis_traj', action='store_true', default=False,
-                        help='Plot trajectory during training step. Plot in output_dir/plots/') 
-    parser.add_argument('--vis_traj_interval', type=int, default=100,
-                        help='Plot trajectory every interval')  
-    # gcn
     parser.add_argument('--in_feat_dropout', default=0., type=float,
                         help='Apply dropout to input features')
     parser.add_argument('--dropout', default=0., type=float,
@@ -108,7 +69,7 @@ def get_argument(parser=None):
     parser.add_argument('--layer', default='gcn',
                         help='One of [gcn, edge_gcn, gated_gcn, custom_gcn]')
 
-    # added by niraj
+    # training
     parser.add_argument('--batch_size', default=100, type=int,
                         help='batch size')
     parser.add_argument('--n_warmup', default=3000, type=int, 
@@ -133,8 +94,35 @@ def get_argument(parser=None):
                         help='If resume training from the last checkpoint') 
     parser.add_argument('--run', type=int, default=0,
                         help='Used for output dir naming')
-    # simulation env
-    parser.add_argument('--stage', type=int, default=7,
-                        help='Value from 0-7')   
+
+    # test settings
+    parser.add_argument('--evaluate', action='store_true',
+                        help='Evaluate trained model')
+    parser.add_argument('--test_interval', type=int, default=int(1e6),
+                        help='Interval to evaluate trained model')
+    parser.add_argument('--test_episodes', type=int, default=5,
+                        help='Number of episodes to evaluate at once')
+    parser.add_argument('--save_test_path', action='store_true',
+                        help='Save trajectories of evaluation')
+
+    # logging 
+    parser.add_argument('--logging_level', choices=['DEBUG', 'INFO', 'WARNING'],
+                        default='INFO', help='Logging level')
+    parser.add_argument('--logdir', type=str, default='preddrl_td3/results',
+                        help='Main root directory for all experiments')
+    parser.add_argument('--summary_dir', type=str, default=None,
+                        help='Directory to save tensorboard summary')
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help='Directory to save outputs for each experiment')
+
+    # visualization
+    parser.add_argument('--vis_graph', action='store_true', default=False,
+                        help='Plot graph during training step. Plot in output_dir/graphs/')
+    parser.add_argument('--save_graph', action='store_true', default=False,
+                        help='Save original graph . Plot in output_dir/graphs/')
+    parser.add_argument('--vis_traj', action='store_true', default=False,
+                        help='Plot trajectory during training step. Plot in output_dir/plots/') 
+    parser.add_argument('--vis_traj_interval', type=int, default=100,
+                        help='Plot trajectory every interval') 
 
     return parser

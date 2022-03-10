@@ -119,7 +119,7 @@ class ORCA(object):
                               self.time_horizon, 
                               self.time_horizon_obst,
                               self_state.radius + 0.01 + self.safety_space,
-                              self_state.vpref, 
+                              self_state.pref_speed, 
                               self_state.vel)
             
             if len(humans)>0:

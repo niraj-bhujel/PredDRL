@@ -22,3 +22,7 @@ scipy==1.4.1
 #dgl-cu101 -f https://data.dgl.ai/wheels/repo.html
 
 # Install RVO library from https://github.com/sybrenstuvel/Python-RVO2
+#Step 1: git clone https://github.com/sybrenstuvel/Python-RVO2.git
+#Step 2 :Run pip install -r requirements.txt to install the tested version of Cython, or run pip install Cython to install the latest version.
+#Step 3: Run python3.6 setup.py build to build, and python3.6 setup.py install to install
+# If you encounter fatal error: Python.h: No such file or directory, check if /usr/include/python3.6m exists. If python3.6m doesn't exists inside include folder, python3.6 has to be installed again. 
