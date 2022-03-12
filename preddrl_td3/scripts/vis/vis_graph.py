@@ -83,7 +83,7 @@ def network_draw(g, show_node_labels=True, node_labels=['tid'], show_edge_labels
 
 
     unique_tid = g.ndata['tid'].unique().cpu().numpy()
-    node_colors = [get_color(tid) for tid in g.ndata['tid'].numpy()]
+    node_colors = [get_color(tid) for tid in g.ndata['cid'].numpy()]
     
     # node
     pos = {}

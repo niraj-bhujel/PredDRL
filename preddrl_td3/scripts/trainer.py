@@ -269,16 +269,6 @@ class Trainer:
 
                         self.replay_buffer.update_priorities(samples['idxes'], np.abs(priorities))
 
-
-                if total_steps % self._test_interval == 0:
-                    
-                    avg_test_return = self.evaluate_policy(total_steps)
-
-                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                        total_steps, avg_test_return, self._test_episodes))
-
-                    self.writer.add_scalar("Common/average_test_return", avg_test_return, total_steps)
-                    
                 if total_steps % self._save_model_interval == 0:
                     save_ckpt(self._policy, self._output_dir, total_steps)
 
@@ -380,7 +370,7 @@ if __name__ == '__main__':
     from policy.td3 import TD3
     from policy.ddpg import DDPG
     from policy.ddpg_graph import GraphDDPG
-    from policy.ddpg_vae import GraphVAE
+    from policy.ddpg_graph_vae import GraphVAE
     from policy.td3_graph import GraphTD3
 
     from env import Env

@@ -75,7 +75,7 @@ class Env:
         self.lost_penalty = -100
         self.discomfort_penalty = -1
 
-        self.collision_scheduler = LinearScheduler(start_value=-100, target_value=-10, total_steps=self.max_steps)
+        self.collision_scheduler = LinearScheduler(start_value=-10, target_value=-100, total_steps=self.max_steps)
         self.success_scheduler = LinearScheduler(start_value=10, target_value=100, total_steps=self.max_steps)
 
         self.collision_times = 0
@@ -145,6 +145,7 @@ class Env:
             print('Robot pos set to:', round(position.x, 2), round(position.y, 2))
 
     def sample_robot_action(self, policy='uniform'):
+        print('STEP-{}'.format(self.global_step))
         if policy =='uniform':
             action = self.action_space.sample()
             print("uniform vel:", action)

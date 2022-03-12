@@ -135,31 +135,60 @@ class Critic(nn.Module):
 class CVAE(nn.Module):
     def __init__(self, net_params, args):
         super().__init__()
-
+        self.z_dim = net_params['z_dim']
         # Define ecoders
         self.enc_x = EncoderX(net_params, args)
         self.enc_xy = EncoderXY(net_params, args)
 
-    def _reparameterize(self, mean, logvar):
+        self.p_x = getattr(torch.distributions, 'Normal')
+        self.q_xy = getattr(torch.distributions, 'Normal')
+
+    def encoder_dist(self, mean, logvar, d):
+
+        # mean = mean - mean.mean(dim=-1, keepdim=True)
+        if d.__name__ == 'StudentT':
+            logvar = torch.sqrt(logvar.size(-1) * F.softmax(logvar, dim=1))
+            return d(10, mean, logvar)
+
+        logvar = logvar.mul(0.5).exp_() + 1e-6
+
+        return d(mean, logvar)
+
+    def kl_divergence(self, p, q, samples=None):
+
+        if (type(p), type(q)) in torch.distributions.kl._KL_REGISTRY:
+            kld = torch.distributions.kl_divergence(p, q)
+        else:
+            if samples is None:
+                K = 12
+                samples = p.rsample(torch.Size([K])) if p.has_rsample else p.sample(torch.Size([K]))
+
+            ent = -p.log_prob(samples)
+            kld = (-ent - q.log_prob(samples)).mean(0)
+
+        return kld.sum()
+
+    def reparameterize(self, mean, logvar):
         var = logvar.mul(0.5).exp_()    
         eps = torch.Tensor(var.size()).normal_()
         eps = eps.to(var.device)
         z = eps.mul(var).add_(mean)
         return z
 
-    def _kld(self, mean1, logvar1, mean2, logvar2):
+    def _kl_divergence(self, mean1, logvar1, mean2, logvar2):
         x1 = torch.sum((logvar2 - logvar1), dim=1)
         x2 = torch.sum(torch.exp(logvar1 - logvar2), dim=1)
         x3 = torch.sum((mean1 - mean2).pow(2) / (torch.exp(logvar2)), dim=1)
         kld_element = x1 - mean1.size(1) + x2 + x3
         return torch.mean(0.5 * kld_element)
 
-    def forward(self, g, training=True):
+    def forward(self, g, num_samples=1):
         
         xx = g.ndata['history_vel']
         ex = g.edata['history_dist']
 
         p_mean, p_logvar = self.enc_x(g, xx, ex)
+        pz_x = self.encoder_dist(p_mean, p_logvar, self.p_x)
 
         KLD=0
         if self.training:
@@ -171,12 +200,16 @@ class CVAE(nn.Module):
 
             q_mean, q_logvar = self.enc_xy(g, yy, ey)
 
-            KLD = self._kld(q_mean, q_logvar, p_mean, p_logvar)
-            
-            z = self._reparameterize(q_mean, q_logvar)
+            qz_xy = self.encoder_dist(q_mean, q_logvar, self.q_xy)
+            z = qz_xy.rsample((num_samples, ))
+
+            KLD = self.kl_divergence(qz_xy, pz_x, z)
+            # qz_xy = self.reparameterize(q_mean, q_logvar, self.q_xy)
+            # KLD = self.kl_divergence(q_mean, q_logvar, p_mean, p_logvar)            
 
         else:
-            z = self._reparameterize(p_mean, p_logvar)
+            z = pz_x.sample((num_samples, )) #(num_samples, num_node, zdim)
+            # z = self.reparameterize(p_mean, p_logvar, self.p_x)
 
         return {'z':z, 'kld':KLD}
 
@@ -223,7 +256,7 @@ class GraphVAE(DDPG):
     def _get_action_body(self, state, sigma, max_action):
         self.eval()
         with torch.no_grad():
-            state.ndata['z'] = self.cvae(state)['z']
+            state.ndata['z'] = self.cvae(state)['z'][0]
             action = self.actor(state)
             # action += torch.empty_like(action).normal_(mean=0,std=sigma)
         self.train()
@@ -274,10 +307,11 @@ class GraphVAE(DDPG):
         # Optimize the critic
         self.optimization_step(self.critic_optimizer, critic_loss)
 
-        # Compute actor loss
+        # Update latents on states
         with torch.no_grad():
-            states.ndata['z'] = self.cvae(states)['z']
-
+            states.ndata['z'] = self.cvae_target(states)['z'].view(-1, self.cvae.z_dim)
+            # states.ndata['z'] = cvae_loss['z'].view(-1, self.cvae.z_dim)
+        # Compute actor loss
         actor_loss = -self.critic(states, self.actor(states)).mean()
         # Optimize the actor 
         self.optimization_step(self.actor_optimizer, actor_loss)
@@ -294,7 +328,7 @@ class GraphVAE(DDPG):
         not_dones = 1. - dones
 
         with torch.no_grad():
-            next_states.ndata['z'] = self.cvae_target(next_states)['z']
+            next_states.ndata['z'] = self.cvae_target(next_states)['z'].view(-1, self.cvae.z_dim)
             target_Q = self.critic_target(next_states, self.actor_target(next_states))
 
             target_Q = rewards + (not_dones * self.discount * target_Q)
